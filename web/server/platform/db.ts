@@ -6,6 +6,8 @@ import { log } from "./log.ts";
 
 // Bigint ids and counts stay far below 2^53, so int8 is safe as a JS number.
 types.setTypeParser(types.builtins.INT8, Number);
+// Dates are calendar days in Beijing; a JS Date would shift them by the server's time zone.
+types.setTypeParser(types.builtins.DATE, (value) => value);
 
 const pool = new Pool({ connectionString: env.DATABASE_URL, max: 10 });
 // Idle connections break when PostgreSQL restarts. pg drops them from the pool,

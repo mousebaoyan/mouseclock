@@ -45,7 +45,7 @@
   {
     "url": "https://cs.example.edu.cn/info/1001.htm",
     "title": "计算机学院关于举办2026年全国优秀大学生夏令营的通知",
-    "published_at": "2026-05-19",
+    "published_on": "2026-05-19",
     "school": "某某大学",
     "programs": [
       {
@@ -76,7 +76,7 @@
 | --- | --- |
 | `url` | 通知的网址 |
 | `title` | 列表上显示的标题，原样复制 |
-| `published_at` | 列表上的发布日期，推算没写年份的日期要用 |
+| `published_on` | 列表上的发布日期，推算没写年份的日期要用 |
 | `school`、`college` | 学校和学院的全称，和 `sources.csv` 一致；学院按[总体设计 §8.2](../docs/design.md#82-抽取)的规则归 |
 | `programs` | 通知涉及的项目；无关的通知写 `[]`，这样的也要收一些 |
 

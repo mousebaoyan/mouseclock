@@ -3,4 +3,258 @@
  * Please do not edit it manually.
  */
 
-export interface DB {}
+import type { ColumnType } from "kysely";
+
+export type Generated<T> = T extends ColumnType<infer S, infer I, infer U>
+  ? ColumnType<S, I | undefined, U>
+  : ColumnType<T, T | undefined, T>;
+
+export type Json = JsonValue;
+
+export type JsonArray = JsonValue[];
+
+export type JsonObject = {
+  [x: string]: JsonValue | undefined;
+};
+
+export type JsonPrimitive = boolean | number | string | null;
+
+export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
+
+export type Timestamp = ColumnType<Date, Date | string, Date | string>;
+
+export interface Attachments {
+  content_type: string;
+  data: Buffer | null;
+  name: string;
+  position: number;
+  snapshot_id: number;
+  text: string;
+  url: string;
+}
+
+export interface AuditLog {
+  action: string;
+  created_at: Generated<Timestamp>;
+  detail: Generated<Json>;
+  id: Generated<number>;
+  target_id: number;
+  target_type: string;
+  user_id: number;
+}
+
+export interface Colleges {
+  created_at: Generated<Timestamp>;
+  directions: Generated<string[]>;
+  id: Generated<number>;
+  kind: string;
+  name: string;
+  region: string;
+  school_id: number;
+}
+
+export interface CrawlerTokens {
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  last_seen_at: Timestamp | null;
+  name: string;
+  revoked_at: Timestamp | null;
+  token_hash: Buffer;
+}
+
+export interface CrawlRuns {
+  detail: Generated<string>;
+  failure: string | null;
+  finished_at: Timestamp;
+  id: Generated<number>;
+  listed: number;
+  new_count: number;
+  notice_failures: Generated<Json>;
+  source_id: number;
+  started_at: Timestamp;
+  useful_count: number;
+}
+
+export interface Edits {
+  basis: string;
+  created_at: Generated<Timestamp>;
+  field: string;
+  id: Generated<number>;
+  new_value: Json | null;
+  old_value: Json | null;
+  program_id: number;
+  reason: string;
+  reverts_id: number | null;
+  user_id: number;
+  via: string;
+}
+
+export interface ModelCalls {
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  input_tokens: number;
+  model: string;
+  output_tokens: number;
+  probe_id: number | null;
+  purpose: string;
+  snapshot_id: number | null;
+  source_id: number | null;
+}
+
+export interface Notices {
+  checked_at: Timestamp | null;
+  first_seen_at: Generated<Timestamp>;
+  id: Generated<number>;
+  leased_until: Timestamp | null;
+  published_on: string | null;
+  removed_at: Timestamp | null;
+  screened_in: boolean | null;
+  screening_score: number | null;
+  source_id: number;
+  title: string;
+  url: string;
+}
+
+export interface ProgramFields {
+  confidence: number | null;
+  edit_id: number | null;
+  evidence: Json;
+  key: string;
+  program_id: number;
+  updated_at: Generated<Timestamp>;
+  value: Json;
+  version_id: number | null;
+}
+
+export interface Programs {
+  apply_deadline: Timestamp | null;
+  apply_start: Timestamp | null;
+  cohort: number;
+  college_id: number;
+  created_at: Generated<Timestamp>;
+  deleted_at: Timestamp | null;
+  id: Generated<number>;
+  kind: string;
+  name: string;
+  verified_at: Timestamp | null;
+  verified_by: number | null;
+}
+
+export interface ProgramVersions {
+  changes: string[];
+  created_at: Generated<Timestamp>;
+  fields: Json;
+  id: Generated<number>;
+  number: number;
+  program_id: number;
+  role: string;
+  snapshot_id: number;
+}
+
+export interface ReviewItems {
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  key: string | null;
+  payload: Json;
+  program_id: number | null;
+  reason: string;
+  resolved_at: Timestamp | null;
+  resolved_by: number | null;
+  snapshot_id: number;
+  status: Generated<string>;
+  version_id: number | null;
+}
+
+export interface Schools {
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  name: string;
+  short_name: Generated<string>;
+  tiers: Generated<string[]>;
+}
+
+export interface Sessions {
+  created_at: Generated<Timestamp>;
+  expires_at: Timestamp;
+  id: Generated<number>;
+  ip: string | null;
+  last_seen_at: Generated<Timestamp>;
+  token_hash: Buffer;
+  user_agent: Generated<string>;
+  user_id: number;
+}
+
+export interface Snapshots {
+  extracted_at: Timestamp | null;
+  fetched_at: Timestamp;
+  html: string;
+  id: Generated<number>;
+  notice_id: number;
+  text: string;
+}
+
+export interface SourceProbes {
+  browser: boolean;
+  config: Json | null;
+  created_at: Generated<Timestamp>;
+  detail: Generated<string>;
+  failure: string | null;
+  finished_at: Timestamp | null;
+  id: Generated<number>;
+  items: Generated<Json>;
+  leased_until: Timestamp | null;
+  requested_by: number;
+  suggested_config: Json | null;
+  url: string;
+}
+
+export interface Sources {
+  browser: Generated<boolean>;
+  college_id: number;
+  config: Json | null;
+  crawled_at: Timestamp | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  leased_until: Timestamp | null;
+  section: Generated<string>;
+  unavailable_reason: string | null;
+  url: string;
+}
+
+export interface Users {
+  avatar_url: string | null;
+  created_at: Generated<Timestamp>;
+  display_name: string;
+  edit_revoked_at: Timestamp | null;
+  frozen: boolean;
+  id: Generated<number>;
+  level: number;
+  mousehole_id: number;
+  mousehole_token: string;
+  muted: boolean;
+  muted_until: Timestamp | null;
+  qq: number | null;
+  role: string;
+  synced_at: Timestamp;
+}
+
+export interface DB {
+  attachments: Attachments;
+  audit_log: AuditLog;
+  colleges: Colleges;
+  crawl_runs: CrawlRuns;
+  crawler_tokens: CrawlerTokens;
+  edits: Edits;
+  model_calls: ModelCalls;
+  notices: Notices;
+  program_fields: ProgramFields;
+  program_versions: ProgramVersions;
+  programs: Programs;
+  review_items: ReviewItems;
+  schools: Schools;
+  sessions: Sessions;
+  snapshots: Snapshots;
+  source_probes: SourceProbes;
+  sources: Sources;
+  users: Users;
+}

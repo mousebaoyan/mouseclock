@@ -2,5 +2,5 @@
   "dialect": "postgres",
   "outFile": "db/types.ts",
   "excludePattern": "public.kysely_*",
-  "typeMapping": { "int8": "number" }
+  "typeMapping": { "int8": "number", "date": "string" }
 }
