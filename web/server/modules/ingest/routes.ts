@@ -23,8 +23,8 @@ import {
 import {
   crawlerTokenId,
   markRemoved,
-  recordListing,
   recordExtraction,
+  recordListing,
   recordProbe,
   recordRun,
   recordScreening,
