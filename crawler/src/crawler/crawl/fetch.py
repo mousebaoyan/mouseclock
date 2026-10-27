@@ -28,7 +28,7 @@ type Failure = Literal["timeout", "unreachable", "disallowed", "too_many_redirec
 class FetchError(Exception):
     def __init__(self, failure: Failure, url: str) -> None:
         super().__init__(f"{failure}: {url}")
-        self.failure = failure
+        self.failure: Failure = failure
         self.url = url
 
 
