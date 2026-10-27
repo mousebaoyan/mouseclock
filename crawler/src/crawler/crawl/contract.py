@@ -119,6 +119,19 @@ class AttachmentInfo(BaseModel):
     text: Annotated[str, Field(max_length=2097152)]
 
 
+type ValueItem = Annotated[str, Field(max_length=500, min_length=1)]
+
+
+class Evidence(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    quote: Annotated[str, Field(max_length=2000, min_length=1)]
+    attachment: Annotated[
+        int | None, Field(description="附件在快照里的序号，从 0 开始；在正文里的不写", ge=0, le=99)
+    ] = None
+
+
 type Failure = Annotated[
     Literal[
         "timeout",
@@ -205,6 +218,106 @@ class Snapshot(BaseModel):
     attachments: Annotated[list[AttachmentInfo], Field(max_length=50)]
 
 
+class ApplyUrl(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[str, Field(max_length=2000)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Degrees(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[Literal["master", "direct_phd"]], Field(min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Majors(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Requirements(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Materials(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Assessment(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Quota(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[str, Field(max_length=500, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Benefits(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Contacts(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class EventValue(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    start: TimeValue | None = None
+    end: TimeValue | None = None
+    mode: Literal["online", "offline", "hybrid"] | None = None
+    place: Annotated[str | None, Field(max_length=500, min_length=1)] = None
+
+
+class DateItem(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    label: Annotated[str, Field(max_length=50, min_length=1)]
+    start: TimeValue | None = None
+    end: TimeValue | None = None
+
+
 class Run(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -237,6 +350,51 @@ class ApplyValue(BaseModel):
     rolling: Annotated[Literal[True] | None, Field(description="额满即止、先到先审")] = None
 
 
+class Apply(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: ApplyValue
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Event(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: EventValue
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class Dates(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    value: Annotated[list[DateItem], Field(max_length=30, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+    confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+
+
+class ExtractedFields(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    apply: Apply | None = None
+    apply_url: ApplyUrl | None = None
+    event: Event | None = None
+    dates: Dates | None = None
+    degrees: Degrees | None = None
+    majors: Majors | None = None
+    requirements: Requirements | None = None
+    materials: Materials | None = None
+    assessment: Assessment | None = None
+    quota: Quota | None = None
+    benefits: Benefits | None = None
+    contacts: Contacts | None = None
+
+
 class ProgramCandidate(BaseModel):
     id: Annotated[int, Field(ge=-2147483648, le=2147483647)]
     college_id: Annotated[int, Field(ge=-2147483648, le=2147483647)]
@@ -246,10 +404,36 @@ class ProgramCandidate(BaseModel):
     apply: ApplyValue | None
 
 
+class ExtractedProgram(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    program_id: Annotated[
+        int | None, Field(description="对照里的哪个项目；新项目不写", ge=-2147483648, le=2147483647)
+    ] = None
+    college_id: Annotated[int, Field(ge=-2147483648, le=2147483647)]
+    cohort: Annotated[int, Field(description="届", ge=2000, le=2100)]
+    kind: Literal["winter_camp", "summer_camp", "pre_recommendation", "september_round"]
+    name: Annotated[str, Field(max_length=200, min_length=1)]
+    role: Annotated[
+        Literal["call", "update", "result"],
+        Field(description="call：报名；update：补充；result：名单"),
+    ]
+    fields: ExtractedFields
+
+
 class ExtractionContext(BaseModel):
     published_on: Annotated[date_aliased | None, Field(description="YYYY-MM-DD，北京时间的日期")]
     colleges: list[CollegeRef]
     programs: list[ProgramCandidate]
+
+
+class Extraction(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    programs: Annotated[list[ExtractedProgram], Field(max_length=50)]
+    usage: Annotated[list[Usage], Field(max_length=100)]
 
 
 class SnapshotResult(BaseModel):

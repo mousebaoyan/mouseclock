@@ -639,6 +639,542 @@
         ],
         "additionalProperties": false
       },
+      "Extraction": {
+        "type": "object",
+        "properties": {
+          "programs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExtractedProgram"
+            },
+            "maxItems": 50
+          },
+          "usage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Usage"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "programs",
+          "usage"
+        ],
+        "additionalProperties": false,
+        "description": "通知涉及的项目；一个都没有就是无关"
+      },
+      "ExtractedProgram": {
+        "type": "object",
+        "properties": {
+          "program_id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647,
+            "description": "对照里的哪个项目；新项目不写"
+          },
+          "college_id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "cohort": {
+            "type": "integer",
+            "minimum": 2000,
+            "maximum": 2100,
+            "description": "届"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "winter_camp",
+              "summer_camp",
+              "pre_recommendation",
+              "september_round"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "call",
+              "update",
+              "result"
+            ],
+            "description": "call：报名；update：补充；result：名单"
+          },
+          "fields": {
+            "$ref": "#/components/schemas/ExtractedFields"
+          }
+        },
+        "required": [
+          "college_id",
+          "cohort",
+          "kind",
+          "name",
+          "role",
+          "fields"
+        ],
+        "additionalProperties": false
+      },
+      "ExtractedFields": {
+        "type": "object",
+        "properties": {
+          "apply": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "#/components/schemas/ApplyValue"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "apply_url": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "maxLength": 2000,
+                "format": "uri"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "event": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "$ref": "#/components/schemas/EventValue"
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "dates": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/DateItem"
+                },
+                "minItems": 1,
+                "maxItems": 30
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "degrees": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "master",
+                    "direct_phd"
+                  ]
+                },
+                "minItems": 1
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "majors": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "requirements": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "materials": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "assessment": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "quota": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "benefits": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          },
+          "contacts": {
+            "type": "object",
+            "properties": {
+              "value": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500
+                },
+                "minItems": 1,
+                "maxItems": 100
+              },
+              "evidence": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Evidence"
+                },
+                "minItems": 1,
+                "maxItems": 20
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              }
+            },
+            "required": [
+              "value",
+              "evidence",
+              "confidence"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      },
+      "Evidence": {
+        "type": "object",
+        "properties": {
+          "quote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "attachment": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 99,
+            "description": "附件在快照里的序号，从 0 开始；在正文里的不写"
+          }
+        },
+        "required": [
+          "quote"
+        ],
+        "additionalProperties": false
+      },
+      "EventValue": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "$ref": "#/components/schemas/TimeValue"
+          },
+          "end": {
+            "$ref": "#/components/schemas/TimeValue"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "online",
+              "offline",
+              "hybrid"
+            ]
+          },
+          "place": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        },
+        "additionalProperties": false
+      },
+      "DateItem": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "start": {
+            "$ref": "#/components/schemas/TimeValue"
+          },
+          "end": {
+            "$ref": "#/components/schemas/TimeValue"
+          }
+        },
+        "required": [
+          "label"
+        ],
+        "additionalProperties": false
+      },
       "Run": {
         "type": "object",
         "properties": {
@@ -1084,6 +1620,66 @@
           },
           "413": {
             "description": "文件太大",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/snapshots/{id}/extraction": {
+      "post": {
+        "summary": "交抽取的结果",
+        "description": "网站按总体设计 §8.3 检查、§8.4 归并；过不了检查的进审核页。重复交只算第一次",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Extraction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已记下"
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "快照不存在",
             "content": {
               "application/json": {
                 "schema": {

@@ -44,7 +44,7 @@
 | 表 | 模块 | 说明 |
 | --- | --- | --- |
 | `programs` | `programs` | 一次招生活动（[总体设计 §9.1](design.md#91-学校学院和项目)）。`apply_start`、`apply_deadline` 是由报名时间字段换算出的时刻（[§8.2](design.md#82-抽取)），状态、排序、筛选和提醒用；`verified_by`、`verified_at` 是已核对 |
-| `program_fields` | `programs` | 项目每个字段的当前值，`(program_id, key)` 唯一。`value` 和 `evidence` 的格式见[总体设计 §8.2](design.md#82-抽取)。`version_id` 和 `edit_id` 有且只有一个：值来自哪个版本，或者是哪次人工修改设的；人工设的抓取不覆盖 |
+| `program_fields` | `programs` | 项目每个字段的当前值，`(program_id, key)` 唯一。`key` 是[总体设计 §8.2](design.md#82-抽取)里的字段名，其他时间每项一行，`key` 是 `dates:` 加名称，这样每项各带来源版本和证据；`value`、`evidence` 和 `confidence` 是抽取给的那一项，`value` 的格式见 §8.2。`version_id` 和 `edit_id` 有且只有一个：值来自哪个版本，或者是哪次人工修改设的；人工设的抓取不覆盖 |
 | `program_versions` | `ingest` | 项目的版本：一条通知涉及几个项目，就是几个项目各自的版本。`role` 是这条通知对项目的作用，`fields` 是这一版抽出来的字段（原样留着），`changes` 是它改了的字段 |
 
 ## 纠错与审核
@@ -52,7 +52,7 @@
 | 表 | 模块 | 说明 |
 | --- | --- | --- |
 | `edits` | `review` | 每次人工修改，包括撤销（`reverts_id`）：改的是字段，或者项目的名称、届、类型；改前改后的值、理由、依据（原文链接或截图）、谁、通过网页还是 Agent |
-| `review_items` | `review` | 审核页上待人判断的：抽取时没上表的字段（证据找不到、置信度低、明显不对、和人工改的值冲突），以及没法直接归并的项目（编号或学院对不上、届不对、可能重复、报名通知没有截止）。`payload` 是抽取出来的原样，通过就照它上表 |
+| `review_items` | `review` | 审核页上待人判断的：抽取时没上表的字段（证据找不到、置信度低、明显不对、和人工改的值冲突），以及没法直接归并的项目（编号或学院对不上、届不对、可能重复、报名通知没有截止）。`payload` 是抽取出来的原样，通过就照它上表：字段的带 `key`，`payload` 是 `program_fields` 那一行的 `value`、`evidence` 和 `confidence`；项目的是抽取给的整个项目（编号、学院、届、类型、名称、作用和字段） |
 | `audit_log` | `review` | 管理员和站长的其他操作，别的模块调 `review` 的服务函数记 |
 
 ## 二期：订阅、关注和报名（还没建）
