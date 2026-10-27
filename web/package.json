@@ -18,6 +18,7 @@
     "db:codegen": "kysely-codegen",
     "openapi": "node --env-file-if-exists=.env scripts/openapi.ts",
     "crawler-token": "node --env-file-if-exists=.env scripts/crawler-token.ts",
+    "seed": "node --env-file-if-exists=.env scripts/seed.ts",
     "test": "vitest run"
   },
   "dependencies": {
