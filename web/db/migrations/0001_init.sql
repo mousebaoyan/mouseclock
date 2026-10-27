@@ -118,7 +118,6 @@ CREATE TABLE notices (
   screening_score  real,                       -- NULL: not screened yet
   screened_in      boolean,                    -- the crawler's call against its threshold
   checked_at       timestamptz,                -- last fetched, for daily re-crawls
-  leased_until     timestamptz,                -- re-crawl handed out, not reported yet
   removed_at       timestamptz,                -- the page answered 404 or 410
   UNIQUE (source_id, url),
   CHECK ((screening_score IS NULL) = (screened_in IS NULL))

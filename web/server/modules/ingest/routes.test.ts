@@ -163,3 +163,58 @@ test("the same words make no new snapshot, changed attachment text does", async 
   expect(await snapshot(noticeId, "表")).toEqual(first);
   expect((await snapshot(noticeId, "新表")).snapshot_id).not.toBe(first.snapshot_id);
 });
+
+test("a notice of a program still open comes back to be fetched once a day", async () => {
+  const source = await newSource("d.edu.cn");
+  const items = [{ url: "https://d.edu.cn/1.htm", title: "冬令营通知" }];
+  const [notice] = (await list(source.id, items)).pending;
+  await api.sources[":id"].screening.$post(
+    {
+      param: { id: String(source.id) },
+      json: { results: [{ notice_id: notice.id, score: 0.9, screened_in: true }], usage: [] },
+    },
+    crawler,
+  );
+  const { snapshot_id, extraction } = await snapshot(notice.id);
+  if (!extraction) throw new Error("no extraction asked for");
+  const deadline = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+  const extracted = await api.snapshots[":id"].extraction.$post(
+    {
+      param: { id: String(snapshot_id) },
+      json: {
+        programs: [
+          {
+            college_id: extraction.colleges[0].id,
+            cohort: Number(deadline.slice(0, 4)) + 1,
+            kind: "winter_camp",
+            name: "冬令营",
+            role: "call",
+            fields: {
+              apply: {
+                value: { end: { date: deadline } },
+                evidence: [{ quote: "正文" }],
+                confidence: 0.9,
+              },
+            },
+          },
+        ],
+        usage: [],
+      },
+    },
+    crawler,
+  );
+  expect(extracted.status).toBe(204);
+  expect((await list(source.id, items)).pending).toEqual([]);
+
+  const dayAgo = new Date(Date.now() - 25 * 3600_000);
+  await db.updateTable("notices").set({ checked_at: dayAgo }).where("id", "=", notice.id).execute();
+  expect((await list(source.id, items)).pending).toMatchObject([{ id: notice.id, step: "fetch" }]);
+
+  // Once the program has closed, nothing more to watch for.
+  await db
+    .updateTable("programs")
+    .set({ apply_deadline: dayAgo })
+    .where("college_id", "=", extraction.colleges[0].id)
+    .execute();
+  expect((await list(source.id, items)).pending).toEqual([]);
+});

@@ -19,12 +19,11 @@ const LEASE_MS = 2 * 3600_000;
 const INTERVAL_MS = 12 * 3600_000;
 const BUSY_INTERVAL_MS = 4 * 3600_000;
 const BUSY_MONTHS = new Set([3, 4, 5, 6, 7, 8, 9, 12, 1]);
-// Notices of programs still open are fetched again once a day to catch changes (design §7.4);
-// those without a deadline, for this long after the program appeared.
+// Notices of programs still open are fetched again once a day to catch changes (design §7.4),
+// in their source's round; those without a deadline, for this long after the program appeared.
 const RECHECK_MS = 24 * 3600_000;
 const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
-const MAX_NOTICES = 100;
 const MAX_PROBES = 5;
 
 export type Failure =
@@ -95,43 +94,6 @@ export async function takeWork(tokenId: number, now: Date) {
       .returning(sql<Record<string, unknown> | null>`config`.as("config"))
       .execute();
 
-    const notices = await trx
-      .updateTable("notices")
-      .from("sources")
-      .set({ leased_until: leaseEnd })
-      .whereRef("sources.id", "=", "notices.source_id")
-      .where("notices.id", "in", (qb) =>
-        qb
-          .selectFrom("notices as n")
-          .innerJoin("snapshots as s", "s.notice_id", "n.id")
-          .innerJoin("program_versions as v", "v.snapshot_id", "s.id")
-          .innerJoin("programs as p", "p.id", "v.program_id")
-          .select("n.id")
-          .where("n.removed_at", "is", null)
-          .where((eb) => eb.or([eb("n.leased_until", "is", null), eb("n.leased_until", "<", now)]))
-          .where((eb) =>
-            eb.or([
-              eb("n.checked_at", "is", null),
-              eb("n.checked_at", "<", new Date(now.getTime() - RECHECK_MS)),
-            ]),
-          )
-          .where("p.deleted_at", "is", null)
-          .where((eb) =>
-            eb.or([
-              eb("p.apply_deadline", ">", now),
-              eb.and([
-                eb("p.apply_deadline", "is", null),
-                eb("p.created_at", ">", new Date(now.getTime() - UNDATED_RECHECK_MS)),
-              ]),
-            ]),
-          )
-          .limit(MAX_NOTICES)
-          .forUpdate("n")
-          .skipLocked(),
-      )
-      .returning(["notices.id", "notices.url", "sources.browser"])
-      .execute();
-
     const probes = await trx
       .updateTable("source_probes")
       .set({ leased_until: leaseEnd })
@@ -155,7 +117,6 @@ export async function takeWork(tokenId: number, now: Date) {
         ...source,
         backfill: crawled_at === null,
       })),
-      notices,
       probes,
     };
   });
@@ -184,8 +145,10 @@ async function recordUsage(
 }
 
 // Saves what the list showed and returns the source's notices that still need work: new ones
-// to screen, and screened-in ones not yet extracted, which a round cut short leaves behind.
+// to screen; screened-in ones not yet extracted, which a round cut short leaves behind; and
+// those of programs still open, not fetched for a day (design §7.4).
 export async function recordListing(sourceId: number, items: ListedItem[]) {
+  const now = new Date();
   return db.transaction().execute(async (trx) => {
     await assertSource(trx, sourceId);
     const inserted =
@@ -222,6 +185,27 @@ export async function recordListing(sourceId: number, items: ListedItem[]) {
                   .whereRef("s.notice_id", "=", "n.id")
                   .where("s.extracted_at", "is not", null),
               ),
+            ),
+          ]),
+          eb.and([
+            eb("n.checked_at", "<", new Date(now.getTime() - RECHECK_MS)),
+            eb.exists(
+              eb
+                .selectFrom("snapshots as s")
+                .innerJoin("program_versions as v", "v.snapshot_id", "s.id")
+                .innerJoin("programs as p", "p.id", "v.program_id")
+                .select("p.id")
+                .whereRef("s.notice_id", "=", "n.id")
+                .where("p.deleted_at", "is", null)
+                .where((qb) =>
+                  qb.or([
+                    qb("p.apply_deadline", ">", now),
+                    qb.and([
+                      qb("p.apply_deadline", "is", null),
+                      qb("p.created_at", ">", new Date(now.getTime() - UNDATED_RECHECK_MS)),
+                    ]),
+                  ]),
+                ),
             ),
           ]),
         ]),
@@ -322,7 +306,7 @@ export async function recordSnapshot(
     }
     await trx
       .updateTable("notices")
-      .set({ checked_at: new Date(), removed_at: null, leased_until: null })
+      .set({ checked_at: new Date(), removed_at: null })
       .where("id", "=", noticeId)
       .execute();
 
@@ -403,7 +387,6 @@ export async function markRemoved(noticeId: number) {
     .set((eb) => ({
       removed_at: eb.fn.coalesce("removed_at", sql<Date>`now()`),
       checked_at: new Date(),
-      leased_until: null,
     }))
     .where("id", "=", noticeId)
     .executeTakeFirst();
