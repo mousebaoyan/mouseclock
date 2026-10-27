@@ -1,0 +1,8 @@
+@import "tailwindcss";
+
+/* System fonts only: Chinese web fonts run to megabytes (design §14). */
+@theme {
+  --font-sans:
+    -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+}

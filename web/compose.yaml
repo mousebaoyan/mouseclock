@@ -1,0 +1,17 @@
+name: mouseclock
+
+# Local development database. Production reuses the PostgreSQL 18 instance in 1Panel. Port 5433
+# leaves 5432 to mousehole's, so both can run side by side.
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: mouseclock
+      POSTGRES_PASSWORD: mouseclock
+    ports:
+      - 127.0.0.1:5433:5432
+    volumes:
+      - postgres:/var/lib/postgresql
+
+volumes:
+  postgres:

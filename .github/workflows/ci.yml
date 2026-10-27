@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: mouseclock
+          POSTGRES_PASSWORD: mouseclock
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 2s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgres://mouseclock:mouseclock@localhost:5432/mouseclock
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
+        with:
+          runtime: node@26
+          working-directory: web
+          cache: true
+          require-lockfile: true
+      - run: pnpm check
+      - run: pnpm db:migrate
+      - run: pnpm db:codegen --verify
+      - run: pnpm build
+
+  crawler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+        with:
+          working-directory: crawler
+      - run: crawler/check.sh

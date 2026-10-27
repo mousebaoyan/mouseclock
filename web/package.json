@@ -1,0 +1,54 @@
+{
+  "name": "mouseclock-web",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=26"
+  },
+  "scripts": {
+    "dev": "react-router dev",
+    "build": "react-router build",
+    "start": "node build/server/index.js",
+    "typecheck": "react-router typegen && tsc",
+    "lint": "oxlint",
+    "format": "prettier --write .",
+    "check": "pnpm typecheck && pnpm lint && prettier --check . && pnpm test",
+    "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
+    "db:codegen": "kysely-codegen",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.5",
+    "@hono/zod-openapi": "^1.6.3",
+    "@react-router/node": "^8.5.0",
+    "hono": "^4.13.14",
+    "isbot": "^5.2.2",
+    "kysely": "^0.29.7",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "react-router": "^8.5.0",
+    "react-router-hono-server": "^4.1.6",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@babel/core": "^8.0.9",
+    "@react-router/dev": "^8.5.0",
+    "@rolldown/plugin-babel": "^0.2.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "babel-plugin-react-compiler": "^1.0.0",
+    "kysely-codegen": "^0.20.0",
+    "oxlint": "^1.89.0",
+    "oxlint-tsgolint": "^7.0.2005",
+    "prettier": "^3.9.10",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5"
+  }
+}

@@ -1,0 +1,42 @@
+[project]
+name = "crawler"
+version = "0.1.0"
+description = "鼠钟的抓取节点：抓取、初筛和抽取"
+requires-python = ">=3.14"
+dependencies = [
+    "httpx>=0.28",
+    "protego>=0.7",
+]
+
+[dependency-groups]
+dev = [
+    "pyright>=1.1.400",
+    "pytest>=9.1",
+    "ruff>=0.17",
+]
+
+[build-system]
+requires = ["uv_build>=0.13.6,<0.14"]
+build-backend = "uv_build"
+
+[tool.uv]
+# An older uv may write the lockfile differently.
+required-version = ">=0.13"
+# Only install versions published at least a day ago, to skip freshly poisoned releases.
+exclude-newer = "1 day"
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E", "W", "F", "I", "N", "UP", "B", "BLE", "C4", "PIE", "PT", "RET", "SIM", "PTH", "PERF",
+    "ASYNC", "RUF",
+]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+
+[tool.pytest]
+python_files = ["*_test.py"]
+testpaths = ["src"]

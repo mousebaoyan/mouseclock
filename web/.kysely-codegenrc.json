@@ -1,0 +1,6 @@
+{
+  "dialect": "postgres",
+  "outFile": "db/types.ts",
+  "excludePattern": "public.kysely_*",
+  "typeMapping": { "int8": "number" }
+}
