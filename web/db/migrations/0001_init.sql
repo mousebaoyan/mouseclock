@@ -88,10 +88,10 @@ CREATE TABLE crawl_runs (
   listed           integer NOT NULL,
   new_count        integer NOT NULL,
   useful_count     integer NOT NULL,            -- new notices extraction found programs in
-  notice_failures  jsonb   NOT NULL DEFAULT '[]' -- [{url, failure, detail}]: notices not fetched
+  notice_failures  jsonb   NOT NULL DEFAULT '[]', -- [{url, failure, detail}]: notices not fetched
+  UNIQUE (source_id, started_at)                 -- a round reported twice is one row
 );
 CREATE INDEX crawl_runs_started ON crawl_runs (started_at);
-CREATE INDEX crawl_runs_source ON crawl_runs (source_id, started_at);
 
 CREATE TABLE source_probes (
   id                integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

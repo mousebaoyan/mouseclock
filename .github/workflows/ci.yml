@@ -41,6 +41,8 @@ jobs:
       - run: pnpm check
       - run: pnpm db:migrate
       - run: pnpm db:codegen --verify
+      # The crawler's API types come from this file; the crawler job checks they match it.
+      - run: pnpm openapi && git diff --exit-code -- openapi
       - run: pnpm build
 
   crawler:

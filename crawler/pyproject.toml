@@ -6,10 +6,12 @@ requires-python = ">=3.14"
 dependencies = [
     "httpx>=0.28",
     "protego>=0.7",
+    "pydantic>=2.14.1",
 ]
 
 [dependency-groups]
 dev = [
+    "datamodel-code-generator>=0.86.0",
     "pyright>=1.1.400",
     "pytest>=9.1",
     "ruff>=0.17",
@@ -27,6 +29,8 @@ exclude-newer = "1 day"
 
 [tool.ruff]
 line-length = 100
+# Generated from the website's OpenAPI document; the generator formats it.
+extend-exclude = ["src/crawler/crawl/contract.py"]
 
 [tool.ruff.lint]
 select = [
@@ -40,3 +44,20 @@ typeCheckingMode = "strict"
 [tool.pytest]
 python_files = ["*_test.py"]
 testpaths = ["src"]
+
+# The website's API for the crawler (docs/api.md §6), generated from the OpenAPI document the
+# website writes. `uv run datamodel-codegen` regenerates it; check.sh fails when it is stale.
+[tool.datamodel-codegen]
+input = "../web/openapi/crawler.json"
+input-file-type = "openapi"
+output = "src/crawler/crawl/contract.py"
+output-model-type = "pydantic_v2.BaseModel"
+target-python-version = "3.14"
+use-annotated = true
+field-constraints = true
+enum-field-as-literal = "all"
+use-double-quotes = true
+disable-timestamp = true
+formatters = ["ruff-format"]
+type-mappings = ["uri=string"]
+use-type-alias = true

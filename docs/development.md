@@ -16,11 +16,13 @@ web/                    网站，写法照鼠洞
     platform/           和业务无关的基础设施：环境变量、数据库、迁移、错误格式、日志
   db/migrations/        SQL 迁移
   db/types.ts           kysely-codegen 从数据库生成的类型
+  openapi/crawler.json  抓取节点接口的 OpenAPI 文档，由 `pnpm openapi` 生成
   scripts/              由 Node 直接运行的命令
   test/                 Vitest 的全局准备：测试用的数据库
 crawler/                抓取节点
   src/crawler/          一个领域一个包，测试和被测的文件放在一起，命名为 *_test.py
     crawl/fetch.py      所有对来源网站的请求都经过这里
+    crawl/contract.py   网站接口的 Pydantic 模型，由 `uv run datamodel-codegen` 从 openapi/crawler.json 生成
   check.sh              全部检查
 ```
 
@@ -40,7 +42,8 @@ crawler/                抓取节点
 | | `screening` | 初筛：调用判别接口 |
 | | `extraction` | 抽取和证据校验：调用 LLM |
 
-- 网站和抓取节点只通过[抓取节点接口](api.md#6-抓取节点)交接：不共享数据库，不互相引用代码。接口的类型由网站的定义生成，抓取节点不手写（[总体设计 §5.1](design.md#51-选定的方案)）。
+- 网站和抓取节点只通过[抓取节点接口](api.md#6-抓取节点)交接：不共享数据库，不互相引用代码。接口的类型由网站的定义生成，抓取节点不手写（[总体设计 §5.1](design.md#51-选定的方案)）：改了接口的 Zod 定义，运行 `pnpm openapi` 和 `uv run datamodel-codegen`，两边的 CI 都检查生成的文件是最新的。
+- 抓取节点交的请求里，没有的值不写这个键，不传 `null`：Zod 用 `.optional()`，抓取节点用 Pydantic 的 `model_dump(mode="json", exclude_none=True)`。网站返回的空值写成 `null`；引用了命名 schema 的可空字段写成 `z.union([Schema, z.null()])`，`.nullable()` 会把空值并进那个 schema 本身。
 - 网站里依赖只能单向：页面 → 接口 → 服务 → 数据库。网页、API 和 MCP 都调用服务导出的函数，不各写一套规则。
 - 模块之间只通过对方服务导出的函数协作，每张表只由一个模块写入。
 - 网站各层的具体写法（页面怎么在进程内调接口、服务和事务、纯函数、文件命名）照[鼠洞的开发约定 §1](https://github.com/mousebaoyan/mousehole/blob/main/docs/development.md#1-结构与分层)。

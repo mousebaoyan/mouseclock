@@ -87,4 +87,4 @@
 | 通知的版本 | `program_versions_snapshot (snapshot_id)` |
 | 修改记录 | 项目的：`edits_program (program_id, id)`；某人的：`edits_user (user_id, id)`；全站最近的：`edits_recent (created_at)` |
 | 审核页 | 待处理的：`review_items_pending (id) WHERE status = 'pending'` |
-| 抓取看板 | 某天各来源的结果：`crawl_runs_started (started_at)`；用量：`model_calls_created (created_at)` |
+| 抓取看板 | 某天各来源的结果：`crawl_runs_started (started_at)`；某个来源最近几轮：`crawl_runs (source_id, started_at)` 唯一；用量：`model_calls_created (created_at)` |

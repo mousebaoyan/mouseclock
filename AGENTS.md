@@ -42,6 +42,8 @@
 | `pnpm format` | 格式化 |
 | `pnpm db:migrate` | 执行迁移 |
 | `pnpm db:codegen` | 改完迁移后重新生成数据库类型 |
+| `pnpm openapi` | 改了抓取节点接口后重新生成 `openapi/crawler.json`，再到 `crawler/` 里生成类型 |
+| `pnpm crawler-token <名字>` | 生成一个抓取节点令牌，本地让抓取节点连网站用 |
 
 **抓取节点**：依赖只用 uv 管，要 0.13 以上（`uv self update`）。
 
@@ -51,6 +53,7 @@
 | `./check.sh` | 格式检查、lint、类型检查和测试，提交前要全部通过 |
 | `uv run pytest <路径>` | 只跑相关的测试 |
 | `uv run ruff format` | 格式化 |
+| `uv run datamodel-codegen` | 从网站的 `openapi/crawler.json` 重新生成接口的类型 `crawl/contract.py` |
 
 ## 产品原则
 

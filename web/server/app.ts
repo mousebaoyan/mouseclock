@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { sql } from "kysely";
+import { ingestRoutes } from "./modules/ingest/routes.ts";
 import { db } from "./platform/db.ts";
 import { createRouter, handleError } from "./platform/http.ts";
 import { SITE_NAME } from "./platform/site.ts";
 
-const api = createRouter();
+const api = createRouter().route("/", ingestRoutes);
 
 api.doc31("/openapi.json", { openapi: "3.1.0", info: { title: SITE_NAME, version: "1" } });
 
