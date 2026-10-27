@@ -6,7 +6,8 @@
 
 - 表名是英文复数，字段用 snake_case，接口的 JSON 直接用同样的名字。
 - 时间都存带时区的时间戳，显示时按北京时间。
-- 判断新旧和有没有变化都用原值：网址、标题、正文的文字直接比较，不算哈希。只有会话和个人令牌存 SHA-256。
+- 判断新旧和有没有变化都用原值：网址、标题、正文的文字直接比较，不算哈希。只有会话、个人令牌和抓取节点令牌存 SHA-256。
+- 这些表都在网站的数据库里；抓取节点不存业务数据。
 - 项目只由管理员删除，做软删除（`deleted_at`），版本、快照和记录都保留。
 
 ## 学校与来源
@@ -17,6 +18,8 @@
 | `colleges` | `school_id`、`name`、`kind`（学院、研究所、研究生院）、`directions` | 招生单位，院校清单就是这张表；没接入来源的也在里面 |
 | `sources` | `college_id`、`url`、`method`（`generic`、`config`、`browser`、`adapter`）、`template`、`config`、`unavailable_reason` | 一个通知列表页；`unavailable_reason` 有值就是暂时抓不了 |
 | `crawl_runs` | `source_id`、`started_at`、`finished_at`、`ok`、`error`、`listed`、`new_count`、`useful_count` | 每一轮抓取的结果，抓取看板用 |
+| `source_probes` | `url`、`config`、`requested_by`、`status`、`listed`、`suggested_config`、`error` | 管理员要试抓的来源和抓取节点交回的结果 |
+| `crawler_tokens` | `name`、`token_hash`、`last_seen_at`、`revoked_at` | 抓取节点令牌；`last_seen_at` 是最近一次领活的时间，抓取看板用 |
 
 ## 通知与快照
 
