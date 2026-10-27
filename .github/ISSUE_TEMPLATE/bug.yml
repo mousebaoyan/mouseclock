@@ -1,0 +1,24 @@
+name: 问题反馈
+description: 网站、抓取或提醒出了错
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: 出了什么问题
+      description: 看到了什么，本来应该是什么
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      description: 页面的网址、操作步骤；抓取的问题附上来源和通知的网址
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 环境（可选）
+      description: 设备、浏览器（比如手机 QQ 内置浏览器）
