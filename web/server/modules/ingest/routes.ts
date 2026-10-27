@@ -11,11 +11,20 @@ import {
   IntParam,
   UnixSeconds,
 } from "../../platform/http.ts";
-import { ApplyValue, IsoDate, Kind } from "../programs/schemas.ts";
+import {
+  ApplyValue,
+  Cohort,
+  ExtractedFields,
+  IsoDate,
+  Kind,
+  ProgramName,
+  Role,
+} from "../programs/schemas.ts";
 import {
   crawlerTokenId,
   markRemoved,
   recordListing,
+  recordExtraction,
   recordProbe,
   recordRun,
   recordScreening,
@@ -76,6 +85,19 @@ const ListedItem = z
     published_on: IsoDate.optional(),
   })
   .openapi("ListedItem");
+
+// One program a notice is about, as design §8.2 lays out.
+const ExtractedProgram = z
+  .strictObject({
+    program_id: Int.optional().openapi({ description: "对照里的哪个项目；新项目不写" }),
+    college_id: Int,
+    cohort: Cohort,
+    kind: Kind,
+    name: ProgramName,
+    role: Role.openapi({ description: "call：报名；update：补充；result：名单" }),
+    fields: ExtractedFields,
+  })
+  .openapi("ExtractedProgram");
 
 const Work = z
   .object({
@@ -329,6 +351,42 @@ export const ingestRoutes = router
     async (c) => {
       const { id, position } = c.req.valid("param");
       await storeAttachmentFile(id, position, Buffer.from(await c.req.arrayBuffer()));
+      return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "post",
+      path: "/crawler/snapshots/{id}/extraction",
+      summary: "交抽取的结果",
+      description: "网站按总体设计 §8.3 检查、§8.4 归并；过不了检查的进审核页。重复交只算第一次",
+      security,
+      request: {
+        params: IdParam,
+        body: {
+          content: {
+            "application/json": {
+              schema: z
+                .strictObject({
+                  programs: z
+                    .array(ExtractedProgram)
+                    .max(50)
+                    .refine((programs) => {
+                      const ids = programs.flatMap((p) => p.program_id ?? []);
+                      return new Set(ids).size === ids.length;
+                    }, "同一个项目只能出现一次"),
+                  usage: z.array(Usage).max(100),
+                })
+                .openapi("Extraction", { description: "通知涉及的项目；一个都没有就是无关" }),
+            },
+          },
+        },
+      },
+      responses: { 204: noContent, 401: unauthorized, 404: errorResponse("快照不存在") },
+    }),
+    async (c) => {
+      const { programs, usage } = c.req.valid("json");
+      await recordExtraction(c.req.valid("param").id, programs, usage);
       return c.body(null, 204);
     },
   )

@@ -3,7 +3,15 @@ import { sql, type Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
-import type { ApplyValue, Kind } from "../programs/schemas.ts";
+import type { ApplyValue, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
+import {
+  applyStored,
+  createProgram,
+  toStoredFields,
+  type StoredField,
+} from "../programs/service.ts";
+import { deadlineOf, startOf } from "../programs/time.ts";
+import { holdForReview, type ReviewItem } from "../review/service.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
 const LEASE_MS = 2 * 3600_000;
@@ -342,6 +350,12 @@ export async function recordSnapshot(
 
 // What extraction checks a notice against (design §8.2): the colleges of the school, and the
 // school's programs for the cohorts a notice published that year can be about (§8.3).
+// The cohorts a notice can be about run from the year it was published to two years on
+// (design §8.3); a notice listed without a date counts as published today.
+function noticeYear(publishedOn: string | null) {
+  return Number((publishedOn ?? new Date(Date.now() + 8 * 3600_000).toISOString()).slice(0, 4));
+}
+
 async function extractionContext(
   trx: Transaction<DB>,
   sourceId: number,
@@ -353,9 +367,7 @@ async function extractionContext(
     .select("colleges.school_id")
     .where("sources.id", "=", sourceId)
     .executeTakeFirstOrThrow();
-  const year = Number(
-    (publishedOn ?? new Date(Date.now() + 8 * 3600_000).toISOString()).slice(0, 4),
-  );
+  const year = noticeYear(publishedOn);
   const colleges = await trx
     .selectFrom("colleges")
     .select(["id", "name"])
@@ -467,4 +479,219 @@ export async function recordProbe(
       .execute();
     await recordUsage(trx, "probe", { probe_id: probeId }, report.usage);
   });
+}
+
+// Fields less sure than this wait on the review page (design §8.3); the extraction experiments
+// will settle the number (design §8.5).
+const CONFIDENT = 0.7;
+
+export type ExtractedProgram = {
+  program_id?: number;
+  college_id: number;
+  cohort: number;
+  kind: Kind;
+  name: string;
+  role: Role;
+  fields: ExtractedFields;
+};
+
+// Quotes are looked up ignoring whitespace: extracted text and the model's copy of it break
+// lines differently (design §8.3).
+function squash(text: string) {
+  return text.replace(/\s+/g, "");
+}
+
+export function evidenceFound(
+  docs: { body: string; attachments: string[] },
+  evidence: { quote: string; attachment?: number }[],
+) {
+  return evidence.every((e) => {
+    const doc = e.attachment === undefined ? docs.body : docs.attachments.at(e.attachment);
+    return doc !== undefined && squash(doc).includes(squash(e.quote));
+  });
+}
+
+// Checks an extraction and merges each of its programs into versions (design §8.3, §8.4).
+// Whatever can't go on the table as it is waits on the review page.
+export async function recordExtraction(
+  snapshotId: number,
+  programs: ExtractedProgram[],
+  usage: Usage[],
+) {
+  await db.transaction().execute(async (trx) => {
+    const snapshot = await trx
+      .selectFrom("snapshots as s")
+      .innerJoin("notices as n", "n.id", "s.notice_id")
+      .select(["s.text", "s.extracted_at", "n.source_id", "n.published_on"])
+      .where("s.id", "=", snapshotId)
+      .forUpdate("s")
+      .executeTakeFirst();
+    if (!snapshot) throw new AppError(404, "not_found", "快照不存在");
+    // Sent again after a lost response: the first one counted.
+    if (snapshot.extracted_at) return;
+
+    const attachments = await trx
+      .selectFrom("attachments")
+      .select("text")
+      .where("snapshot_id", "=", snapshotId)
+      .orderBy("position")
+      .execute();
+    const docs = { body: snapshot.text, attachments: attachments.map((a) => a.text) };
+    const context = await extractionContext(trx, snapshot.source_id, snapshot.published_on);
+    const year = noticeYear(snapshot.published_on);
+    const held: ReviewItem[] = [];
+    for (const program of programs) {
+      const hold = (reason: ReviewItem["reason"]) =>
+        held.push({ reason, snapshot_id: snapshotId, payload: program });
+      if (!context.colleges.some((c) => c.id === program.college_id)) hold("unknown_college");
+      else if (program.cohort < year || program.cohort > year + 2) hold("implausible_cohort");
+      else if (
+        program.program_id !== undefined &&
+        !context.programs.some((p) => p.id === program.program_id)
+      ) {
+        hold("unknown_program");
+      } else {
+        held.push(
+          ...(await mergeProgram(
+            trx,
+            snapshotId,
+            snapshot.published_on,
+            docs,
+            context.programs,
+            program,
+          )),
+        );
+      }
+    }
+    await holdForReview(trx, held);
+    await trx
+      .updateTable("snapshots")
+      .set({ extracted_at: new Date() })
+      .where("id", "=", snapshotId)
+      .execute();
+    await recordUsage(
+      trx,
+      "extraction",
+      { source_id: snapshot.source_id, snapshot_id: snapshotId },
+      usage,
+    );
+  });
+}
+
+async function mergeProgram(
+  trx: Transaction<DB>,
+  snapshotId: number,
+  publishedOn: string | null,
+  docs: { body: string; attachments: string[] },
+  candidates: { college_id: number; cohort: number; kind: Kind }[],
+  program: ExtractedProgram,
+) {
+  const held: ReviewItem[] = [];
+  let programId = program.program_id;
+  if (programId === undefined) {
+    programId = await createProgram(trx, program);
+    // A second batch is a program of its own (design §8.2), but so is a program the model
+    // failed to recognise; a person tells them apart.
+    if (
+      candidates.some(
+        (c) =>
+          c.college_id === program.college_id &&
+          c.cohort === program.cohort &&
+          c.kind === program.kind,
+      )
+    ) {
+      held.push({
+        reason: "possible_duplicate",
+        snapshot_id: snapshotId,
+        program_id: programId,
+        payload: program,
+      });
+    }
+  }
+  // One version at a time per program, so their numbers don't collide.
+  await trx.selectFrom("programs").select("id").where("id", "=", programId).forUpdate().execute();
+  const { number } = await trx
+    .selectFrom("program_versions")
+    .select(sql<number>`coalesce(max(number), 0) + 1`.as("number"))
+    .where("program_id", "=", programId)
+    .executeTakeFirstOrThrow();
+  const version = await trx
+    .insertInto("program_versions")
+    .values({
+      program_id: programId,
+      snapshot_id: snapshotId,
+      number,
+      role: program.role,
+      fields: JSON.stringify(program.fields),
+      changes: [],
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+
+  const end = program.fields.apply?.value.end;
+  const implausible =
+    end !== undefined && publishedOn !== null && deadlineOf(end) <= startOf({ date: publishedOn });
+  const accepted = [];
+  for (const row of toStoredFields(program.fields)) {
+    const reason = !evidenceFound(docs, row.evidence)
+      ? "evidence_not_found"
+      : row.confidence < CONFIDENT
+        ? "low_confidence"
+        : row.key === "apply" && implausible
+          ? "implausible"
+          : null;
+    if (reason === null) accepted.push(row);
+    else held.push(fieldItem(reason, snapshotId, programId, version.id, row));
+  }
+  const { changed, conflicts } = await applyStored(trx, programId, version.id, accepted);
+  for (const row of conflicts) {
+    held.push(fieldItem("conflicts_edit", snapshotId, programId, version.id, row));
+  }
+  await trx
+    .updateTable("program_versions")
+    .set({ changes: changed })
+    .where("id", "=", version.id)
+    .execute();
+
+  if (program.role === "call") {
+    const { apply_deadline } = await trx
+      .selectFrom("programs")
+      .select("apply_deadline")
+      .where("id", "=", programId)
+      .executeTakeFirstOrThrow();
+    const asked = await trx
+      .selectFrom("review_items")
+      .select("id")
+      .where("program_id", "=", programId)
+      .where("reason", "=", "no_deadline")
+      .where("status", "=", "pending")
+      .executeTakeFirst();
+    if (apply_deadline === null && !asked) {
+      held.push({
+        reason: "no_deadline",
+        snapshot_id: snapshotId,
+        program_id: programId,
+        version_id: version.id,
+        payload: program,
+      });
+    }
+  }
+  return held;
+}
+
+function fieldItem(
+  reason: ReviewItem["reason"],
+  snapshotId: number,
+  programId: number,
+  versionId: number,
+  { key, ...entry }: StoredField,
+): ReviewItem {
+  return {
+    reason,
+    snapshot_id: snapshotId,
+    program_id: programId,
+    version_id: versionId,
+    key,
+    payload: entry,
+  };
 }
