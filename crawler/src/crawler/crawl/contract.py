@@ -9,12 +9,6 @@ from datetime import date as date_aliased
 type Config = dict[str, Any]
 
 
-class WorkNotice(BaseModel):
-    id: Annotated[int, Field(ge=-2147483648, le=2147483647)]
-    url: str
-    browser: bool
-
-
 class WorkProbe(BaseModel):
     id: Annotated[int, Field(ge=-2147483648, le=2147483647)]
     url: str
@@ -33,7 +27,10 @@ class PendingNotice(BaseModel):
     title: str
     published_on: Annotated[date_aliased | None, Field(description="YYYY-MM-DD，北京时间的日期")]
     step: Annotated[
-        Literal["screen", "fetch"], Field(description="screen：还没初筛；fetch：初筛通过，还没抽取")
+        Literal["screen", "fetch"],
+        Field(
+            description="screen：还没初筛；fetch：要抓正文，初筛通过还没抽取的，或者项目还没截止、一天没抓过的"
+        ),
     ]
 
 
@@ -337,7 +334,6 @@ class Run(BaseModel):
 
 class Work(BaseModel):
     sources: list[WorkSource]
-    notices: list[WorkNotice]
     probes: list[WorkProbe]
 
 

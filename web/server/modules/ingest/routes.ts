@@ -113,11 +113,6 @@ const Work = z
         })
         .openapi("WorkSource"),
     ),
-    notices: z.array(
-      z
-        .object({ id: Int, url: z.string(), browser: z.boolean() })
-        .openapi("WorkNotice", { description: "要重抓正文的通知" }),
-    ),
     probes: z.array(
       z
         .object({
@@ -141,9 +136,10 @@ const ListingResult = z
           url: z.string(),
           title: z.string(),
           published_on: IsoDate.nullable(),
-          step: z
-            .enum(["screen", "fetch"])
-            .openapi({ description: "screen：还没初筛；fetch：初筛通过，还没抽取" }),
+          step: z.enum(["screen", "fetch"]).openapi({
+            description:
+              "screen：还没初筛；fetch：要抓正文，初筛通过还没抽取的，或者项目还没截止、一天没抓过的",
+          }),
         })
         .openapi("PendingNotice"),
     ),
@@ -223,7 +219,7 @@ export const ingestRoutes = router
       },
       responses: {
         200: {
-          description: "这个来源还没处理完的通知",
+          description: "这个来源要接着处理的通知：没初筛的，要抓正文的",
           content: { "application/json": { schema: ListingResult } },
         },
         401: unauthorized,

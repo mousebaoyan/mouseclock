@@ -26,12 +26,6 @@
               "$ref": "#/components/schemas/WorkSource"
             }
           },
-          "notices": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/WorkNotice"
-            }
-          },
           "probes": {
             "type": "array",
             "items": {
@@ -41,7 +35,6 @@
         },
         "required": [
           "sources",
-          "notices",
           "probes"
         ]
       },
@@ -90,28 +83,6 @@
         "type": "object",
         "additionalProperties": {},
         "description": "抓取节点自己的配置，格式由抓取节点定"
-      },
-      "WorkNotice": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer",
-            "minimum": -2147483648,
-            "maximum": 2147483647
-          },
-          "url": {
-            "type": "string"
-          },
-          "browser": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "url",
-          "browser"
-        ],
-        "description": "要重抓正文的通知"
       },
       "WorkProbe": {
         "type": "object",
@@ -220,7 +191,7 @@
               "screen",
               "fetch"
             ],
-            "description": "screen：还没初筛；fetch：初筛通过，还没抽取"
+            "description": "screen：还没初筛；fetch：要抓正文，初筛通过还没抽取的，或者项目还没截止、一天没抓过的"
           }
         },
         "required": [
@@ -1391,7 +1362,7 @@
         },
         "responses": {
           "200": {
-            "description": "这个来源还没处理完的通知",
+            "description": "这个来源要接着处理的通知：没初筛的，要抓正文的",
             "content": {
               "application/json": {
                 "schema": {

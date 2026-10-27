@@ -105,7 +105,6 @@ export interface Notices {
   checked_at: Timestamp | null;
   first_seen_at: Generated<Timestamp>;
   id: Generated<number>;
-  leased_until: Timestamp | null;
   published_on: string | null;
   removed_at: Timestamp | null;
   screened_in: boolean | null;
