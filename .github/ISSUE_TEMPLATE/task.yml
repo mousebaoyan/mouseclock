@@ -1,7 +1,7 @@
 name: 任务
 description: 一件可以认领、交付的具体工作，通常由维护者创建
 title: "[任务] "
-labels: [enhancement]
+labels: [task]
 body:
   - type: textarea
     id: context
