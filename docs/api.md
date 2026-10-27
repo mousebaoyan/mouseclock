@@ -8,23 +8,31 @@
 - 错误统一返回 `{ "error": { "code": "...", "message": "..." } }`：`code` 是英文，给程序判断；`message` 是中文，给人看。
 - **认证**：网页用会话 Cookie；Agent 和脚本用个人令牌，`Authorization: Bearer <令牌>`；抓取节点用抓取节点令牌（第 6 节）。
 - **令牌的权限范围**：`read` 只能查询；`personal` 还能订阅、关注、记报名、提交反馈和修改申请。直接修改、审核和管理的接口只认网页会话，带令牌调用返回 `403`。
-- **访客**：列表接口只返回预览（[总体设计 §6.2](design.md#62-权限)），别的接口返回 `401 login_required`。
+- **权限**（[总体设计 §6.2](design.md#62-权限)）：访客调列表接口只拿到预览，调别的接口返回 `401 login_required`；冻结的按访客算，返回 `403 member_frozen`；禁言中的做不了的返回 `403 muted`，等级不够的 `403 level_required`，修改权限被收回的 `403 edit_revoked`，不是管理员或站长的 `403 forbidden`。
 - **频率限制**：按会话和令牌分别限制，超了返回 `429`。
 
 ## 2. 鼠洞登录
 
-鼠洞做授权方，按 OAuth 2.0 授权码流程。鼠洞那边的接口在 mousehole 仓库里设计，这里写鼠钟这边要的流程：
+鼠洞是 OAuth 2.1 的授权服务器，鼠钟是在鼠洞登记的自家应用，有密钥，范围只要 `profile`。鼠洞那边的地址和参数见鼠洞的[接口 §8.3](https://github.com/mousebaoyan/mousehole/blob/main/docs/api.md#83-oauth-授权)，这里写鼠钟这边：
 
 | 步骤 | 做什么 |
 | --- | --- |
-| 1 | 没有会话的浏览器打开鼠钟，跳到鼠洞的授权地址，带上 `state` 和 `prompt=none` |
-| 2 | 已经登录鼠洞的，鼠洞带着一次性的 `code` 跳回 `/login/callback`；没登录的带着 `error=login_required` 跳回，按访客显示 |
-| 3 | 鼠钟的服务端用 `code` 向鼠洞换取用户资料：鼠洞用户 ID、名字、头像、等级、角色、禁言和冻结状态、QQ 号 |
-| 4 | 鼠钟建自己的会话，写进 `users` |
-| 5 | 点「登录」时重走一遍，不带 `prompt=none`：没登录鼠洞的先在鼠洞登录，再跳回来 |
+| 1 | `GET /login?next=<路径>`：生成 `state` 和 PKCE 的 `code_verifier`，连同 `next` 放进 10 分钟有效的 Cookie，跳到鼠洞的 `/oauth/authorize`，回调地址是 `/login/callback` |
+| 2 | 鼠洞跳回 `/login/callback`，带 `code`、`state`、`iss`；`state` 和 Cookie 里的、`iss` 和鼠洞的地址对不上的不认，按访客跳回 `next` |
+| 3 | 鼠钟的服务端调鼠洞的 `/oauth/token` 换令牌，再调 `/api/v1/me` 取资料：鼠洞用户 ID、名字、头像、等级、角色、冻结、禁言、QQ 号 |
+| 4 | 写进 `users`，建鼠钟的会话，跳回 `next` |
 
-- 自动跳转在一个浏览器会话里只试一次，免得没登录鼠洞的人来回跳。
-- 登录期间每小时从鼠洞刷新一次资料，做法和鼠洞的授权接口一起定。
+- **自动登录**：没有会话的浏览器打开页面（`Sec-Fetch-Mode: navigate`、`Sec-Fetch-Dest: document`）时，直接走第 1 步，带 `prompt=none`。没登录鼠洞的，鼠洞带着 `error=login_required` 跳回，按访客显示。一个浏览器会话里只自动试一次，退出后也不再自动登录；搜索引擎和脚本不带这两个请求头，不跳。
+- **点「登录」**：`GET /login`，不带 `prompt=none`，没登录鼠洞的先在鼠洞登录。
+- **会话**：Cookie `mouseclock_session`，HttpOnly、SameSite=Lax，90 天有效，超过一小时没用过的会话在下次使用时续期。名字带前缀，本地开发时不和同在 `localhost` 的鼠洞的 `session` 混在一起。
+- **刷新**：令牌存在 `users` 里，每小时用它调一次鼠洞的 `/me` 更新资料；鼠洞返回 `401 invalid_token`（被封禁或撤销了授权）时，删掉这个人的所有会话。
+- **退出**：`POST /auth/logout`，只退出鼠钟，鼠洞的登录不受影响。
+- **CSRF**：网页的写请求校验 Origin，和鼠洞一样；带令牌的请求不受影响。
+
+| 方法 | 路径 | 说明 | 权限 |
+| --- | --- | --- | --- |
+| GET | `/me` | 自己的资料：`id`、`display_name`、`avatar_url`（鼠洞上的绝对地址，没有为 `null`）、`level`、`role`、`frozen`、`muted`、`muted_until`（禁言到什么时候，没禁言或永久禁言为 `null`），以及 `can`：`edit`、`admin`、`owner`，按[总体设计 §6.2](design.md#62-权限) 算好，页面据此显示按钮 | 已登录，冻结了也可以 |
+| POST | `/auth/logout` | 退出当前会话；没有登录时也返回成功 | 访客 |
 
 ## 3. 接口清单（草案）
 

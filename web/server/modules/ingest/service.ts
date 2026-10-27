@@ -1,8 +1,8 @@
-import { createHash, randomBytes } from "node:crypto";
 import { sql, type Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
+import { hashToken, newToken } from "../../platform/tokens.ts";
 import type { ApplyValue, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
 import {
   applyStored,
@@ -38,15 +38,11 @@ export type Failure =
 export type Usage = { model: string; input_tokens: number; output_tokens: number };
 export type ListedItem = { url: string; title: string; published_on?: string };
 
-function sha256(token: string) {
-  return createHash("sha256").update(token).digest();
-}
-
 export async function createCrawlerToken(name: string) {
-  const token = randomBytes(32).toString("base64url");
+  const token = newToken();
   await db
     .insertInto("crawler_tokens")
-    .values({ name, token_hash: sha256(token) })
+    .values({ name, token_hash: hashToken(token) })
     .execute();
   return token;
 }
@@ -55,7 +51,7 @@ export async function crawlerTokenId(token: string) {
   const row = await db
     .selectFrom("crawler_tokens")
     .select("id")
-    .where("token_hash", "=", sha256(token))
+    .where("token_hash", "=", hashToken(token))
     .where("revoked_at", "is", null)
     .executeTakeFirst();
   return row?.id ?? null;

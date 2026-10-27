@@ -13,12 +13,12 @@ web/                    网站，写法照鼠洞
     main.ts             进程入口：执行迁移，把 Hono 应用和 React Router 接在一起
     app.ts              组装 Hono 应用：健康检查和 /api/v1；接口测试直接对它发请求
     modules/            业务模块，一个领域一个目录：routes.ts（接口）、service.ts（业务逻辑）和测试
-    platform/           和业务无关的基础设施：环境变量、数据库、迁移、错误格式、日志
+    platform/           和业务无关的基础设施：环境变量、数据库、迁移、错误格式、日志、权限、定时任务
   db/migrations/        SQL 迁移
   db/types.ts           kysely-codegen 从数据库生成的类型
   openapi/crawler.json  抓取节点接口的 OpenAPI 文档，由 `pnpm openapi` 生成
   scripts/              由 Node 直接运行的命令
-  test/                 Vitest 的全局准备：测试用的数据库
+  test/                 Vitest 的全局准备：测试用的数据库；假的鼠洞，开发版也用它
 crawler/                抓取节点
   src/crawler/          一个领域一个包，测试和被测的文件放在一起，命名为 *_test.py
     crawl/fetch.py      所有对来源网站的请求都经过这里
@@ -76,6 +76,7 @@ crawler/                抓取节点
 - 普通的逻辑用单元测试：新通知和变化的识别、时间规范化、证据校验、归并、重复交结果、权限、订阅上限、提醒时间、争议计数、撤销等。
 - 网站的测试连真实的 PostgreSQL：开始前迁移一个模板库，每个测试文件复制一个自己的库，可以并行跑。
 - 抓取节点的测试不连外网：请求用 httpx 的 `MockTransport`，时间用假的时钟，不真的等待（见 `crawl/fetch_test.py`）。
+- **假的鼠洞**：`test/fake-mousehole.ts` 照鼠洞的接口实现了授权、换令牌和 `/me`，带几个各种权限的假用户。测试里 `fetch` 都转给它，请求别的网站直接报错；开发版的 `MOUSEHOLE_URL` 指向自己时（`.env.example` 就是这样），它挂在 `/fake-mousehole` 下，点「登录」可以挑用哪个假用户。
 - 测试数据：保存下来的列表页、固定的模型响应、假的邮件服务器和假的鼠洞授权方。保存的页面只用来测解析，不放正文和附件；某个网站出过问题的，把那一页存下来做测试数据。
 - 判别和抽取的效果不写成单元测试，用标注集评估（[总体设计 §8.5](design.md#85-实验)）。
 

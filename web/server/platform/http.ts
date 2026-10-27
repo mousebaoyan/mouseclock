@@ -1,11 +1,15 @@
 import { OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Env } from "hono";
 import { HTTPException } from "hono/http-exception";
+import { checkPermission, type Capability, type Viewer } from "./access.ts";
 import { AppError } from "./errors.ts";
 import { log } from "./log.ts";
 
 // Validation messages reach people, in Chinese like every `message` (api.md §1).
 z.config(z.locales.zhCN());
+
+// What every request carries once the session is looked up (modules/accounts/routes.ts).
+export type AppEnv = { Variables: { viewer: Viewer | null; sessionId: number | null } };
 
 export const ErrorSchema = z
   .object({
@@ -17,7 +21,7 @@ export function errorResponse(description: string) {
   return { description, content: { "application/json": { schema: ErrorSchema } } };
 }
 
-export function createRouter<E extends Env = Env>() {
+export function createRouter<E extends Env = AppEnv>() {
   return new OpenAPIHono<E>({
     defaultHook(result) {
       if (result.success) return;
@@ -37,6 +41,16 @@ export function handleError(error: Error, c: Context) {
 
 export function bearerToken(c: Context) {
   return c.req.header("authorization")?.match(/^Bearer (\S+)$/)?.[1];
+}
+
+// The viewer, once they may do what the route needs; see access.ts for the rules.
+export function authorize(c: Context<AppEnv>, need: Capability) {
+  return checkPermission(c.var.viewer, need);
+}
+
+// Set by the reverse proxy in front of the site.
+export function clientIp(c: Context) {
+  return c.req.header("x-real-ip") ?? null;
 }
 
 export function unix(date: Date) {
