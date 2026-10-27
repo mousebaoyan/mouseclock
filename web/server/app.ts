@@ -10,6 +10,8 @@ import { SITE_NAME } from "./platform/site.ts";
 
 const api = createRouter().route("/", accountsRoutes).route("/", ingestRoutes);
 
+export type ApiType = typeof api;
+
 api.doc31("/openapi.json", { openapi: "3.1.0", info: { title: SITE_NAME, version: "1" } });
 
 api.all("*", (c) => c.json({ error: { code: "not_found", message: "接口不存在" } }, 404));

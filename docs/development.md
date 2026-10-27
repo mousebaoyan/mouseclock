@@ -8,7 +8,7 @@
 
 ```text
 web/                    网站，写法照鼠洞
-  app/                  页面（React Router）；routes/ 是路由模块
+  app/                  页面（React Router）；routes/ 是路由模块，components/ 是共用的组件，api.server.ts 让页面在进程内调接口
   server/
     main.ts             进程入口：执行迁移，把 Hono 应用和 React Router 接在一起
     app.ts              组装 Hono 应用：健康检查和 /api/v1；接口测试直接对它发请求

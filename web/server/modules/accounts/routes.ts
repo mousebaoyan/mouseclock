@@ -64,8 +64,26 @@ function startLogin(c: Context, next: string, silent: boolean) {
 
 const LoginCookie = z.object({ state: z.string(), verifier: z.string(), next: z.string() });
 
+export type Visitor = AppEnv["Variables"];
+
+// A page's loaders call the API in-process (app/api.server.ts) as the visitor the page request
+// was already found to be, which spares each call looking the session up again. Kept out of the
+// headers, which anyone could send.
+const visitors = new WeakMap<Request, Visitor>();
+
+export function asVisitor(request: Request, visitor: Visitor) {
+  visitors.set(request, visitor);
+  return request;
+}
+
 // Runs for every request, pages included.
 export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
+  const known = visitors.get(c.req.raw);
+  if (known) {
+    c.set("viewer", known.viewer);
+    c.set("sessionId", known.sessionId);
+    return next();
+  }
   const token = getCookie(c, SESSION_COOKIE);
   const found = token ? await resolveSession(token) : null;
   c.set("viewer", found?.viewer ?? null);

@@ -1,8 +1,217 @@
 @import "tailwindcss";
 
-/* System fonts only: Chinese web fonts run to megabytes (design §14). */
-@theme {
+/* Like mousehole and the main site: html[data-theme] is set before first paint (root.tsx). */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Mousehole's colors, from the 鼠群 logo: near-white paper and slate ink, a sea teal for buttons
+   and the apricot sun for accents. System fonts only: Chinese web fonts run to megabytes
+   (design §14). */
+@theme inline {
   --font-sans:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
     "Microsoft YaHei", "Noto Sans SC", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-link: var(--link);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.4;
+  --text-meta: 0.8125rem;
+  --text-meta--line-height: 1.45;
+  --text-body: 0.9375rem;
+  --text-body--line-height: 1.6;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+}
+
+:root {
+  color-scheme: light;
+  --radius: 0.625rem;
+  --background: #fefdfb;
+  --foreground: #1f2a28;
+  --card: #ffffff;
+  --card-foreground: #1f2a28;
+  --popover: #ffffff;
+  --popover-foreground: #1f2a28;
+  --primary: #2b7a6b;
+  --primary-foreground: #ffffff;
+  --secondary: #f5f2ec;
+  --secondary-foreground: #1f2a28;
+  --muted: #f5f2ec;
+  --muted-foreground: #686d66;
+  --accent: #f3efe8;
+  --accent-foreground: #1f2a28;
+  --destructive: #c2410c;
+  --border: #ebe6dd;
+  --input: #ded8cb;
+  --ring: #ef9f70;
+  --brand: #ef9f70;
+  --brand-strong: #a9532e;
+  --link: #23716a;
+  --success: #2d7a4c;
+  --warning: #9a5a0c;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #161b1a;
+  --foreground: #ece7dc;
+  --card: #1b2120;
+  --card-foreground: #ece7dc;
+  --popover: #1f2624;
+  --popover-foreground: #ece7dc;
+  --primary: #2e8070;
+  --primary-foreground: #ffffff;
+  --secondary: #222927;
+  --secondary-foreground: #ece7dc;
+  --muted: #222927;
+  --muted-foreground: #a09f96;
+  --accent: #262e2c;
+  --accent-foreground: #ece7dc;
+  --destructive: #f2855a;
+  --border: #313a37;
+  --input: #3a4441;
+  --ring: #c9845f;
+  --brand: #c9845f;
+  --brand-strong: #eeb084;
+  --link: #7cc4b8;
+  --success: #6fcf97;
+  --warning: #e9b860;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  /* Desktop screens are read from further away, so everything sized in rem grows a little. */
+  html {
+    scrollbar-gutter: stable;
+    @variant lg {
+      font-size: 106.25%;
+    }
+  }
+  /* Titles and names come from colleges' sites and members: a long link or word breaks rather
+     than running out of its box. */
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+    overflow-wrap: break-word;
+  }
+  /* Hover and press colors ease in rather than snap; utilities on an element still win. */
+  a,
+  button,
+  summary {
+    transition-property: color, background-color, border-color, text-decoration-color, opacity;
+    transition-duration: 150ms;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 1ms !important;
+      animation-delay: 0s !important;
+      transition-duration: 1ms !important;
+    }
+  }
+  /* Tailwind 4 resets buttons to the default cursor. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+  /* Lucide's look for the icons of components/icons.tsx; size-* and stroke-* classes win. */
+  .lucide {
+    width: 24px;
+    height: 24px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+}
+
+/* Buttons, as classes rather than utilities spelled out on each, as in mousehole: a long table
+   has many. Utilities a caller adds still win, being in a later layer. */
+@layer components {
+  .btn {
+    @apply inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4;
+  }
+  .btn-primary {
+    @apply bg-primary text-primary-foreground hover:bg-[color-mix(in_oklab,var(--primary),black_7%)];
+  }
+  .btn-outline {
+    @apply border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50;
+  }
+  .btn-secondary {
+    @apply bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground;
+  }
+  .btn-ghost {
+    @apply hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50;
+  }
+  .btn-destructive {
+    @apply bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40;
+  }
+  .btn-link {
+    @apply text-primary underline-offset-4 hover:underline;
+  }
+  .btn-md {
+    @apply h-8 gap-1.5 px-2.5;
+  }
+  .btn-xs {
+    @apply h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs [&_svg:not([class*='size-'])]:size-3;
+  }
+  .btn-sm {
+    @apply h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] [&_svg:not([class*='size-'])]:size-3.5;
+  }
+  .btn-lg {
+    @apply h-9 gap-1.5 px-2.5;
+  }
+  .btn-icon {
+    @apply size-8;
+  }
+  .btn-icon-sm {
+    @apply size-7 rounded-[min(var(--radius-md),12px)];
+  }
+}
+
+/* A thin bar along the top while the next page loads, shown only once it takes a moment. Only
+   transform moves, so it costs no layout. */
+.nav-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 60;
+  height: 2px;
+  background: var(--brand);
+  transform-origin: left;
+  animation: nav-progress 8s cubic-bezier(0.1, 0.7, 0.2, 1) 150ms both;
+}
+@keyframes nav-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(0.9);
+  }
 }
