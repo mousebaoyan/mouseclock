@@ -1,0 +1,1253 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "鼠钟抓取节点接口",
+    "version": "1"
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "crawlerToken": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Work": {
+        "type": "object",
+        "properties": {
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkSource"
+            }
+          },
+          "notices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkNotice"
+            }
+          },
+          "probes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkProbe"
+            }
+          }
+        },
+        "required": [
+          "sources",
+          "notices",
+          "probes"
+        ]
+      },
+      "WorkSource": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "url": {
+            "type": "string"
+          },
+          "section": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "boolean"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Config"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "backfill": {
+            "type": "boolean",
+            "description": "第一次抓：往回翻页，补上前两年的通知"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "section",
+          "browser",
+          "config",
+          "backfill"
+        ]
+      },
+      "Config": {
+        "type": "object",
+        "additionalProperties": {},
+        "description": "抓取节点自己的配置，格式由抓取节点定"
+      },
+      "WorkNotice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "url": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "browser"
+        ],
+        "description": "要重抓正文的通知"
+      },
+      "WorkProbe": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "url": {
+            "type": "string"
+          },
+          "browser": {
+            "type": "boolean"
+          },
+          "config": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Config"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "browser",
+          "config"
+        ]
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": [
+          "error"
+        ]
+      },
+      "ErrorDetail": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      },
+      "ListingResult": {
+        "type": "object",
+        "properties": {
+          "new_count": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647,
+            "description": "这次交的条目里新的有几条"
+          },
+          "pending": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PendingNotice"
+            }
+          }
+        },
+        "required": [
+          "new_count",
+          "pending"
+        ]
+      },
+      "PendingNotice": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "published_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "YYYY-MM-DD，北京时间的日期"
+          },
+          "step": {
+            "type": "string",
+            "enum": [
+              "screen",
+              "fetch"
+            ],
+            "description": "screen：还没初筛；fetch：初筛通过，还没抽取"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "title",
+          "published_on",
+          "step"
+        ]
+      },
+      "Listing": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListedItem"
+            },
+            "maxItems": 5000
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "ListedItem": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "published_on": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD，北京时间的日期"
+          }
+        },
+        "required": [
+          "url",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "Screening": {
+        "type": "object",
+        "properties": {
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScreeningResult"
+            },
+            "minItems": 1,
+            "maxItems": 5000
+          },
+          "usage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Usage"
+            },
+            "maxItems": 5000
+          }
+        },
+        "required": [
+          "results",
+          "usage"
+        ],
+        "additionalProperties": false
+      },
+      "ScreeningResult": {
+        "type": "object",
+        "properties": {
+          "notice_id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "screened_in": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "notice_id",
+          "score",
+          "screened_in"
+        ],
+        "additionalProperties": false
+      },
+      "Usage": {
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "input_tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "output_tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          }
+        },
+        "required": [
+          "model",
+          "input_tokens",
+          "output_tokens"
+        ],
+        "additionalProperties": false
+      },
+      "SnapshotResult": {
+        "type": "object",
+        "properties": {
+          "snapshot_id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "missing_files": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "description": "还没上传文件的附件序号"
+          },
+          "extraction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExtractionContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "不为空就要抽取：对照这些学院和项目，交到 /crawler/snapshots/{id}/extraction"
+          }
+        },
+        "required": [
+          "snapshot_id",
+          "missing_files",
+          "extraction"
+        ]
+      },
+      "ExtractionContext": {
+        "type": "object",
+        "properties": {
+          "published_on": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date",
+            "description": "YYYY-MM-DD，北京时间的日期"
+          },
+          "colleges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CollegeRef"
+            }
+          },
+          "programs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgramCandidate"
+            }
+          }
+        },
+        "required": [
+          "published_on",
+          "colleges",
+          "programs"
+        ]
+      },
+      "CollegeRef": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "ProgramCandidate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "college_id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "cohort": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "winter_camp",
+              "summer_camp",
+              "pre_recommendation",
+              "september_round"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "apply": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplyValue"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "college_id",
+          "cohort",
+          "kind",
+          "name",
+          "apply"
+        ]
+      },
+      "ApplyValue": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "$ref": "#/components/schemas/TimeValue"
+          },
+          "end": {
+            "$ref": "#/components/schemas/TimeValue"
+          },
+          "rolling": {
+            "type": "boolean",
+            "enum": [
+              true
+            ],
+            "description": "额满即止、先到先审"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TimeValue": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/TimeToMinute"
+          },
+          {
+            "$ref": "#/components/schemas/TimeToDay"
+          },
+          {
+            "$ref": "#/components/schemas/TimeToMonth"
+          }
+        ]
+      },
+      "TimeToMinute": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD，北京时间的日期"
+          },
+          "time": {
+            "type": "string",
+            "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$|^24:00$",
+            "description": "HH:MM；「24 点」写 24:00"
+          }
+        },
+        "required": [
+          "date",
+          "time"
+        ],
+        "additionalProperties": false
+      },
+      "TimeToDay": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "YYYY-MM-DD，北京时间的日期"
+          },
+          "mark": {
+            "type": "string",
+            "enum": [
+              "before",
+              "about"
+            ],
+            "description": "before：「X 日前」；about：「前后」「左右」"
+          }
+        },
+        "required": [
+          "date"
+        ],
+        "additionalProperties": false
+      },
+      "TimeToMonth": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string",
+            "pattern": "^\\d{4}-(?:0[1-9]|1[0-2])$",
+            "description": "YYYY-MM"
+          },
+          "part": {
+            "type": "string",
+            "enum": [
+              "early",
+              "mid",
+              "late"
+            ],
+            "description": "上旬（含月初）、中旬、下旬（含月底）"
+          }
+        },
+        "required": [
+          "month"
+        ],
+        "additionalProperties": false
+      },
+      "Snapshot": {
+        "type": "object",
+        "properties": {
+          "fetched_at": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8640000000000
+          },
+          "html": {
+            "type": "string",
+            "maxLength": 10485760
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2097152
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentInfo"
+            },
+            "maxItems": 50
+          }
+        },
+        "required": [
+          "fetched_at",
+          "html",
+          "text",
+          "attachments"
+        ],
+        "additionalProperties": false
+      },
+      "AttachmentInfo": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "content_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 2097152
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "content_type",
+          "text"
+        ],
+        "additionalProperties": false
+      },
+      "Run": {
+        "type": "object",
+        "properties": {
+          "source_id": {
+            "type": "integer",
+            "minimum": -2147483648,
+            "maximum": 2147483647
+          },
+          "started_at": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8640000000000
+          },
+          "finished_at": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 8640000000000
+          },
+          "failure": {
+            "$ref": "#/components/schemas/Failure"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "具体原因，比如 HTTP 403"
+          },
+          "listed": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "new_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "useful_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "description": "新通知里抽取出项目的"
+          },
+          "notice_failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NoticeFailure"
+            },
+            "maxItems": 5000
+          }
+        },
+        "required": [
+          "source_id",
+          "started_at",
+          "finished_at",
+          "listed",
+          "new_count",
+          "useful_count",
+          "notice_failures"
+        ],
+        "additionalProperties": false
+      },
+      "Failure": {
+        "type": "string",
+        "enum": [
+          "timeout",
+          "unreachable",
+          "disallowed",
+          "too_many_redirects",
+          "http_status",
+          "no_items",
+          "error"
+        ],
+        "description": "不写就是列表读到了"
+      },
+      "NoticeFailure": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "failure": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Failure"
+              },
+              {
+                "description": "前四种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
+              }
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "具体原因，比如 HTTP 403"
+          }
+        },
+        "required": [
+          "url",
+          "failure"
+        ],
+        "additionalProperties": false
+      },
+      "ProbeReport": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ListedItem"
+            },
+            "maxItems": 5000
+          },
+          "suggested_config": {
+            "$ref": "#/components/schemas/Config"
+          },
+          "failure": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Failure"
+              },
+              {
+                "description": "前四种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
+              }
+            ]
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "具体原因，比如 HTTP 403"
+          },
+          "usage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Usage"
+            },
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "items",
+          "usage"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "parameters": {}
+  },
+  "paths": {
+    "/crawler/work": {
+      "get": {
+        "summary": "领活",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "要做的事",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Work"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/sources/{id}/listing": {
+      "post": {
+        "summary": "交来源列表页上的条目",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Listing"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "这个来源还没处理完的通知",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListingResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "来源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/sources/{id}/screening": {
+      "post": {
+        "summary": "交初筛的分数",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Screening"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已记下"
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "来源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/notices/{id}/snapshot": {
+      "post": {
+        "summary": "交抓到的正文和附件的文字",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Snapshot"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "快照的编号、还缺的附件文件，要抽取时附上对照",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SnapshotResult"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "通知不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/snapshots/{id}/attachments/{position}": {
+      "put": {
+        "summary": "上传一个附件的文件，请求体就是文件本身",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "position",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已记下"
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "附件不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "文件太大",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/notices/{id}/removed": {
+      "post": {
+        "summary": "通知打不开了（404、410）",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "已记下"
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "通知不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/runs": {
+      "post": {
+        "summary": "交一个来源这一轮的结果",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Run"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已记下"
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "来源不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/crawler/probes/{id}": {
+      "post": {
+        "summary": "交试抓的结果",
+        "security": [
+          {
+            "crawlerToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": -2147483648,
+              "maximum": 2147483647
+            },
+            "required": false,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProbeReport"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "已记下"
+          },
+          "401": {
+            "description": "抓取节点令牌无效或已作废",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "试抓不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "webhooks": {}
+}

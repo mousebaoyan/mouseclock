@@ -16,6 +16,8 @@
     "check": "pnpm typecheck && pnpm lint && prettier --check . && pnpm test",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
     "db:codegen": "kysely-codegen",
+    "openapi": "node --env-file-if-exists=.env scripts/openapi.ts",
+    "crawler-token": "node --env-file-if-exists=.env scripts/crawler-token.ts",
     "test": "vitest run"
   },
   "dependencies": {
