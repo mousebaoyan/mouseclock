@@ -25,7 +25,7 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `notices` | `source_id`、`url`、`title`、`published_at`、`first_seen_at`、`removed_at`、`screening_score`、`category`（报名、补充、延期、名单或结果、无关） | 列表里的一条通知；`(source_id, url)` 唯一 |
+| `notices` | `source_id`、`url`、`title`、`published_at`、`first_seen_at`、`removed_at`、`screening_score` | 列表里的一条通知；`(source_id, url)` 唯一。抽取出项目的才有版本，没有版本的就是无关 |
 | `snapshots` | `notice_id`、`fetched_at`、`html`、`text`、`attachments`（文件名、类型、存放位置、提取出的文字） | 每次抓到的正文和附件；文字和上一份相同就不存 |
 | `model_calls` | `purpose`（初筛、抽取、生成配置）、`notice_id`、`model`、`input_tokens`、`output_tokens`、`created_at` | 判别模型和 LLM 的用量 |
 
@@ -33,9 +33,9 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `programs` | `college_id`、`year`、`kind`（冬令营、夏令营、预推免、九推）、`title`、`apply_start`、`apply_deadline`、`verified_by`、`verified_at`、`disputed_at`、`dispute_cleared_at`、`deleted_at` | 一次招生活动；排序、筛选和提醒要用的时间单独存成列 |
-| `program_fields` | `program_id`、`key`、`value`、`evidence`、`confidence`、`version_id`、`edit_id` | 每个字段一行，带证据和来源的版本；`edit_id` 有值说明是人工改的，抓取不覆盖 |
-| `program_versions` | `program_id`、`notice_id`、`snapshot_id`、`number`、`kind`（首发、补充、延期、重发）、`changes` | 项目的版本；`changes` 是和上一版相比改了的字段 |
+| `programs` | `college_id`、`cohort`（届）、`kind`（冬令营、夏令营、预推免、九推）、`name`、`apply_start`、`apply_deadline`、`verified_by`、`verified_at`、`disputed_at`、`dispute_cleared_at`、`deleted_at` | 一次招生活动（[总体设计 §9.1](design.md#91-学校学院和项目)）；`apply_start`、`apply_deadline` 是由报名时间换算出的时刻（[§8.2](design.md#82-抽取)），排序、筛选和提醒用 |
+| `program_fields` | `program_id`、`key`、`value`、`evidence`、`confidence`、`version_id`、`edit_id` | 每个字段一行，`(program_id, key)` 唯一；`value` 和 `evidence` 存 JSONB，格式见[总体设计 §8.2](design.md#82-抽取)；`version_id` 是值来自哪个版本，`edit_id` 有值说明是人工改的，抓取不覆盖 |
+| `program_versions` | `program_id`、`notice_id`、`snapshot_id`、`number`、`role`（报名、补充、名单）、`changes` | 项目的版本：一条通知涉及几个项目，就是几个项目各自的版本；`changes` 是这一版改了的字段 |
 
 ## 用户
 
@@ -81,7 +81,7 @@
 
 | 查询 | 怎么查 |
 | --- | --- |
-| 总表 | 按年份、类型筛选，按 `apply_deadline` 排序：`programs (year, kind, apply_deadline)` |
+| 总表 | 按届、类型筛选，按 `apply_deadline` 排序：`programs (cohort, kind, apply_deadline)` |
 | 截止提醒 | 3 天后截止的项目的订阅：`programs (apply_deadline)`、`subscriptions (program_id)` |
 | 订阅上限 | 某人订阅的、还没截止的项目有几个：`subscriptions (user_id)` |
 | 新通知 | 列表里的网址见没见过：`notices (source_id, url)` 唯一 |

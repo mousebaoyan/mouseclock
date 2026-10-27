@@ -24,7 +24,7 @@
 | 表结构、索引、查询 | [数据表](docs/data-model.md) |
 | 接口约定和清单 | [接口](docs/api.md) |
 | 模块划分、抓取和判别的写法、时间、日志、测试、术语 | [开发约定](docs/development.md) |
-| 整理来源清单、初筛标注集 | [数据](data/README.md) |
+| 整理来源清单、初筛和抽取的标注集 | [数据](data/README.md) |
 
 ## 命令
 
