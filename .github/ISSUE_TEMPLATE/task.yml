@@ -1,0 +1,37 @@
+name: 任务
+description: 一件可以认领、交付的具体工作，通常由维护者创建
+title: "[任务] "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: 关联与状态
+      description: 属于路线图的哪一项，相关的 Issue 和 PR；进展有变化时更新这里
+    validations:
+      required: true
+  - type: textarea
+    id: goal
+    attributes:
+      label: 目标
+      description: 做完以后，用户或开发者能得到什么
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: 范围
+      description: 要做的和不做的，涉及的设计文档章节
+    validations:
+      required: true
+  - type: textarea
+    id: first-step
+    attributes:
+      label: 建议的第一步
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: 验收标准
+      description: 怎样才算做完；关闭 Issue 前逐条核对
+    validations:
+      required: true

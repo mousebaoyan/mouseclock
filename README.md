@@ -15,7 +15,7 @@
 
 ## 参与开发
 
-先读 [AGENTS.md](AGENTS.md)：项目规矩、文档索引，以及分支、提交和 PR 的约定，人和编码 agent 都适用。
+欢迎一起做。怎么认领任务、提交 PR 见 [CONTRIBUTING.md](CONTRIBUTING.md)；开发的规矩和文档索引见 [AGENTS.md](AGENTS.md)，人和编码 agent 都适用。
 
 ## 相关项目
 

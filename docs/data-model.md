@@ -27,7 +27,7 @@
 | --- | --- | --- |
 | `notices` | `source_id`、`url`、`title`、`published_at`、`first_seen_at`、`removed_at`、`screening_score`、`category`（报名、补充、延期、名单或结果、无关） | 列表里的一条通知；`(source_id, url)` 唯一 |
 | `snapshots` | `notice_id`、`fetched_at`、`html`、`text`、`attachments`（文件名、类型、存放位置、提取出的文字） | 每次抓到的正文和附件；文字和上一份相同就不存 |
-| `model_calls` | `purpose`（初筛、抽取、归并、生成配置）、`notice_id`、`model`、`input_tokens`、`output_tokens`、`created_at` | 判别模型和 LLM 的用量 |
+| `model_calls` | `purpose`（初筛、抽取、生成配置）、`notice_id`、`model`、`input_tokens`、`output_tokens`、`created_at` | 判别模型和 LLM 的用量 |
 
 ## 项目
 
