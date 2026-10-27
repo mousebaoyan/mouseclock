@@ -88,7 +88,7 @@
 - **上线前没有历史包袱**：表结构和接口直接改。
 - **命名**：叫法见[开发约定 §6](docs/development.md#6-术语)。接口文档也是生成的文件。
 - **哈希**：只有一处用哈希：会话、个人令牌和抓取节点令牌这些高熵的随机值，库里只存 SHA-256。是不是新通知比网址，正文变没变比文字。
-- **配置**：环境变量现在只有网站的 `DATABASE_URL`。
+- **配置**：环境变量现在只有网站的 `DATABASE_URL`、`PUBLIC_URL` 和鼠洞登录用的 `MOUSEHOLE_URL`、`MOUSEHOLE_CLIENT_ID`、`MOUSEHOLE_CLIENT_SECRET`，本地的值见 `web/.env.example`。
 
 ## 可靠与安全
 

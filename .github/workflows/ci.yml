@@ -28,6 +28,10 @@ jobs:
           --health-retries 30
     env:
       DATABASE_URL: postgres://mouseclock:mouseclock@localhost:5432/mouseclock
+      PUBLIC_URL: http://localhost:5173
+      MOUSEHOLE_URL: http://localhost:5173/fake-mousehole
+      MOUSEHOLE_CLIENT_ID: mouseclock-dev
+      MOUSEHOLE_CLIENT_SECRET: dev-secret-not-for-production
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
