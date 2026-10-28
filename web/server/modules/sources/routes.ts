@@ -1,15 +1,5 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { createMiddleware } from "hono/factory";
-import { AppError } from "../../platform/errors.ts";
-import {
-  authorize,
-  bearerToken,
-  createRouter,
-  errorResponse,
-  IdParam,
-  unix,
-  type AppEnv,
-} from "../../platform/http.ts";
+import { authorize, createRouter, errorResponse, IdParam, unix } from "../../platform/http.ts";
 import {
   College,
   CollegeInput,
@@ -46,7 +36,7 @@ import {
 const errors = {
   400: errorResponse("请求格式有误"),
   401: errorResponse("没有登录"),
-  403: errorResponse("需要管理员网页会话"),
+  403: errorResponse("只有管理员能操作"),
   404: errorResponse("学校、学院或来源不存在"),
   409: errorResponse("名称或网址重复"),
 };
@@ -54,17 +44,7 @@ function json<T extends z.ZodType>(schema: T) {
   return { "application/json": { schema } };
 }
 
-const router = createRouter();
-router.use(
-  "/admin/*",
-  createMiddleware<AppEnv>(async (c, next) => {
-    // A bearer must not turn a cookie-authenticated write into a CSRF-exempt request.
-    if (bearerToken(c)) throw new AppError(403, "forbidden", "管理操作只支持网页会话");
-    authorize(c, "admin");
-    await next();
-  }),
-);
-export const sourcesRoutes = router
+export const sourcesRoutes = createRouter()
   .openapi(
     createRoute({
       method: "get",
@@ -73,7 +53,10 @@ export const sourcesRoutes = router
       request: { query: PageQuery },
       responses: { 200: { description: "学校清单", content: json(Page(School)) }, ...errors },
     }),
-    async (c) => c.json(await listSchools(c.req.valid("query")), 200),
+    async (c) => {
+      authorize(c, "admin");
+      return c.json(await listSchools(c.req.valid("query")), 200);
+    },
   )
   .openapi(
     createRoute({
@@ -83,7 +66,10 @@ export const sourcesRoutes = router
       request: { params: IdParam },
       responses: { 200: { description: "学校", content: json(School) }, ...errors },
     }),
-    async (c) => c.json(await getSchool(c.req.valid("param").id), 200),
+    async (c) => {
+      authorize(c, "admin");
+      return c.json(await getSchool(c.req.valid("param").id), 200);
+    },
   )
   .openapi(
     createRoute({
@@ -127,7 +113,10 @@ export const sourcesRoutes = router
       request: { query: CollegeQuery },
       responses: { 200: { description: "学院清单", content: json(Page(College)) }, ...errors },
     }),
-    async (c) => c.json(await listColleges(c.req.valid("query")), 200),
+    async (c) => {
+      authorize(c, "admin");
+      return c.json(await listColleges(c.req.valid("query")), 200);
+    },
   )
   .openapi(
     createRoute({
@@ -137,7 +126,10 @@ export const sourcesRoutes = router
       request: { params: IdParam },
       responses: { 200: { description: "学院", content: json(College) }, ...errors },
     }),
-    async (c) => c.json(await getCollege(c.req.valid("param").id), 200),
+    async (c) => {
+      authorize(c, "admin");
+      return c.json(await getCollege(c.req.valid("param").id), 200);
+    },
   )
   .openapi(
     createRoute({
@@ -187,6 +179,7 @@ export const sourcesRoutes = router
       },
     }),
     async (c) => {
+      authorize(c, "admin");
       const page = await listSources(c.req.valid("query"));
       const runs = await latestRuns(page.items.map((s) => s.id));
       return c.json(
@@ -211,6 +204,7 @@ export const sourcesRoutes = router
       responses: { 200: { description: "来源详情", content: json(SourceDetail) }, ...errors },
     }),
     async (c) => {
+      authorize(c, "admin");
       const source = await getSource(c.req.valid("param").id);
       return c.json(
         { ...source, crawled_at: source.crawled_at ? unix(source.crawled_at) : null },
