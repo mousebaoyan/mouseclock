@@ -4,6 +4,7 @@ import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
+import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
 import {
   PAGE_SIZE,
@@ -253,6 +254,35 @@ export async function listSources({
       .execute(),
     page,
   );
+}
+
+export async function latestRuns(sourceIds: number[]) {
+  if (sourceIds.length === 0) return [];
+  const rows = await db
+    .selectFrom("crawl_runs")
+    .select([
+      "id",
+      "source_id",
+      "started_at",
+      "finished_at",
+      "failure",
+      "detail",
+      "listed",
+      "new_count",
+      "useful_count",
+    ])
+    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"))
+    .where("source_id", "in", sourceIds)
+    .distinctOn("source_id")
+    .orderBy("source_id")
+    .orderBy("finished_at", "desc")
+    .orderBy("id", "desc")
+    .execute();
+  return rows.map(({ started_at, finished_at, ...run }) => ({
+    ...run,
+    started_at: unix(started_at),
+    finished_at: unix(finished_at),
+  }));
 }
 
 export async function getSource(id: number) {
