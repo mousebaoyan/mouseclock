@@ -357,11 +357,15 @@ async function extractionContext(
   const programs = await trx
     .selectFrom("programs as p")
     .innerJoin("colleges as c", "c.id", "p.college_id")
-    .leftJoin("program_fields as f", (join) =>
-      join.onRef("f.program_id", "=", "p.id").on("f.key", "=", "apply"),
+    .select(["p.id", "p.college_id", "p.cohort", "p.name", sql<Kind>`p.kind`.as("kind")])
+    .select((eb) =>
+      eb
+        .selectFrom("program_fields as f")
+        .select(sql<ApplyValue>`jsonb_object_agg(split_part(f.key, ':', 2), f.value)`.as("apply"))
+        .whereRef("f.program_id", "=", "p.id")
+        .where("f.key", "like", "apply:%")
+        .as("apply"),
     )
-    .select(["p.id", "p.college_id", "p.cohort", "p.name"])
-    .select([sql<Kind>`p.kind`.as("kind"), sql<ApplyValue | null>`f.value`.as("apply")])
     .where("c.school_id", "=", school_id)
     .where("p.deleted_at", "is", null)
     .where("p.cohort", ">=", year)
@@ -616,7 +620,7 @@ async function mergeProgram(
       ? "evidence_not_found"
       : row.confidence < CONFIDENT
         ? "low_confidence"
-        : row.key === "apply" && implausible
+        : row.key.startsWith("apply:") && implausible
           ? "implausible"
           : null;
     if (reason === null) accepted.push(row);
