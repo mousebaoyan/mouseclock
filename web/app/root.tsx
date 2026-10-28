@@ -1,5 +1,6 @@
 import {
   isRouteErrorResponse,
+  Link,
   Links,
   Meta,
   Outlet,
@@ -83,6 +84,11 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
         <a href="/login" className={buttonVariants({ className: "mt-4" })}>
           登录
         </a>
+      )}
+      {response?.status === 404 && (
+        <Link to="/" className={buttonVariants({ variant: "outline", className: "mt-4" })}>
+          返回总表
+        </Link>
       )}
     </main>
   );
