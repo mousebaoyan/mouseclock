@@ -3,6 +3,7 @@ import type { DB } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
+import { unix } from "../../platform/http.ts";
 import type { ApplyValue, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
 import {
   applyStored,
@@ -12,6 +13,7 @@ import {
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
 import { holdForReview, type ReviewItem } from "../review/service.ts";
+import { finishSourceCrawl, leaseSources } from "../sources/service.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
 const LEASE_MS = 2 * 3600_000;
@@ -25,6 +27,91 @@ const RECHECK_MS = 24 * 3600_000;
 const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
+
+function runTimes<T extends { started_at: Date; finished_at: Date }>(row: T) {
+  const { started_at, finished_at, ...rest } = row;
+  return { ...rest, started_at: unix(started_at), finished_at: unix(finished_at) };
+}
+
+export async function latestRuns(sourceIds: number[]) {
+  if (sourceIds.length === 0) return [];
+  const rows = await db
+    .selectFrom("crawl_runs")
+    .select([
+      "id",
+      "source_id",
+      "started_at",
+      "finished_at",
+      "failure",
+      "detail",
+      "listed",
+      "new_count",
+      "useful_count",
+    ])
+    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"))
+    .where("source_id", "in", sourceIds)
+    .distinctOn("source_id")
+    .orderBy("source_id")
+    .orderBy("finished_at", "desc")
+    .orderBy("id", "desc")
+    .execute();
+  return rows.map(runTimes);
+}
+
+export async function listCrawlRuns({
+  source_id,
+  date,
+  page,
+}: {
+  source_id?: number;
+  date?: string;
+  page: number;
+}) {
+  let query = db
+    .selectFrom("crawl_runs")
+    .innerJoin("sources", "sources.id", "crawl_runs.source_id")
+    .innerJoin("colleges", "colleges.id", "sources.college_id")
+    .innerJoin("schools", "schools.id", "colleges.school_id")
+    .select([
+      "crawl_runs.id",
+      "source_id",
+      "started_at",
+      "finished_at",
+      "failure",
+      "detail",
+      "listed",
+      "new_count",
+      "useful_count",
+      "sources.url",
+      "sources.section",
+      "colleges.name as college_name",
+      "schools.name as school_name",
+    ])
+    .select(
+      sql<{ url: string; failure: string; detail?: string }[]>`notice_failures`.as(
+        "notice_failures",
+      ),
+    )
+    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"));
+  if (source_id !== undefined) query = query.where("source_id", "=", source_id);
+  if (date) {
+    const start = new Date(`${date}T00:00:00+08:00`);
+    query = query
+      .where("started_at", ">=", start)
+      .where("started_at", "<", new Date(start.getTime() + 24 * 3600_000));
+  }
+  const rows = await query
+    .orderBy("finished_at", "desc")
+    .orderBy("crawl_runs.id", "desc")
+    .limit(21)
+    .offset((page - 1) * 20)
+    .execute();
+  return {
+    items: rows.slice(0, 20).map(runTimes),
+    page,
+    next_page: rows.length > 20 ? page + 1 : null,
+  };
+}
 
 export type Failure =
   | "timeout"
@@ -70,29 +157,13 @@ export async function takeWork(tokenId: number, now: Date) {
       .where("id", "=", tokenId)
       .execute();
 
-    const sources = await trx
-      .updateTable("sources")
-      .set({ leased_until: leaseEnd })
-      .where("id", "in", (qb) =>
-        qb
-          .selectFrom("sources")
-          .select("id")
-          .where("unavailable_reason", "is", null)
-          .where((eb) => eb.or([eb("leased_until", "is", null), eb("leased_until", "<", now)]))
-          .where((eb) =>
-            eb.or([
-              eb("crawled_at", "is", null),
-              eb("crawled_at", "<", new Date(now.getTime() - interval)),
-            ]),
-          )
-          .orderBy("crawled_at", (ob) => ob.asc().nullsFirst())
-          .limit(MAX_SOURCES)
-          .forUpdate()
-          .skipLocked(),
-      )
-      .returning(["id", "url", "section", "browser", "crawled_at"])
-      .returning(sql<Record<string, unknown> | null>`config`.as("config"))
-      .execute();
+    const sources = await leaseSources(
+      trx,
+      now,
+      new Date(now.getTime() - interval),
+      leaseEnd,
+      MAX_SOURCES,
+    );
 
     const probes = await trx
       .updateTable("source_probes")
@@ -420,11 +491,7 @@ export async function recordRun(run: {
       })
       .onConflict((oc) => oc.columns(["source_id", "started_at"]).doNothing())
       .execute();
-    await trx
-      .updateTable("sources")
-      .set({ crawled_at: run.finished_at, leased_until: null })
-      .where("id", "=", run.source_id)
-      .execute();
+    await finishSourceCrawl(trx, run.source_id, run.finished_at);
   });
 }
 

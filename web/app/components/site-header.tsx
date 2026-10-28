@@ -5,7 +5,13 @@ import { buttonVariants } from "~/components/ui/button";
 import { UserAvatar } from "~/components/user-avatar";
 import { SITE_NAME } from "../../server/platform/site.ts";
 
-type Me = { id: number; display_name: string; avatar_url: string | null; frozen: boolean };
+type Me = {
+  id: number;
+  display_name: string;
+  avatar_url: string | null;
+  frozen: boolean;
+  can: { admin: boolean };
+};
 
 function navLink({ isActive }: { isActive: boolean }) {
   return cn(
@@ -28,6 +34,21 @@ export function SiteHeader({ me }: { me: Me | null }) {
           <NavLink to="/" end className={navLink}>
             总表
           </NavLink>
+          {me && !me.frozen && (
+            <NavLink to="/crawl-runs" className={navLink}>
+              抓取记录
+            </NavLink>
+          )}
+          {me?.can.admin && (
+            <NavLink to="/admin/colleges" className={navLink}>
+              院校清单
+            </NavLink>
+          )}
+          {me?.can.admin && (
+            <NavLink to="/admin/sources" className={navLink}>
+              来源管理
+            </NavLink>
+          )}
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {me ? (

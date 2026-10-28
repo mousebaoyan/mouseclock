@@ -3,12 +3,18 @@ import { csrf } from "hono/csrf";
 import { sql } from "kysely";
 import { accountsRoutes, authenticate, autoLogin, loginRoutes } from "./modules/accounts/routes.ts";
 import { ingestRoutes } from "./modules/ingest/routes.ts";
+import { crawlRoutes } from "./modules/ingest/crawl-routes.ts";
+import { sourcesRoutes } from "./modules/sources/routes.ts";
 import { db } from "./platform/db.ts";
 import { env } from "./platform/env.ts";
 import { bearerToken, createRouter, handleError, type AppEnv } from "./platform/http.ts";
 import { SITE_NAME } from "./platform/site.ts";
 
-const api = createRouter().route("/", accountsRoutes).route("/", ingestRoutes);
+const api = createRouter()
+  .route("/", accountsRoutes)
+  .route("/", ingestRoutes)
+  .route("/", sourcesRoutes)
+  .route("/", crawlRoutes);
 
 export type ApiType = typeof api;
 
