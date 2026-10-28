@@ -7,7 +7,8 @@ import {
   useRouteError,
 } from "react-router";
 import { cn } from "~/cn";
-import { AlarmClock, LogOut } from "~/components/icons";
+import { LogOut } from "~/components/icons";
+import { LogoMark } from "~/components/logo";
 import { buttonVariants } from "~/components/ui/button";
 import { UserAvatar } from "~/components/user-avatar";
 import { SITE_NAME } from "../../server/platform/site.ts";
@@ -35,8 +36,8 @@ export function SiteHeader({ me }: { me: Me | null }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-5">
-        <Link to="/" className="flex shrink-0 items-center gap-1.5 text-lg font-semibold">
-          <AlarmClock className="size-5 text-brand-strong" />
+        <Link to="/" className="flex shrink-0 items-center gap-2 text-lg font-semibold">
+          <LogoMark className="size-9" />
           {SITE_NAME}
         </Link>
         <nav className="flex min-w-0 items-center gap-0.5 overflow-x-auto">

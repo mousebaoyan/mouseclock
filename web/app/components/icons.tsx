@@ -36,5 +36,4 @@ function icon(node: IconNode) {
 
 export type LucideIcon = ReturnType<typeof icon>;
 
-export const AlarmClock = icon(lucide.AlarmClock);
 export const LogOut = icon(lucide.LogOut);
