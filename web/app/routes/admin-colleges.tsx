@@ -1,10 +1,9 @@
 import { data, Form, Link, redirect, useNavigation } from "react-router";
-import { College, School } from "../../server/modules/sources/schemas.ts";
+import { CollegeInput, SchoolInput } from "../../server/modules/sources/schemas.ts";
 import { apiContext } from "../api.server.ts";
 import {
   formText,
   readApi,
-  writeApi,
   type SchoolsPage,
   type SchoolDetail,
   type CollegesPage,
@@ -33,7 +32,7 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   editSchool: boolean;
   saved: boolean;
 }> {
-  const api = context.get(apiContext).client.admin;
+  const api = context.get(apiContext).admin;
   const params = new URL(request.url).searchParams;
   const q = params.get("q") ?? "";
   const schoolId = params.get("school_id");
@@ -85,25 +84,23 @@ export async function action({ request, context }: Route.ActionArgs) {
     directions: formText(form, "directions"),
   };
   if (intent === "school") {
-    const school = {
+    const school = SchoolInput.safeParse({
       name: draft.name,
       short_name: draft.short_name,
       tiers: draft.tiers,
-    };
-    const endpoint = api.client.admin.schools;
-    const result = await writeApi(
-      api,
-      id ? endpoint[":id"].$url({ param: { id } }) : endpoint.$url(),
-      id ? "PATCH" : "POST",
-      school,
-      School,
-    );
-    if (result.error !== undefined)
-      return data({ error: result.error, draft }, { status: result.status });
-    return redirect(`/admin/colleges?school_id=${result.value.id}&edit_school=1&saved=1`);
+    });
+    if (!school.success)
+      return data({ error: school.error.issues[0].message, draft }, { status: 400 });
+    const res = id
+      ? await api.admin.schools[":id"].$patch({ param: { id }, json: school.data })
+      : await api.admin.schools.$post({ json: school.data });
+    if (res.status !== 200 && res.status !== 201)
+      return data({ error: (await res.json()).error.message, draft }, { status: res.status });
+    const result = await res.json();
+    return redirect(`/admin/colleges?school_id=${result.id}&edit_school=1&saved=1`);
   }
   if (intent === "college") {
-    const college = {
+    const college = CollegeInput.safeParse({
       school_id: Number(draft.school_id),
       name: draft.name,
       kind: draft.kind,
@@ -112,19 +109,17 @@ export async function action({ request, context }: Route.ActionArgs) {
         .split(/[,，、\n]/)
         .map((s) => s.trim())
         .filter(Boolean),
-    };
-    const endpoint = api.client.admin.colleges;
-    const result = await writeApi(
-      api,
-      id ? endpoint[":id"].$url({ param: { id } }) : endpoint.$url(),
-      id ? "PATCH" : "POST",
-      college,
-      College,
-    );
-    if (result.error !== undefined)
-      return data({ error: result.error, draft }, { status: result.status });
+    });
+    if (!college.success)
+      return data({ error: college.error.issues[0].message, draft }, { status: 400 });
+    const res = id
+      ? await api.admin.colleges[":id"].$patch({ param: { id }, json: college.data })
+      : await api.admin.colleges.$post({ json: college.data });
+    if (res.status !== 200 && res.status !== 201)
+      return data({ error: (await res.json()).error.message, draft }, { status: res.status });
+    const result = await res.json();
     return redirect(
-      `/admin/colleges?school_id=${result.value.school_id}&edit_college=${result.value.id}&saved=1`,
+      `/admin/colleges?school_id=${result.school_id}&edit_college=${result.id}&saved=1`,
     );
   }
   throw data("未知操作", { status: 400 });

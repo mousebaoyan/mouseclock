@@ -1,10 +1,9 @@
 import { data, Form, Link, redirect, useNavigation } from "react-router";
-import { SourceDetail as SourceSchema } from "../../server/modules/sources/schemas.ts";
+import { SourceInput } from "../../server/modules/sources/schemas.ts";
 import { apiContext } from "../api.server.ts";
 import {
   formText,
   readApi,
-  writeApi,
   type SourcesPage,
   type CollegesPage,
   type CollegeDetail,
@@ -33,7 +32,7 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   availability: string;
   saved: boolean;
 }> {
-  const api = context.get(apiContext).client.admin;
+  const api = context.get(apiContext).admin;
   const params = new URL(request.url).searchParams;
   const q = params.get("q") ?? "";
   const collegeQ = params.get("college_q") ?? "";
@@ -92,25 +91,21 @@ export async function action({ request, context }: Route.ActionArgs) {
       return data({ error: "抓取配置不是合法 JSON，请检查引号和逗号", draft }, { status: 400 });
     }
   }
-  const values = {
+  const parsed = SourceInput.safeParse({
     ...draft,
     college_id: Number(draft.college_id),
     config,
     unavailable_reason: draft.unavailable_reason.trim() || null,
-  };
-  const endpoint = api.client.admin.sources;
-  const result = await writeApi(
-    api,
-    id ? endpoint[":id"].$url({ param: { id } }) : endpoint.$url(),
-    id ? "PATCH" : "POST",
-    values,
-    SourceSchema,
-  );
-  if (result.error !== undefined)
-    return data({ error: result.error, draft }, { status: result.status });
-  return redirect(
-    `/admin/sources?college_id=${result.value.college_id}&edit=${result.value.id}&saved=1`,
-  );
+  });
+  if (!parsed.success)
+    return data({ error: parsed.error.issues[0].message, draft }, { status: 400 });
+  const res = id
+    ? await api.admin.sources[":id"].$patch({ param: { id }, json: parsed.data })
+    : await api.admin.sources.$post({ json: parsed.data });
+  if (res.status !== 200 && res.status !== 201)
+    return data({ error: (await res.json()).error.message, draft }, { status: res.status });
+  const result = await res.json();
+  return redirect(`/admin/sources?college_id=${result.college_id}&edit=${result.id}&saved=1`);
 }
 
 export default function Sources({ loaderData, actionData }: Route.ComponentProps) {

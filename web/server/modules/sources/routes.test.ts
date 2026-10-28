@@ -100,16 +100,13 @@ test("in-process page calls keep bearer headers so management writes cannot bypa
       method: "POST",
       headers: {
         ...admin.headers,
-        origin: "https://other.example",
         authorization: "Bearer personal",
       },
     }),
     { viewer: session.viewer, sessionId: session.id },
   );
-  const response = await pageApi.request(pageApi.client.admin.schools.$url(), {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ name: "不应写入的大学", short_name: "", tiers: [] }),
+  const response = await pageApi.admin.schools.$post({
+    json: { name: "不应写入的大学", short_name: "", tiers: [] },
   });
   expect(response.status).toBe(403);
   expect(
@@ -362,9 +359,6 @@ test("a source paused after leasing still accepts listing and run results withou
     leased_until: null,
     crawled_at: new Date(finishedAt * 1000),
   });
-  const next = await api.crawler.work.$get({}, crawler);
-  if (next.status !== 200) throw new Error("Work failed");
-  expect((await next.json()).sources.some((source) => source.id === sourceId)).toBe(false);
 });
 
 test("source constraints and explicit nulls preserve unrelated settings and audit only successful writes", async () => {

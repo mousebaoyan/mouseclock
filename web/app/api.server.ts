@@ -13,15 +13,11 @@ export function createApi(request: Request, visitor: Visitor) {
     const value = request.headers.get(name);
     if (value !== null) headers[name] = value;
   }
-  const fetchApi = async (input: RequestInfo | URL, init?: RequestInit) => {
-    const incoming = new Request(input, init);
-    for (const [name, value] of Object.entries(headers)) incoming.headers.set(name, value);
-    return app.fetch(asVisitor(incoming, visitor));
-  };
-  return {
-    client: hc<ApiType>("http://localhost/api/v1", { fetch: fetchApi }),
-    request: fetchApi,
-  };
+  return hc<ApiType>("http://localhost/api/v1", {
+    fetch: async (input: RequestInfo | URL, init?: RequestInit) =>
+      app.fetch(asVisitor(new Request(input, init), visitor)),
+    headers,
+  });
 }
 
 export const apiContext = createContext<ReturnType<typeof createApi>>();
