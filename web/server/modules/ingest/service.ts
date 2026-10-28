@@ -1,5 +1,5 @@
 import { sql, type Transaction } from "kysely";
-import type { DB } from "../../../db/types.ts";
+import type { DB, Json } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
@@ -11,7 +11,6 @@ import {
   type StoredField,
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
-import { holdForReview, type ReviewItem } from "../review/service.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
@@ -425,6 +424,38 @@ export type ExtractedProgram = {
   role: Role;
   fields: ExtractedFields;
 };
+
+// Why something waits on the review page instead of going on the table (design §8.3, §8.4).
+// Deciding on it means merging and versioning, so the items belong here rather than to review.
+type ReviewReason =
+  // a field held back from a version
+  | "evidence_not_found"
+  | "low_confidence"
+  | "implausible"
+  | "conflicts_edit"
+  // a program from an extraction
+  | "unknown_program"
+  | "unknown_college"
+  | "implausible_cohort"
+  | "possible_duplicate"
+  | "no_deadline";
+
+type ReviewItem = {
+  reason: ReviewReason;
+  snapshot_id: number;
+  program_id?: number;
+  version_id?: number;
+  key?: string;
+  payload: Json;
+};
+
+async function holdForReview(trx: Transaction<DB>, items: ReviewItem[]) {
+  if (items.length === 0) return;
+  await trx
+    .insertInto("review_items")
+    .values(items.map((item) => ({ ...item, payload: JSON.stringify(item.payload) })))
+    .execute();
+}
 
 // Quotes are looked up ignoring whitespace: extracted text and the model's copy of it break
 // lines differently (design §8.3).
