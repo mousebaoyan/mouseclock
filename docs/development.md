@@ -47,8 +47,10 @@ crawler/                抓取节点
 - 网站和抓取节点只通过[抓取节点接口](api.md#6-抓取节点)交接：不共享数据库，不互相引用代码。接口的类型由网站的定义生成，抓取节点不手写（[总体设计 §5.1](design.md#51-选定的方案)）：改了接口的 Zod 定义，运行 `pnpm openapi` 和 `uv run datamodel-codegen`，两边的 CI 都检查生成的文件是最新的。
 - 抓取节点交的请求里，没有的值不写这个键，不传 `null`：Zod 用 `.optional()`，抓取节点用 Pydantic 的 `model_dump(mode="json", exclude_none=True)`。网站返回的空值写成 `null`；引用了命名 schema 的可空字段写成 `z.union([Schema, z.null()])`，`.nullable()` 会把空值并进那个 schema 本身。
 - 网站里依赖只能单向：页面 → 接口 → 服务 → 数据库。网页、API 和 MCP 都调用服务导出的函数，不各写一套规则。
-- 模块之间只通过对方服务导出的函数协作，每张表只由一个模块写入。
-- 网站各层的具体写法（页面怎么在进程内调接口、服务和事务、纯函数、文件命名）照[鼠洞的开发约定 §1](https://github.com/mousebaoyan/mousehole/blob/main/docs/development.md#1-结构与分层)。
+- 页面的 loader 和 action 用 `context.get(apiContext)` 拿到的 hc 客户端调接口，用它带类型的方法（`$get`、`$post`、`$patch`），不手拼请求，也不再校验接口的返回。权限和校验以接口为准：页面不另判权限；表单的值用接口的同一个 Zod schema 转成有类型的值再提交，这和接口是同一套规则；接口返回的错误抛给 ErrorBoundary，或者显示在表单上。
+- 模块之间只通过对方服务导出的函数协作，每张表只由一个模块写入；读别的模块的表不受限制，查询里可以直接 join。模块之间不循环依赖：A 调了 B 的服务，B 就不再调 A 的。
+- 认证、令牌和 CSRF 这些全站的规矩在 `app.ts` 统一处理，权限规则在 `platform/access.ts`，模块里不各挂中间件再补一遍。
+- 其余的写法（服务和事务、纯函数、文件命名）照[鼠洞的开发约定 §1](https://github.com/mousebaoyan/mousehole/blob/main/docs/development.md#1-结构与分层)。
 
 ## 2. 抓取和判别
 
