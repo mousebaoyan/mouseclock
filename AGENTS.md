@@ -146,6 +146,7 @@
 | [mousehole](https://github.com/mousebaoyan/mousehole) | 鼠洞论坛 [bbs.mousebaoyan.cn](https://bbs.mousebaoyan.cn)，也是鼠群的账号中心：一个 QQ 号一个账号 | TypeScript：React Router、Hono、PostgreSQL |
 | [astrbot_plugin_mousehole](https://github.com/mousebaoyan/astrbot_plugin_mousehole) | 群里鼬鼬bot 的 AstrBot 插件：成员同步、私聊登录、把群里的讨论收录进鼠洞、往群里发开奖和周榜 | Python |
 | [mouseclock](https://github.com/mousebaoyan/mouseclock) | 鼠钟：收集各学院的保研通知，整理出截止时间，到期前提醒（开发中） | 网站和鼠洞同一套，抓取节点用 Python |
+| [mousehole-plugin](https://github.com/mousebaoyan/mousehole-plugin) | 鼠洞的 Agent 插件：成员装进自己的 Codex、Claude Code，以本人身份搜帖、读帖和回复（开发中） | 插件清单和 skill，MCP 服务在鼠洞 |
 | [.github](https://github.com/mousebaoyan/.github) | 组织主页和这份通用约定 | Markdown |
 
 - **账号以鼠洞为准**：群成员由插件同步到鼠洞，不在群里的账号冻结。鼠钟不单独注册，用鼠洞账号登录，鼠洞做授权方；等级、角色、禁言和冻结都以鼠洞为准。
