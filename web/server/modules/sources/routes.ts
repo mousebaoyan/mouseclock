@@ -10,7 +10,6 @@ import {
   unix,
   type AppEnv,
 } from "../../platform/http.ts";
-import { latestRuns } from "../ingest/service.ts";
 import {
   College,
   CollegeInput,
@@ -35,6 +34,7 @@ import {
   getCollege,
   getSchool,
   getSource,
+  latestRuns,
   listColleges,
   listSchools,
   listSources,

@@ -3,7 +3,6 @@ import type { DB } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import { unix } from "../../platform/http.ts";
 import type { ApplyValue, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
 import {
   applyStored,
@@ -27,35 +26,6 @@ const RECHECK_MS = 24 * 3600_000;
 const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
-
-export async function latestRuns(sourceIds: number[]) {
-  if (sourceIds.length === 0) return [];
-  const rows = await db
-    .selectFrom("crawl_runs")
-    .select([
-      "id",
-      "source_id",
-      "started_at",
-      "finished_at",
-      "failure",
-      "detail",
-      "listed",
-      "new_count",
-      "useful_count",
-    ])
-    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"))
-    .where("source_id", "in", sourceIds)
-    .distinctOn("source_id")
-    .orderBy("source_id")
-    .orderBy("finished_at", "desc")
-    .orderBy("id", "desc")
-    .execute();
-  return rows.map(({ started_at, finished_at, ...run }) => ({
-    ...run,
-    started_at: unix(started_at),
-    finished_at: unix(finished_at),
-  }));
-}
 
 export type Failure =
   | "timeout"
