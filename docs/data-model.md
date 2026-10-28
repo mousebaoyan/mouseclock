@@ -44,7 +44,7 @@
 | 表 | 模块 | 说明 |
 | --- | --- | --- |
 | `programs` | `programs` | 一次招生活动（[总体设计 §9.1](design.md#91-学校学院和项目)）。`apply_start`、`apply_deadline` 是由报名时间字段换算出的时刻（[§8.2](design.md#82-抽取)），状态、排序、筛选和提醒用；`verified_by`、`verified_at` 是已核对 |
-| `program_fields` | `programs` | 项目每个字段的当前值，`(program_id, key)` 唯一。`key` 是[总体设计 §8.2](design.md#82-抽取)里的字段名，其他时间每项一行，`key` 是 `dates:` 加名称，这样每项各带来源版本和证据；`value`、`evidence` 和 `confidence` 是抽取给的那一项，`value` 的格式见 §8.2。`version_id` 和 `edit_id` 有且只有一个：值来自哪个版本，或者是哪次人工修改设的；人工设的抓取不覆盖 |
+| `program_fields` | `programs` | 项目每个字段的当前值，`(program_id, key)` 唯一。`key` 是[总体设计 §8.2](design.md#82-抽取)里的字段名；报名时间、活动时间和其他时间每部分一行，`key` 是字段名加冒号加部分：`apply:start`、`apply:end`、`apply:rolling`，`event:start`、`event:end`、`event:mode`、`event:place`，其他时间是 `dates:` 加名称。这样每部分各带来源版本和证据，后来的通知只换它写了的部分（[§8.4](design.md#84-归并与版本)）。`value` 是抽取给的值，分部分的是那一部分的值，格式见 §8.2；`evidence` 和 `confidence` 是抽取给那个字段的。`version_id` 和 `edit_id` 有且只有一个：值来自哪个版本，或者是哪次人工修改设的；人工设的抓取不覆盖 |
 | `program_versions` | `ingest` | 项目的版本：一条通知涉及几个项目，就是几个项目各自的版本。`role` 是这条通知对项目的作用，`fields` 是这一版抽出来的字段（原样留着），`changes` 是它改了的字段 |
 
 ## 纠错与审核

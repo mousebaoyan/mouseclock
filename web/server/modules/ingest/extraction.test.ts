@@ -50,7 +50,8 @@ async function setUp(host: string) {
     })
     .returning("id")
     .executeTakeFirstOrThrow();
-  return { cs: cs.id, se: se.id, notice: notice.id, snapshot: await snapshot(notice.id, BODY) };
+  const { snapshot_id } = await snapshot(notice.id, BODY);
+  return { cs: cs.id, se: se.id, notice: notice.id, snapshot: snapshot_id };
 }
 
 async function snapshot(noticeId: number, text: string) {
@@ -74,7 +75,7 @@ async function snapshot(noticeId: number, text: string) {
     crawler,
   );
   if (res.status !== 200) throw new Error(`status ${res.status}`);
-  return (await res.json()).snapshot_id;
+  return res.json();
 }
 
 async function extract(
@@ -122,7 +123,7 @@ const APPLY = {
 async function programsOf(collegeId: number) {
   return db
     .selectFrom("programs")
-    .select(["id", "cohort", "kind", "name", "apply_deadline"])
+    .select(["id", "cohort", "kind", "name", "apply_start", "apply_deadline"])
     .where("college_id", "=", collegeId)
     .orderBy("id")
     .execute();
@@ -165,13 +166,25 @@ test("a call makes a program with its fields once, however often it is sent", as
   expect(others).toEqual([]);
   expect(program).toMatchObject({ cohort: 2027, kind: "summer_camp", name: "2026 年夏令营" });
   expect(program.apply_deadline?.toISOString()).toBe("2026-06-14T09:00:00.000Z");
-  expect(Object.keys(await fieldsOf(program.id))).toEqual(["apply", "event", "materials"]);
+  expect(await fieldsOf(program.id)).toEqual({
+    "apply:start": { date: "2026-06-01", time: "08:00" },
+    "apply:end": { date: "2026-06-14", time: "17:00" },
+    "event:start": { date: "2026-07-06" },
+    "event:end": { date: "2026-07-09" },
+    materials: ["申请表"],
+  });
   const versions = await db
     .selectFrom("program_versions")
     .select(["number", "role", "changes"])
     .where("program_id", "=", program.id)
     .execute();
-  expect(versions).toEqual([{ number: 1, role: "call", changes: ["apply", "event", "materials"] }]);
+  expect(versions).toEqual([
+    {
+      number: 1,
+      role: "call",
+      changes: ["apply:start", "apply:end", "event:start", "event:end", "materials"],
+    },
+  ]);
   expect(await reviewOf(snap)).toEqual([]);
 });
 
@@ -191,14 +204,14 @@ test("fields without their quotes, unsure ones and deadlines before the notice w
   const [program] = await programsOf(cs);
   expect(Object.keys(await fieldsOf(program.id))).toEqual(["apply_url"]);
   expect(await reviewOf(snap)).toEqual([
-    { reason: "implausible", key: "apply", program_id: program.id },
+    { reason: "implausible", key: "apply:end", program_id: program.id },
     { reason: "low_confidence", key: "majors", program_id: program.id },
     { reason: "evidence_not_found", key: "quota", program_id: program.id },
     { reason: "no_deadline", key: null, program_id: program.id },
   ]);
 });
 
-test("a later notice changes what it states, adds dates by label, and keeps a person's edits", async () => {
+test("a later notice changes the parts it states, adds dates by label, and keeps a person's edits", async () => {
   const { cs, notice, snapshot: first } = await setUp("c.edu.cn");
   await extract(first, [
     {
@@ -250,16 +263,23 @@ test("a later notice changes what it states, adds dates by label, and keeps a pe
 
   const extended = `${BODY}\n报名截止延长至6月21日。确认参加请于7月1日前回复。名额150人。`;
   const second = await snapshot(notice, extended);
-  await extract(second, [
+  expect(second.extraction?.programs).toEqual([
+    {
+      id: programId,
+      college_id: cs,
+      cohort: 2027,
+      kind: "summer_camp",
+      name: "2026 年夏令营",
+      apply: APPLY.value,
+    },
+  ]);
+  await extract(second.snapshot_id, [
     {
       program_id: programId,
       college_id: cs,
       role: "update",
       fields: {
-        apply: {
-          value: { ...APPLY.value, end: { date: "2026-06-21" } },
-          ...sure("报名截止延长至6月21日"),
-        },
+        apply: { value: { end: { date: "2026-06-21" } }, ...sure("报名截止延长至6月21日") },
         dates: {
           value: [{ label: "确认参加", end: { date: "2026-07-01", mark: "before" } }],
           ...sure("确认参加请于7月1日前回复"),
@@ -270,7 +290,8 @@ test("a later notice changes what it states, adds dates by label, and keeps a pe
   ]);
 
   expect(await fieldsOf(programId)).toEqual({
-    apply: { start: { date: "2026-06-01", time: "08:00" }, end: { date: "2026-06-21" } },
+    "apply:start": { date: "2026-06-01", time: "08:00" },
+    "apply:end": { date: "2026-06-21" },
     "dates:材料寄出": { end: { date: "2026-06-20", mark: "before" } },
     "dates:确认参加": { end: { date: "2026-07-01", mark: "before" } },
     quota: "120 人",
@@ -281,8 +302,11 @@ test("a later notice changes what it states, adds dates by label, and keeps a pe
     .where("program_id", "=", programId)
     .orderBy("number")
     .execute();
-  expect(version).toEqual({ number: 2, changes: ["apply", "dates:确认参加"] });
-  expect(await reviewOf(second)).toEqual([
+  expect(version).toEqual({ number: 2, changes: ["apply:end", "dates:确认参加"] });
+  const [program] = await programsOf(cs);
+  expect(program.apply_start?.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  expect(program.apply_deadline?.toISOString()).toBe("2026-06-21T16:00:00.000Z");
+  expect(await reviewOf(second.snapshot_id)).toEqual([
     { reason: "conflicts_edit", key: "quota", program_id: programId },
   ]);
 });
@@ -307,7 +331,7 @@ test("programs that can't be placed wait for review, and an irrelevant notice is
     { reason: "unknown_program", key: null, program_id: null },
   ]);
 
-  const irrelevant = await snapshot(notice, "运动会通知");
+  const { snapshot_id: irrelevant } = await snapshot(notice, "运动会通知");
   await extract(irrelevant, []);
   const done = await db
     .selectFrom("snapshots")
@@ -320,7 +344,7 @@ test("programs that can't be placed wait for review, and an irrelevant notice is
 test("a new program like one already there is flagged as a possible duplicate", async () => {
   const { cs, notice, snapshot: snap } = await setUp("g.edu.cn");
   await extract(snap, [{ college_id: cs, fields: { apply: APPLY } }]);
-  const second = await snapshot(notice, `${BODY}\n第二批`);
+  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n第二批`);
   await extract(second, [{ college_id: cs, fields: { apply: APPLY } }]);
   const [, batch2] = await programsOf(cs);
   expect(await reviewOf(second)).toEqual([

@@ -253,7 +253,7 @@ for (const school of SCHOOLS) {
       await recordExtraction(snapshot.snapshot_id, [program], USAGE);
     }
 
-    // The first college moves its winter camp's deadline, so that program has two versions.
+    // The first college extends its winter camp's deadline, so that program has two versions.
     if (i === 0) {
       const winter = await db
         .selectFrom("programs")
@@ -261,8 +261,7 @@ for (const school of SCHOOLS) {
         .where("college_id", "=", collegeId)
         .where("kind", "=", "winter_camp")
         .executeTakeFirstOrThrow();
-      const { opens } = plans[2];
-      const apply = `报名时间调整为${chinese(day(opens))}9:00至${chinese(day(10))}17:00`;
+      const apply = `报名截止时间延长至${chinese(day(10))}17:00`;
       const text = `${college.name}关于延长冬令营报名时间的通知\n${apply}，其他安排不变。`;
       const listed = await recordListing(sourceId, [
         {
@@ -295,10 +294,7 @@ for (const school of SCHOOLS) {
             role: "update",
             fields: {
               apply: {
-                value: {
-                  start: { date: day(opens), time: "09:00" },
-                  end: { date: day(10), time: "17:00" },
-                },
+                value: { end: { date: day(10), time: "17:00" } },
                 evidence: [{ quote: apply }],
                 confidence: 0.9,
               },
