@@ -38,7 +38,8 @@ jobs:
           persist-credentials: false
       - uses: pnpm/setup@fa36a5ef7dcdefc3a7cb25655c122e00cf6e636e # v3.1.2
         with:
-          runtime: node@26
+          # 26.13.0 is listed on nodejs.org without its SHASUMS256.txt, so pnpm can't verify it.
+          runtime: node@26.12.1
           working-directory: web
           cache: true
           require-lockfile: true
