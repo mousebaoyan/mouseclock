@@ -81,7 +81,7 @@
 | 数据库 | 服务器上 1Panel 的 PostgreSQL 18 | 和鼠洞共用实例，不加新服务 |
 | 抓取节点 | Python 3.14，uv 管依赖；Ruff 做 lint 和格式化，Pyright 的严格模式做类型检查，pytest 做测试 | 浏览器抓取、正文提取、PDF 和 Office 解析、中文的文字识别，Python 的库最全，代价是多一套工具链。3.15 刚发布，文字识别要用的 onnxruntime 还没有它的安装包。Pyright 和 VS Code 的 Pylance 是同一个引擎，编辑器里看到的错误和 CI 一致 |
 | 抓取 | httpx（异步）请求网页，Playwright 驱动浏览器（Chromium 的无头精简版），lxml 按 CSS 或 XPath 取出列表 | 各自领域的主流库 |
-| 正文、附件和文字识别 | 候选：trafilatura 取正文，pypdf 或 pdfplumber 读 PDF，python-docx 和 openpyxl 读 Office，RapidOCR 识别文字 | 都关在 `parse` 模块里，换了不影响别处；在[抓取节点原型](https://github.com/mousebaoyan/mouseclock/issues/6)里用真实的附件比较后定。不用 AGPL 许可的 PyMuPDF |
+| 正文、附件和文字识别 | 候选：trafilatura 取正文，pypdf 或 pdfplumber 读 PDF，python-docx 和 openpyxl 读 Office，RapidOCR 识别文字 | 都关在 `parse` 模块里，换了不影响别处；在[读正文和附件](https://github.com/mousebaoyan/mouseclock/issues/40)和[文字识别](https://github.com/mousebaoyan/mouseclock/issues/47)的任务里用真实的附件比较后定。不用 AGPL 许可的 PyMuPDF |
 | 接口的类型 | 网站用 Zod 写接口的定义，生成 OpenAPI 文档；抓取节点从这份文档生成 Pydantic 模型 | 两边语言不同，接口的类型也只有一个来源。抓取节点用 Pydantic 校验网站的返回和模型的输出 |
 | 判别接口和 LLM | 实验后定（第 8.5 节） | |
 
@@ -441,7 +441,7 @@ L3 以上可以不提申请，直接修改，同样要写理由、附依据。�
 | 事项 | 现状 |
 | --- | --- |
 | 名称 | 「鼠钟」暂定，帖子里在征名 |
-| 正文、附件和文字识别用的库 | 在抓取节点原型里比较后定（第 5.1 节） |
+| 正文、附件和文字识别用的库 | 用真实的附件比较后定（第 5.1 节） |
 | 域名 | 待定，用 `mousebaoyan.cn` 的子域名 |
 | 鼠洞的授权接口 | 已在鼠洞设计好，待实现 |
 | 群汇总由哪个插件发 | 扩展鼠洞的 bot 插件，还是新写一个 |
