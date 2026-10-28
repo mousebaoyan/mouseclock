@@ -34,11 +34,6 @@ export function SiteHeader({ me }: { me: Me | null }) {
           <NavLink to="/" end className={navLink}>
             总表
           </NavLink>
-          {me && !me.frozen && (
-            <NavLink to="/crawl-runs" className={navLink}>
-              抓取记录
-            </NavLink>
-          )}
           {me?.can.admin && (
             <NavLink to="/admin/colleges" className={navLink}>
               院校清单

@@ -28,11 +28,6 @@ const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
 
-function runTimes<T extends { started_at: Date; finished_at: Date }>(row: T) {
-  const { started_at, finished_at, ...rest } = row;
-  return { ...rest, started_at: unix(started_at), finished_at: unix(finished_at) };
-}
-
 export async function latestRuns(sourceIds: number[]) {
   if (sourceIds.length === 0) return [];
   const rows = await db
@@ -55,62 +50,11 @@ export async function latestRuns(sourceIds: number[]) {
     .orderBy("finished_at", "desc")
     .orderBy("id", "desc")
     .execute();
-  return rows.map(runTimes);
-}
-
-export async function listCrawlRuns({
-  source_id,
-  date,
-  page,
-}: {
-  source_id?: number;
-  date?: string;
-  page: number;
-}) {
-  let query = db
-    .selectFrom("crawl_runs")
-    .innerJoin("sources", "sources.id", "crawl_runs.source_id")
-    .innerJoin("colleges", "colleges.id", "sources.college_id")
-    .innerJoin("schools", "schools.id", "colleges.school_id")
-    .select([
-      "crawl_runs.id",
-      "source_id",
-      "started_at",
-      "finished_at",
-      "failure",
-      "detail",
-      "listed",
-      "new_count",
-      "useful_count",
-      "sources.url",
-      "sources.section",
-      "colleges.name as college_name",
-      "schools.name as school_name",
-    ])
-    .select(
-      sql<{ url: string; failure: string; detail?: string }[]>`notice_failures`.as(
-        "notice_failures",
-      ),
-    )
-    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"));
-  if (source_id !== undefined) query = query.where("source_id", "=", source_id);
-  if (date) {
-    const start = new Date(`${date}T00:00:00+08:00`);
-    query = query
-      .where("started_at", ">=", start)
-      .where("started_at", "<", new Date(start.getTime() + 24 * 3600_000));
-  }
-  const rows = await query
-    .orderBy("finished_at", "desc")
-    .orderBy("crawl_runs.id", "desc")
-    .limit(21)
-    .offset((page - 1) * 20)
-    .execute();
-  return {
-    items: rows.slice(0, 20).map(runTimes),
-    page,
-    next_page: rows.length > 20 ? page + 1 : null,
-  };
+  return rows.map(({ started_at, finished_at, ...run }) => ({
+    ...run,
+    started_at: unix(started_at),
+    finished_at: unix(finished_at),
+  }));
 }
 
 export type Failure =

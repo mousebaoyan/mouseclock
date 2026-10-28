@@ -5,5 +5,4 @@ export default [
   route("logout", "routes/logout.ts"),
   route("admin/colleges", "routes/admin-colleges.tsx"),
   route("admin/sources", "routes/admin-sources.tsx"),
-  route("crawl-runs", "routes/crawl-runs.tsx"),
 ] satisfies RouteConfig;

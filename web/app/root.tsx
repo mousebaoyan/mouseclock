@@ -19,7 +19,7 @@ import "./app.css";
 const themeScript = `try{document.documentElement.dataset.theme=localStorage.getItem("theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch{}`;
 
 export async function loader({ context }: Route.LoaderArgs) {
-  const res = await context.get(apiContext).me.$get();
+  const res = await context.get(apiContext).client.me.$get();
   return { me: res.status === 200 ? await res.json() : null };
 }
 

@@ -62,26 +62,10 @@
 | | `GET`、`POST`、`DELETE /me/tokens` | 个人令牌，只认网页会话 |
 | 数据下载 | `GET /export` | 全部项目和字段，登录后可用 |
 | 群汇总 | `GET /bot/summary` | 插件每天来取的汇总，用插件专用的令牌 |
-| 管理 | `/admin/sources`、`/admin/colleges`、`/admin/tags`、`/admin/users`、`/admin/settings` | 来源、院校清单、标签预设、修改权限、系统设置 |
-
-### 3.1 院校与来源管理
-
-以下接口仅供管理员、站长的网页会话使用；禁言、冻结或携带 Bearer 令牌的请求不能调用。列表按 `page` 分页（每页 20 条），返回 `items`、`page` 和 `next_page`；`q` 搜索名称或网址。
-
-| 方法 | 路径 | 说明 |
-| --- | --- | --- |
-| GET、POST | `/admin/schools` | 查询、新增学校 |
-| GET、PATCH | `/admin/schools/{id}` | 查询、修改学校 |
-| GET、POST | `/admin/colleges` | 查询、新增学院；列表可按 `school_id` 筛选，搜索包含学校名 |
-| GET、PATCH | `/admin/colleges/{id}` | 查询、修改学院 |
-| GET、POST | `/admin/sources` | 查询、新增来源；列表可按 `college_id` 和 `availability`（`available`、`unavailable`）筛选，附最近一轮的结果摘要 |
-| GET、PATCH | `/admin/sources/{id}` | 查询、修改来源；详情包含 `config`，列表不带配置 |
-
-学校层次可以多选；学院地区指学生就读地区。来源的 `config` 是 JSON 对象，`null` 表示通用抓取，具体格式由抓取节点定义。PATCH 只更新提交的字段；`unavailable_reason` 是非空原因或 `null`，填写后停止发放新任务，清空后恢复正常调度，不中断已领到的任务。管理接口不允许修改抓取时间或租约。
-
-所有新增、修改（包括暂停和恢复）与 `audit_log` 在同一事务中写入，记录操作人、对象及改前改后的管理字段。名称或网址重复返回 `409 duplicate`，所属学校、学院或目标不存在返回 `404 not_found`。本地 seed 通过假的鼠洞管理员身份调用同一组服务，审计记录标为 `seed`。
-
-页面 `/admin/colleges` 维护学校和学院，`/admin/sources` 维护来源；只有有管理权限的人显示导航入口。来源页展示未抓取、最近列表结果及通知失败数量，链接到 `/crawl-runs?source_id=`。基础抓取记录接口 `GET /crawl-runs` 供已登录成员使用，按 `source_id`、北京时间的 `date` 筛选并分页；不包含完整看板的统计和告警。
+| 管理 | `GET`、`POST /admin/schools`，`GET`、`PATCH /admin/schools/{id}` | 管理员查询、新增、修改学校 |
+| | `GET`、`POST /admin/colleges`，`GET`、`PATCH /admin/colleges/{id}` | 管理员查询、新增、修改学院 |
+| | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
+| | `/admin/tags`、`/admin/users`、`/admin/settings` | 标签预设、修改权限、系统设置 |
 
 ## 4. MCP
 

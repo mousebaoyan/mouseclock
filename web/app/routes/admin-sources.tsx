@@ -1,10 +1,10 @@
 import { data, Form, Link, redirect, useNavigation } from "react-router";
-import { SourceInput } from "../../server/modules/sources/schemas.ts";
+import { SourceDetail as SourceSchema } from "../../server/modules/sources/schemas.ts";
 import { apiContext } from "../api.server.ts";
 import {
   formText,
   readApi,
-  requireAdmin,
+  writeApi,
   type SourcesPage,
   type CollegesPage,
   type CollegeDetail,
@@ -33,29 +33,19 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   availability: string;
   saved: boolean;
 }> {
-  const api = context.get(apiContext).admin;
+  const api = context.get(apiContext).client.admin;
   const params = new URL(request.url).searchParams;
   const q = params.get("q") ?? "";
   const collegeQ = params.get("college_q") ?? "";
   const collegeId = params.get("college_id") ?? undefined;
   const editId = params.get("edit");
   const availability = params.get("availability");
-  if (
-    availability !== null &&
-    availability !== "" &&
-    availability !== "available" &&
-    availability !== "unavailable"
-  )
-    throw data("来源状态无效", { status: 400 });
+  const sourceQuery = new URLSearchParams(params);
+  if (!availability) sourceQuery.delete("availability");
   const [sources, colleges, source] = await Promise.all([
     api.sources
       .$get({
-        query: {
-          q,
-          college_id: collegeId,
-          availability: availability || undefined,
-          page: params.get("page") ?? "1",
-        },
+        query: Object.fromEntries(sourceQuery),
       })
       .then((res) => readApi<SourcesPage>(res)),
     api.colleges
@@ -83,7 +73,6 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
 
 export async function action({ request, context }: Route.ActionArgs) {
   const api = context.get(apiContext);
-  await requireAdmin(request, api);
   const form = await request.formData();
   const id = formText(form, "id");
   const draft = {
@@ -103,21 +92,25 @@ export async function action({ request, context }: Route.ActionArgs) {
       return data({ error: "抓取配置不是合法 JSON，请检查引号和逗号", draft }, { status: 400 });
     }
   }
-  const parsed = SourceInput.safeParse({
+  const values = {
     ...draft,
     college_id: Number(draft.college_id),
     config,
     unavailable_reason: draft.unavailable_reason.trim() || null,
-  });
-  if (!parsed.success)
-    return data({ error: parsed.error.issues[0].message, draft }, { status: 400 });
-  const res = id
-    ? await api.admin.sources[":id"].$patch({ param: { id }, json: parsed.data })
-    : await api.admin.sources.$post({ json: parsed.data });
-  if (res.status !== 200 && res.status !== 201)
-    return data({ error: (await res.json()).error.message, draft }, { status: res.status });
-  const result = await res.json();
-  return redirect(`/admin/sources?college_id=${parsed.data.college_id}&edit=${result.id}&saved=1`);
+  };
+  const endpoint = api.client.admin.sources;
+  const result = await writeApi(
+    api,
+    id ? endpoint[":id"].$url({ param: { id } }) : endpoint.$url(),
+    id ? "PATCH" : "POST",
+    values,
+    SourceSchema,
+  );
+  if (result.error !== undefined)
+    return data({ error: result.error, draft }, { status: result.status });
+  return redirect(
+    `/admin/sources?college_id=${result.value.college_id}&edit=${result.value.id}&saved=1`,
+  );
 }
 
 export default function Sources({ loaderData, actionData }: Route.ComponentProps) {
@@ -125,7 +118,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
   const busy = useNavigation().state !== "idle";
   const draft = actionData?.draft;
   const fields = draft ?? source;
-  const formKey = `source-${source?.id ?? "new"}-${college?.id ?? "none"}`;
+  const formKey = `source-${source?.id ?? "new"}`;
   return (
     <AdminPage
       title="来源管理"
@@ -211,7 +204,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                   </td>
                   <td className="py-4 pr-4 align-top">
                     {s.last_run ? (
-                      <Link to={`/crawl-runs?source_id=${s.id}`} className={linkClass}>
+                      <div>
                         <CrawlTime value={s.last_run.finished_at} />
                         <span
                           className={`mt-1 block ${s.last_run.failure ? "text-destructive" : s.last_run.notice_failure_count > 0 ? "text-warning" : "text-success"}`}
@@ -226,7 +219,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                           列表 {s.last_run.listed} · 新增 {s.last_run.new_count} · 有用{" "}
                           {s.last_run.useful_count}
                         </span>
-                      </Link>
+                      </div>
                     ) : (
                       <span className="text-muted-foreground">还没抓取</span>
                     )}

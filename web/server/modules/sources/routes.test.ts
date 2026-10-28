@@ -1,12 +1,13 @@
 import { testClient } from "hono/testing";
 import { beforeAll, expect, test } from "vitest";
+import { createApi } from "../../../app/api.server.ts";
 import { fakeUsers, type FakeUser } from "../../../test/fake-mousehole.ts";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
 import { login, resolveSession } from "../accounts/service.ts";
 import { createCrawlerToken, recordRun, takeWork } from "../ingest/service.ts";
-import { createSchool, updateSchool, type Actor } from "./service.ts";
+import { createCollege, createSchool, createSource, updateSchool, type Actor } from "./service.ts";
 
 const api = testClient(app).api.v1;
 let admin = { headers: { cookie: "", origin: env.PUBLIC_URL } };
@@ -88,6 +89,32 @@ test("every management endpoint refuses guests, non-admins, restricted admins an
     });
     expect(res.status).toBe(403);
   }
+  expect(await db.selectFrom("audit_log").select("id").execute()).toEqual([]);
+});
+
+test("in-process page calls keep bearer headers so management writes cannot bypass API permissions", async () => {
+  const session = await resolveSession(admin.headers.cookie.slice("mouseclock_session=".length));
+  if (!session) throw new Error("Admin session missing");
+  const pageApi = createApi(
+    new Request(`${env.PUBLIC_URL}/admin/colleges`, {
+      method: "POST",
+      headers: {
+        ...admin.headers,
+        origin: "https://other.example",
+        authorization: "Bearer personal",
+      },
+    }),
+    { viewer: session.viewer, sessionId: session.id },
+  );
+  const response = await pageApi.request(pageApi.client.admin.schools.$url(), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name: "不应写入的大学", short_name: "", tiers: [] }),
+  });
+  expect(response.status).toBe(403);
+  expect(
+    await db.selectFrom("schools").select("id").where("name", "=", "不应写入的大学").execute(),
+  ).toEqual([]);
   expect(await db.selectFrom("audit_log").select("id").execute()).toEqual([]);
 });
 
@@ -251,15 +278,93 @@ test("admins maintain schools, colleges and sources with before/after audit reco
   expect(listed).toMatchObject({
     items: [{ id: source.id, last_run: { failure: "http_status", detail: "HTTP 403" } }],
   });
-  if ("items" in listed) expect(listed.items[0]).not.toHaveProperty("config");
-  const runs = await api["crawl-runs"].$get(
-    { query: { source_id: String(source.id), date: "2026-10-28" } },
-    admin,
-  );
-  expect(runs.status).toBe(200);
-  expect(await runs.json()).toMatchObject({
-    items: [{ failure: "http_status" }, { failure: null }],
+  if ("items" in listed) {
+    expect(listed.items[0]).not.toHaveProperty("config");
+    expect(listed.items[0].last_run).not.toHaveProperty("notice_failures");
+  }
+});
+
+test("a source paused after leasing still accepts listing and run results without resuming", async () => {
+  const actor: Actor = { user_id: adminId, via: "web" };
+  const school = await createSchool(actor, { name: "领取后暂停大学", short_name: "", tiers: [] });
+  const collegeId = await createCollege(actor, {
+    school_id: school.id,
+    name: "计算机学院",
+    kind: "college",
+    region: "北京",
+    directions: [],
   });
+  const sourceId = await createSource(actor, {
+    college_id: collegeId,
+    url: "https://leased.example/list",
+    section: "通知公告",
+    browser: false,
+    config: null,
+    unavailable_reason: null,
+  });
+  const crawler = {
+    headers: { authorization: `Bearer ${await createCrawlerToken("pause-after-leasing")}` },
+  };
+  const work = await api.crawler.work.$get({}, crawler);
+  expect(work.status).toBe(200);
+  if (work.status !== 200) throw new Error("Work failed");
+  expect((await work.json()).sources).toContainEqual(expect.objectContaining({ id: sourceId }));
+  const leased = await db
+    .selectFrom("sources")
+    .select("leased_until")
+    .where("id", "=", sourceId)
+    .executeTakeFirstOrThrow();
+  expect(leased.leased_until).toBeInstanceOf(Date);
+
+  const param = { id: String(sourceId) };
+  expect(
+    (
+      await api.admin.sources[":id"].$patch(
+        { param, json: { unavailable_reason: "需要登录" } },
+        admin,
+      )
+    ).status,
+  ).toBe(200);
+  const url = "https://leased.example/notice";
+  const listing = await api.crawler.sources[":id"].listing.$post(
+    { param, json: { items: [{ url, title: "夏令营通知", published_on: "2026-05-01" }] } },
+    crawler,
+  );
+  expect(listing.status).toBe(200);
+  expect(await listing.json()).toMatchObject({ new_count: 1, pending: [{ url }] });
+  const finishedAt = Date.parse("2026-10-28T05:01:00Z") / 1000;
+  expect(
+    (
+      await api.crawler.runs.$post(
+        {
+          json: {
+            source_id: sourceId,
+            started_at: finishedAt - 60,
+            finished_at: finishedAt,
+            listed: 1,
+            new_count: 1,
+            useful_count: 0,
+            notice_failures: [],
+          },
+        },
+        crawler,
+      )
+    ).status,
+  ).toBe(204);
+  expect(
+    await db
+      .selectFrom("sources")
+      .select(["unavailable_reason", "leased_until", "crawled_at"])
+      .where("id", "=", sourceId)
+      .executeTakeFirstOrThrow(),
+  ).toEqual({
+    unavailable_reason: "需要登录",
+    leased_until: null,
+    crawled_at: new Date(finishedAt * 1000),
+  });
+  const next = await api.crawler.work.$get({}, crawler);
+  if (next.status !== 200) throw new Error("Work failed");
+  expect((await next.json()).sources.some((source) => source.id === sourceId)).toBe(false);
 });
 
 test("source constraints and explicit nulls preserve unrelated settings and audit only successful writes", async () => {
@@ -345,85 +450,6 @@ test("source constraints and explicit nulls preserve unrelated settings and audi
     section: "招生",
     url: json.url,
   });
-});
-
-test("crawl records require membership and date filters follow Beijing midnight", async () => {
-  expect((await api["crawl-runs"].$get({ query: {} })).status).toBe(401);
-  const school = await createSchool(
-    { user_id: adminId, via: "web" },
-    { name: "日期大学", short_name: "", tiers: [] },
-  );
-  const collegeRes = await api.admin.colleges.$post(
-    {
-      json: {
-        school_id: school.id,
-        name: "计算机学院",
-        kind: "college",
-        region: "北京",
-        directions: [],
-      },
-    },
-    admin,
-  );
-  if (collegeRes.status !== 201) throw new Error("College failed");
-  const college = await collegeRes.json();
-  const sourceRes = await api.admin.sources.$post(
-    {
-      json: {
-        college_id: college.id,
-        url: "https://dates.example/list",
-        section: "",
-        browser: false,
-        config: null,
-        unavailable_reason: null,
-      },
-    },
-    admin,
-  );
-  if (sourceRes.status !== 201) throw new Error("Source failed");
-  const source = await sourceRes.json();
-  for (const time of [
-    "2026-10-27T15:59:59Z",
-    "2026-10-27T16:00:00Z",
-    "2026-10-28T15:59:59Z",
-    "2026-10-28T16:00:00Z",
-  ]) {
-    await recordRun({
-      source_id: source.id,
-      started_at: new Date(time),
-      finished_at: new Date(time),
-      listed: 1,
-      new_count: 0,
-      useful_count: 0,
-      notice_failures: [{ url: "https://dates.example/notice", failure: "timeout" }],
-    });
-  }
-  const member = await login(fakeUsers[1], "fake-2", { ip: null, userAgent: "test" });
-  const res = await api["crawl-runs"].$get(
-    { query: { source_id: String(source.id), date: "2026-10-28" } },
-    { headers: { cookie: `mouseclock_session=${member}` } },
-  );
-  if (res.status !== 200) throw new Error("Runs failed");
-  const result = await res.json();
-  expect(result.items).toHaveLength(2);
-  expect(result.items.map((run) => run.started_at)).toEqual([
-    Date.parse("2026-10-28T15:59:59Z") / 1000,
-    Date.parse("2026-10-27T16:00:00Z") / 1000,
-  ]);
-  expect(result.items[0]).toMatchObject({
-    failure: null,
-    notice_failure_count: 1,
-    notice_failures: [{ failure: "timeout" }],
-  });
-  const frozen = await login(fakeUsers[5], "fake-6", { ip: null, userAgent: "test" });
-  expect(
-    (
-      await api["crawl-runs"].$get(
-        { query: {} },
-        { headers: { cookie: `mouseclock_session=${frozen}` } },
-      )
-    ).status,
-  ).toBe(403);
 });
 
 test("conflicts, missing parents and invalid configuration do not change data or write audit records", async () => {

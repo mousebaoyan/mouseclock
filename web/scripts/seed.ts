@@ -204,7 +204,9 @@ if (existing) {
 }
 
 // Reuse the local login's admin rather than inventing a second kind of audit actor.
-const token = await login(fakeUsers[2], "fake-3", { ip: null, userAgent: "seed" });
+const seedAdmin = fakeUsers.find((user) => user.role === "admin");
+if (!seedAdmin) throw new Error("No fake admin available for seed");
+const token = await login(seedAdmin, `fake-${seedAdmin.id}`, { ip: null, userAgent: "seed" });
 const session = await resolveSession(token);
 if (!session) throw new Error("Seed admin has no session");
 await endSession(session.id);
