@@ -111,6 +111,70 @@ test("a due source is handed out once until its round is reported", async () => 
   expect(await handedOut()).toMatchObject([{ backfill: false }]);
 });
 
+test("a probe is handed out once and a resent report changes nothing", async () => {
+  const admin = await db
+    .insertInto("users")
+    .values({
+      mousehole_id: 1,
+      display_name: "管理员",
+      level: 3,
+      role: "admin",
+      frozen: false,
+      muted: false,
+      mousehole_token: "t",
+      synced_at: new Date(),
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const probe = await db
+    .insertInto("source_probes")
+    .values({ url: "https://p.edu.cn/tzgg.htm", browser: false, requested_by: admin.id })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const handedOut = async () => (await work()).probes.filter((p) => p.id === probe.id);
+  expect(await handedOut()).toEqual([
+    { id: probe.id, url: "https://p.edu.cn/tzgg.htm", browser: false, config: null },
+  ]);
+  expect(await handedOut()).toEqual([]);
+
+  const report = (title: string) =>
+    api.probes[":id"].$post(
+      {
+        param: { id: String(probe.id) },
+        json: {
+          items: [{ url: "https://p.edu.cn/1.htm", title }],
+          usage: [{ model: "m", input_tokens: 100, output_tokens: 10 }],
+        },
+      },
+      crawler,
+    );
+  expect((await report("夏令营通知")).status).toBe(204);
+  expect((await report("另一份")).status).toBe(204);
+  const row = await db
+    .selectFrom("source_probes")
+    .select(["items", "finished_at", "leased_until"])
+    .where("id", "=", probe.id)
+    .executeTakeFirstOrThrow();
+  expect(row).toMatchObject({
+    items: [{ url: "https://p.edu.cn/1.htm", title: "夏令营通知" }],
+    leased_until: null,
+  });
+  expect(row.finished_at).not.toBeNull();
+  const calls = await db
+    .selectFrom("model_calls")
+    .select("id")
+    .where("probe_id", "=", probe.id)
+    .execute();
+  expect(calls).toHaveLength(1);
+  expect(await handedOut()).toEqual([]);
+
+  const missing = await api.probes[":id"].$post(
+    { param: { id: String(probe.id + 1000) }, json: { items: [], usage: [] } },
+    crawler,
+  );
+  expect(missing.status).toBe(404);
+});
+
 test("listing again finds nothing new and hands back what is unfinished", async () => {
   const source = await newSource("b.edu.cn");
   const items = [
