@@ -8,6 +8,16 @@ import {
 } from "../server/modules/ingest/service.ts";
 import type { ExtractedFields, Kind } from "../server/modules/programs/schemas.ts";
 import { db } from "../server/platform/db.ts";
+import { endSession, login, resolveSession } from "../server/modules/accounts/service.ts";
+import {
+  createCollege,
+  createSchool,
+  createSource,
+  type Actor,
+} from "../server/modules/sources/service.ts";
+import { fakeUsers } from "../test/fake-mousehole.ts";
+import type { z } from "zod";
+import type { SchoolInput } from "../server/modules/sources/schemas.ts";
 
 // Made-up schools, notices and programs for working on pages locally (`pnpm seed`), entered the
 // way the crawler's results are, so they go through the same checks and merging. Sites are under
@@ -112,7 +122,12 @@ const SCHOOLS = [
   { name: "南山理工大学", short: "南理工", tiers: ["211", "double_first_class"], region: "广东" },
   { name: "西江师范大学", short: "西江师大", tiers: ["double_first_class"], region: "广西" },
   { name: "临海科技大学", short: "临海科大", tiers: [], region: "浙江" },
-];
+] satisfies {
+  name: string;
+  short: string;
+  tiers: z.infer<typeof SchoolInput>["tiers"];
+  region: string;
+}[];
 const COLLEGES = [
   { name: "计算机学院", directions: ["计算机", "人工智能"] },
   { name: "软件学院", directions: ["软件"] },
@@ -188,31 +203,39 @@ if (existing) {
   throw new Error("The database already has schools; seed an empty one (docker compose down -v).");
 }
 
+// Reuse the local login's admin rather than inventing a second kind of audit actor.
+const seedAdmin = fakeUsers.find((user) => user.role === "admin");
+if (!seedAdmin) throw new Error("No fake admin available for seed");
+const token = await login(seedAdmin, `fake-${seedAdmin.id}`, { ip: null, userAgent: "seed" });
+const session = await resolveSession(token);
+if (!session) throw new Error("Seed admin has no session");
+await endSession(session.id);
+const actor: Actor = { user_id: session.viewer.id, via: "seed" };
+
 let i = 0;
 for (const school of SCHOOLS) {
-  const { id: schoolId } = await db
-    .insertInto("schools")
-    .values({ name: school.name, short_name: school.short, tiers: school.tiers })
-    .returning("id")
-    .executeTakeFirstOrThrow();
+  const { id: schoolId } = await createSchool(actor, {
+    name: school.name,
+    short_name: school.short,
+    tiers: school.tiers,
+  });
   for (const college of COLLEGES.slice(0, 2 + (i % 2))) {
-    const { id: collegeId } = await db
-      .insertInto("colleges")
-      .values({
-        school_id: schoolId,
-        name: college.name,
-        kind: "college",
-        region: school.region,
-        directions: college.directions,
-      })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+    const collegeId = await createCollege(actor, {
+      school_id: schoolId,
+      name: college.name,
+      kind: "college",
+      region: school.region,
+      directions: college.directions,
+    });
     const host = `cs${i}.example`;
-    const { id: sourceId } = await db
-      .insertInto("sources")
-      .values({ college_id: collegeId, url: `https://${host}/tzgg.htm`, section: "通知公告" })
-      .returning("id")
-      .executeTakeFirstOrThrow();
+    const sourceId = await createSource(actor, {
+      college_id: collegeId,
+      url: `https://${host}/tzgg.htm`,
+      section: "通知公告",
+      browser: i === 2,
+      config: null,
+      unavailable_reason: i === 3 ? "示例：需要登录" : null,
+    });
 
     const plans = plansFor(i);
     const items = [

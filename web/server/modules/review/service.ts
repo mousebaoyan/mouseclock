@@ -1,6 +1,22 @@
 import type { Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
 
+export async function recordAudit(
+  trx: Transaction<DB>,
+  entry: {
+    user_id: number;
+    action: string;
+    target_type: "school" | "college" | "source";
+    target_id: number;
+    detail: Record<string, unknown>;
+  },
+) {
+  await trx
+    .insertInto("audit_log")
+    .values({ ...entry, detail: JSON.stringify(entry.detail) })
+    .execute();
+}
+
 // Why something waits on the review page instead of going on the table (design §8.3, §8.4).
 export type ReviewReason =
   // a field held back from a version

@@ -62,7 +62,10 @@
 | | `GET`、`POST`、`DELETE /me/tokens` | 个人令牌，只认网页会话 |
 | 数据下载 | `GET /export` | 全部项目和字段，登录后可用 |
 | 群汇总 | `GET /bot/summary` | 插件每天来取的汇总，用插件专用的令牌 |
-| 管理 | `/admin/sources`、`/admin/colleges`、`/admin/tags`、`/admin/users`、`/admin/settings` | 来源、院校清单、标签预设、修改权限、系统设置 |
+| 管理 | `GET`、`POST /admin/schools`，`GET`、`PATCH /admin/schools/{id}` | 管理员查询、新增、修改学校 |
+| | `GET`、`POST /admin/colleges`，`GET`、`PATCH /admin/colleges/{id}` | 管理员查询、新增、修改学院 |
+| | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
+| | `/admin/tags`、`/admin/users`、`/admin/settings` | 标签预设、修改权限、系统设置 |
 
 ## 4. MCP
 

@@ -1,11 +1,24 @@
-import { Form, Link, NavLink, useLocation } from "react-router";
+import {
+  Form,
+  isRouteErrorResponse,
+  Link,
+  NavLink,
+  useLocation,
+  useRouteError,
+} from "react-router";
 import { cn } from "~/cn";
 import { AlarmClock, LogOut } from "~/components/icons";
 import { buttonVariants } from "~/components/ui/button";
 import { UserAvatar } from "~/components/user-avatar";
 import { SITE_NAME } from "../../server/platform/site.ts";
 
-type Me = { id: number; display_name: string; avatar_url: string | null; frozen: boolean };
+type Me = {
+  id: number;
+  display_name: string;
+  avatar_url: string | null;
+  frozen: boolean;
+  can: { admin: boolean };
+};
 
 function navLink({ isActive }: { isActive: boolean }) {
   return cn(
@@ -17,6 +30,8 @@ function navLink({ isActive }: { isActive: boolean }) {
 // Pages join the nav as they are built.
 export function SiteHeader({ me }: { me: Me | null }) {
   const { pathname, search } = useLocation();
+  const error = useRouteError();
+  const loginNext = isRouteErrorResponse(error) && error.status === 404 ? "/" : pathname + search;
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-6xl items-center gap-2 px-3 sm:px-5">
@@ -28,6 +43,16 @@ export function SiteHeader({ me }: { me: Me | null }) {
           <NavLink to="/" end className={navLink}>
             总表
           </NavLink>
+          {me?.can.admin && (
+            <NavLink to="/admin/colleges" className={navLink}>
+              院校清单
+            </NavLink>
+          )}
+          {me?.can.admin && (
+            <NavLink to="/admin/sources" className={navLink}>
+              来源管理
+            </NavLink>
+          )}
         </nav>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {me ? (
@@ -48,10 +73,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
             </>
           ) : (
             // A page of the server, not of the router: it goes on to mousehole.
-            <a
-              href={`/login?next=${encodeURIComponent(pathname + search)}`}
-              className={buttonVariants()}
-            >
+            <a href={`/login?next=${encodeURIComponent(loginNext)}`} className={buttonVariants()}>
               登录
             </a>
           )}
