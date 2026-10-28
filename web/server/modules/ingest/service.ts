@@ -12,7 +12,7 @@ import {
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
 import { holdForReview, type ReviewItem } from "../review/service.ts";
-import { finishSourceCrawl, leaseSources } from "../sources/service.ts";
+import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
 const LEASE_MS = 2 * 3600_000;
@@ -78,24 +78,7 @@ export async function takeWork(tokenId: number, now: Date) {
       leaseEnd,
       MAX_SOURCES,
     );
-
-    const probes = await trx
-      .updateTable("source_probes")
-      .set({ leased_until: leaseEnd })
-      .where("id", "in", (qb) =>
-        qb
-          .selectFrom("source_probes")
-          .select("id")
-          .where("finished_at", "is", null)
-          .where((eb) => eb.or([eb("leased_until", "is", null), eb("leased_until", "<", now)]))
-          .orderBy("id")
-          .limit(MAX_PROBES)
-          .forUpdate()
-          .skipLocked(),
-      )
-      .returning(["id", "url", "browser"])
-      .returning(sql<Record<string, unknown> | null>`config`.as("config"))
-      .execute();
+    const probes = await leaseProbes(trx, now, leaseEnd, MAX_PROBES);
 
     return {
       sources: sources.map(({ crawled_at, ...source }) => ({
@@ -411,7 +394,10 @@ export async function recordRun(run: {
 
 export async function recordProbe(
   probeId: number,
-  report: {
+  {
+    usage,
+    ...result
+  }: {
     items: ListedItem[];
     suggested_config?: Record<string, unknown>;
     failure?: Failure;
@@ -420,28 +406,9 @@ export async function recordProbe(
   },
 ) {
   await db.transaction().execute(async (trx) => {
-    const probe = await trx
-      .selectFrom("source_probes")
-      .select("finished_at")
-      .where("id", "=", probeId)
-      .forUpdate()
-      .executeTakeFirst();
-    if (!probe) throw new AppError(404, "not_found", "试抓不存在");
-    // Already reported: a resend after a lost response changes nothing.
-    if (probe.finished_at) return;
-    await trx
-      .updateTable("source_probes")
-      .set({
-        finished_at: new Date(),
-        leased_until: null,
-        items: JSON.stringify(report.items),
-        suggested_config: report.suggested_config ? JSON.stringify(report.suggested_config) : null,
-        failure: report.failure ?? null,
-        detail: report.detail ?? "",
-      })
-      .where("id", "=", probeId)
-      .execute();
-    await recordUsage(trx, "probe", { probe_id: probeId }, report.usage);
+    if (await finishProbe(trx, probeId, result)) {
+      await recordUsage(trx, "probe", { probe_id: probeId }, usage);
+    }
   });
 }
 

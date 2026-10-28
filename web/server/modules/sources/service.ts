@@ -360,7 +360,8 @@ export async function updateSource(actor: Actor, id: number, values: z.infer<typ
   });
 }
 
-// The sources module owns scheduling state too; ingest calls it inside its own transaction.
+// The sources module owns scheduling state too; ingest calls it inside its own transaction,
+// for probes as well as sources.
 export async function leaseSources(
   trx: Transaction<DB>,
   now: Date,
@@ -394,4 +395,58 @@ export async function finishSourceCrawl(trx: Transaction<DB>, id: number, finish
     .set({ crawled_at: finishedAt, leased_until: null })
     .where("id", "=", id)
     .execute();
+}
+
+export async function leaseProbes(trx: Transaction<DB>, now: Date, leaseEnd: Date, limit: number) {
+  return trx
+    .updateTable("source_probes")
+    .set({ leased_until: leaseEnd })
+    .where("id", "in", (qb) =>
+      qb
+        .selectFrom("source_probes")
+        .select("id")
+        .where("finished_at", "is", null)
+        .where((eb) => eb.or([eb("leased_until", "is", null), eb("leased_until", "<", now)]))
+        .orderBy("id")
+        .limit(limit)
+        .forUpdate()
+        .skipLocked(),
+    )
+    .returning(["id", "url", "browser"])
+    .returning(sql<Record<string, unknown> | null>`config`.as("config"))
+    .execute();
+}
+
+// False when the probe was already finished: a resend after a lost response changes nothing.
+export async function finishProbe(
+  trx: Transaction<DB>,
+  id: number,
+  result: {
+    items: { url: string; title: string; published_on?: string }[];
+    suggested_config?: Record<string, unknown>;
+    failure?: string;
+    detail?: string;
+  },
+) {
+  const probe = await trx
+    .selectFrom("source_probes")
+    .select("finished_at")
+    .where("id", "=", id)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!probe) throw new AppError(404, "not_found", "试抓不存在");
+  if (probe.finished_at) return false;
+  await trx
+    .updateTable("source_probes")
+    .set({
+      finished_at: new Date(),
+      leased_until: null,
+      items: JSON.stringify(result.items),
+      suggested_config: result.suggested_config ? JSON.stringify(result.suggested_config) : null,
+      failure: result.failure ?? null,
+      detail: result.detail ?? "",
+    })
+    .where("id", "=", id)
+    .execute();
+  return true;
 }
