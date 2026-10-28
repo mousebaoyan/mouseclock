@@ -6,6 +6,7 @@ import { can } from "../../platform/access.ts";
 import { env } from "../../platform/env.ts";
 import { AppError } from "../../platform/errors.ts";
 import {
+  bearerToken,
   clientIp,
   createRouter,
   errorResponse,
@@ -84,7 +85,9 @@ export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
     c.set("sessionId", known.sessionId);
     return next();
   }
-  const token = getCookie(c, SESSION_COOKIE);
+  // A request with a bearer token skips the Origin check (app.ts), so its cookie can't speak for
+  // it: it is only who its token says, and personal tokens (design §13) aren't issued yet.
+  const token = bearerToken(c) ? undefined : getCookie(c, SESSION_COOKIE);
   const found = token ? await resolveSession(token) : null;
   c.set("viewer", found?.viewer ?? null);
   c.set("sessionId", found?.id ?? null);

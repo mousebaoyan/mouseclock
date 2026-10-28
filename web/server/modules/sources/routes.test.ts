@@ -1,6 +1,5 @@
 import { testClient } from "hono/testing";
 import { beforeAll, expect, test } from "vitest";
-import { createApi } from "../../../app/api.server.ts";
 import { fakeUsers, type FakeUser } from "../../../test/fake-mousehole.ts";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
@@ -21,22 +20,38 @@ beforeAll(async () => {
   adminId = session.viewer.id;
 });
 
-const endpoints = [
+// Valid bodies, so what turns each request down is who sends it.
+const endpoints: [string, string, object?][] = [
   ["GET", "schools"],
-  ["POST", "schools"],
+  ["POST", "schools", { name: "某大学", short_name: "", tiers: [] }],
   ["GET", "schools/1"],
-  ["PATCH", "schools/1"],
+  ["PATCH", "schools/1", { short_name: "某大" }],
   ["GET", "colleges"],
-  ["POST", "colleges"],
+  [
+    "POST",
+    "colleges",
+    { school_id: 1, name: "计算机学院", kind: "college", region: "北京", directions: [] },
+  ],
   ["GET", "colleges/1"],
-  ["PATCH", "colleges/1"],
+  ["PATCH", "colleges/1", { region: "上海" }],
   ["GET", "sources"],
-  ["POST", "sources"],
+  [
+    "POST",
+    "sources",
+    {
+      college_id: 1,
+      url: "https://some.example/list",
+      section: "",
+      browser: false,
+      config: null,
+      unavailable_reason: null,
+    },
+  ],
   ["GET", "sources/1"],
-  ["PATCH", "sources/1"],
+  ["PATCH", "sources/1", { unavailable_reason: "需要登录" }],
 ];
 
-test("every management endpoint refuses guests, non-admins, restricted admins and bearer requests", async () => {
+test("every management endpoint refuses guests, non-admins and restricted admins", async () => {
   const profiles: { profile: FakeUser; status: number; code: string }[] = [
     { profile: fakeUsers[0], status: 403, code: "forbidden" },
     { profile: fakeUsers[1], status: 403, code: "forbidden" },
@@ -63,7 +78,7 @@ test("every management endpoint refuses guests, non-admins, restricted admins an
     )),
   ];
   for (const person of people) {
-    for (const [method, path] of endpoints) {
+    for (const [method, path, body] of endpoints) {
       const res = await app.request(`/api/v1/admin/${path}`, {
         method,
         headers: {
@@ -71,47 +86,12 @@ test("every management endpoint refuses guests, non-admins, restricted admins an
           origin: env.PUBLIC_URL,
           "content-type": "application/json",
         },
-        ...(method === "GET" ? {} : { body: "{}" }),
+        ...(body ? { body: JSON.stringify(body) } : {}),
       });
       expect(res.status, `${method} ${path}`).toBe(person.status);
       expect(await res.json()).toMatchObject({ error: { code: person.code } });
     }
   }
-  for (const [method, path] of endpoints) {
-    const res = await app.request(`/api/v1/admin/${path}`, {
-      method,
-      headers: {
-        ...admin.headers,
-        authorization: "Bearer personal-or-crawler",
-        "content-type": "application/json",
-      },
-      ...(method === "GET" ? {} : { body: "{}" }),
-    });
-    expect(res.status).toBe(403);
-  }
-  expect(await db.selectFrom("audit_log").select("id").execute()).toEqual([]);
-});
-
-test("in-process page calls keep bearer headers so management writes cannot bypass API permissions", async () => {
-  const session = await resolveSession(admin.headers.cookie.slice("mouseclock_session=".length));
-  if (!session) throw new Error("Admin session missing");
-  const pageApi = createApi(
-    new Request(`${env.PUBLIC_URL}/admin/colleges`, {
-      method: "POST",
-      headers: {
-        ...admin.headers,
-        authorization: "Bearer personal",
-      },
-    }),
-    { viewer: session.viewer, sessionId: session.id },
-  );
-  const response = await pageApi.admin.schools.$post({
-    json: { name: "不应写入的大学", short_name: "", tiers: [] },
-  });
-  expect(response.status).toBe(403);
-  expect(
-    await db.selectFrom("schools").select("id").where("name", "=", "不应写入的大学").execute(),
-  ).toEqual([]);
   expect(await db.selectFrom("audit_log").select("id").execute()).toEqual([]);
 });
 

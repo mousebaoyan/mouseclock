@@ -3,7 +3,7 @@ import { createContext } from "react-router";
 import { app, type ApiType } from "../server/app.ts";
 import { asVisitor, type Visitor } from "../server/modules/accounts/routes.ts";
 
-const FORWARDED = ["cookie", "user-agent", "x-real-ip", "origin", "authorization"];
+const FORWARDED = ["cookie", "user-agent", "x-real-ip", "origin"];
 
 // Loaders and actions call /api/v1 in-process as the visitor, so pages follow the same rules as
 // the API and go through the same services (AGENTS.md, 分层).

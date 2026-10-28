@@ -203,6 +203,16 @@ test("logging out ends the session, and the next page doesn't log straight back 
   });
   expect(forged.status).toBe(403);
   expect(await me(jar)).toMatchObject({ display_name: "仓鼠" });
+  // A bearer token skips that check, so the cookie mustn't speak for its request.
+  await app.request("/api/v1/auth/logout", {
+    method: "POST",
+    headers: {
+      cookie: cookieHeader(jar),
+      origin: "https://elsewhere.example",
+      authorization: "Bearer forged",
+    },
+  });
+  expect(await me(jar)).toMatchObject({ display_name: "仓鼠" });
 
   const res = await visit(jar, "/api/v1/auth/logout", {
     method: "POST",
