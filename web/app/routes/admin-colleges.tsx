@@ -181,10 +181,14 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                   </p>
                 </div>
                 <div className="flex gap-3 text-sm">
-                  <Link to={`?school_id=${s.id}`} className={linkClass}>
+                  <Link to={`?school_id=${s.id}`} preventScrollReset className={linkClass}>
                     管理学院
                   </Link>
-                  <Link to={`?school_id=${s.id}&edit_school=1`} className={linkClass}>
+                  <Link
+                    to={`?school_id=${s.id}&edit_school=1`}
+                    preventScrollReset
+                    className={linkClass}
+                  >
                     编辑学校
                   </Link>
                 </div>
