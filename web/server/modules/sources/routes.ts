@@ -16,6 +16,8 @@ import {
   SourceInput,
   SourcePatch,
   SourceQuery,
+  PublicCollegeDetail,
+  PublicCollegeList,
 } from "./schemas.ts";
 import {
   createCollege,
@@ -31,6 +33,8 @@ import {
   updateCollege,
   updateSchool,
   updateSource,
+  getPublicCollege,
+  listPublicColleges,
 } from "./service.ts";
 
 const errors = {
@@ -45,6 +49,39 @@ function json<T extends z.ZodType>(schema: T) {
 }
 
 export const sourcesRoutes = createRouter()
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/colleges",
+      summary: "院校清单",
+      request: {},
+      responses: {
+        200: { description: "按学校分组的学院清单", content: json(PublicCollegeList) },
+        401: errorResponse("没有登录"),
+      },
+    }),
+    async (c) => {
+      authorize(c, "read");
+      return c.json(await listPublicColleges(), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/colleges/{id}",
+      summary: "学院详情",
+      request: { params: IdParam },
+      responses: {
+        200: { description: "学院、来源和历年项目", content: json(PublicCollegeDetail) },
+        401: errorResponse("没有登录"),
+        404: errorResponse("学院不存在"),
+      },
+    }),
+    async (c) => {
+      authorize(c, "read");
+      return c.json(await getPublicCollege(c.req.valid("param").id), 200);
+    },
+  )
   .openapi(
     createRoute({
       method: "get",

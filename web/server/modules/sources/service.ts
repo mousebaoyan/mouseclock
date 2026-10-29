@@ -6,6 +6,7 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
+import { ApplyValue, Kind } from "../programs/schemas.ts";
 import {
   PAGE_SIZE,
   type SchoolInput,
@@ -165,6 +166,177 @@ export async function getCollege(id: number) {
   return row;
 }
 
+type PublicApplyField = { key: string; value: DB["program_fields"]["value"] };
+
+function applyOf(fields: PublicApplyField[]) {
+  const value: Record<string, DB["program_fields"]["value"]> = {};
+  for (const field of fields) value[field.key.slice("apply:".length)] = field.value;
+  if (Object.keys(value).length === 0) return null;
+  const parsed = ApplyValue.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function statusOf(start: Date | null, deadline: Date | null, now: Date) {
+  const nowMs = now.getTime();
+  if (deadline && deadline.getTime() <= nowMs) return "closed" as const;
+  if (start && start.getTime() > nowMs) return "upcoming" as const;
+  return start === null && deadline === null ? null : ("open" as const);
+}
+
+export async function listPublicColleges() {
+  const rows = await db
+    .selectFrom("colleges")
+    .innerJoin("schools", "schools.id", "colleges.school_id")
+    .select([
+      "schools.id as school_id",
+      "schools.name as school_name",
+      "schools.short_name as school_short_name",
+      "schools.tiers as school_tiers",
+      "colleges.id",
+      "colleges.name",
+      "colleges.kind",
+      "colleges.region",
+      "colleges.directions",
+    ])
+    .orderBy("schools.name")
+    .orderBy("colleges.name")
+    .orderBy("colleges.id")
+    .execute();
+
+  const schools = new Map<
+    number,
+    {
+      id: number;
+      name: string;
+      short_name: string;
+      tiers: string[];
+      colleges: Array<{
+        id: number;
+        name: string;
+        kind: string;
+        region: string;
+        directions: string[];
+      }>;
+    }
+  >();
+  for (const row of rows) {
+    let school = schools.get(row.school_id);
+    if (!school) {
+      school = {
+        id: row.school_id,
+        name: row.school_name,
+        short_name: row.school_short_name,
+        tiers: row.school_tiers,
+        colleges: [],
+      };
+      schools.set(row.school_id, school);
+    }
+    school.colleges.push({
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      region: row.region,
+      directions: row.directions,
+    });
+  }
+  return { schools: [...schools.values()] };
+}
+
+export async function getPublicCollege(id: number, now = new Date()) {
+  const college = await db
+    .selectFrom("colleges")
+    .innerJoin("schools", "schools.id", "colleges.school_id")
+    .select([
+      "colleges.id",
+      "colleges.name",
+      "colleges.kind",
+      "colleges.region",
+      "colleges.directions",
+      "schools.id as school_id",
+      "schools.name as school_name",
+      "schools.short_name as school_short_name",
+      "schools.tiers as school_tiers",
+    ])
+    .where("colleges.id", "=", id)
+    .executeTakeFirst();
+  if (!college) throw new AppError(404, "not_found", "学院不存在");
+
+  const [sources, programs] = await Promise.all([
+    db
+      .selectFrom("sources")
+      .select(["id", "url", "section", "unavailable_reason"])
+      .where("college_id", "=", id)
+      .orderBy("id")
+      .execute(),
+    db
+      .selectFrom("programs")
+      .select(["id", "cohort", "kind", "name", "apply_start", "apply_deadline"])
+      .where("college_id", "=", id)
+      .where("deleted_at", "is", null)
+      .orderBy("cohort", "desc")
+      .orderBy("apply_deadline", (order) => order.asc().nullsLast())
+      .orderBy("id")
+      .execute(),
+  ]);
+  const fields = programs.length
+    ? await db
+        .selectFrom("program_fields")
+        .select(["program_id", "key", "value"])
+        .where(
+          "program_id",
+          "in",
+          programs.map((program) => program.id),
+        )
+        .where("key", "in", ["apply:start", "apply:end", "apply:rolling"])
+        .execute()
+    : [];
+  const fieldsByProgram = new Map<number, PublicApplyField[]>();
+  for (const field of fields) {
+    const current = fieldsByProgram.get(field.program_id) ?? [];
+    current.push(field);
+    fieldsByProgram.set(field.program_id, current);
+  }
+
+  const programItems = programs.map((program) => {
+    const applyStart = program.apply_start ? unix(program.apply_start) : null;
+    const applyDeadline = program.apply_deadline ? unix(program.apply_deadline) : null;
+    return {
+      id: program.id,
+      cohort: program.cohort,
+      kind: Kind.parse(program.kind),
+      name: program.name,
+      apply: applyOf(fieldsByProgram.get(program.id) ?? []),
+      apply_start: applyStart,
+      apply_deadline: applyDeadline,
+      status: statusOf(program.apply_start, program.apply_deadline, now),
+    };
+  });
+  const grouped = new Map<number, typeof programItems>();
+  for (const program of programItems) {
+    const current = grouped.get(program.cohort) ?? [];
+    current.push(program);
+    grouped.set(program.cohort, current);
+  }
+
+  return {
+    id: college.id,
+    school: {
+      id: college.school_id,
+      name: college.school_name,
+      short_name: college.school_short_name,
+      tiers: college.school_tiers,
+    },
+    name: college.name,
+    kind: college.kind,
+    region: college.region,
+    directions: college.directions,
+    sources,
+    programs: [...grouped].map(([cohort, cohortPrograms]) => ({
+      cohort,
+      programs: cohortPrograms,
+    })),
+  };
+}
 export async function createCollege(actor: Actor, values: z.infer<typeof CollegeInput>) {
   return write(async (trx) => {
     const row = await trx
