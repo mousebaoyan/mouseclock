@@ -27,13 +27,7 @@ const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
 
 export type Failure =
-  | "timeout"
-  | "unreachable"
-  | "disallowed"
-  | "too_many_redirects"
-  | "http_status"
-  | "no_items"
-  | "error";
+  "timeout" | "unreachable" | "too_many_redirects" | "http_status" | "no_items" | "error";
 export type Usage = { model: string; input_tokens: number; output_tokens: number };
 export type ListedItem = { url: string; title: string; published_on?: string };
 
