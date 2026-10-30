@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { Int, IntParam, UnixSeconds } from "../../platform/http.ts";
-import { ApplyValue, Kind } from "../programs/schemas.ts";
+import { ApplyValue, Kind, TimeValue } from "../programs/schemas.ts";
 
 export const PAGE_SIZE = 20;
 export const PageQuery = z.object({
@@ -84,12 +84,17 @@ export function Page<T extends z.ZodType>(item: T) {
 
 // Public college pages keep the school grouping and the original application window visible.
 // The computed instants are included for status and countdowns; pages still display `apply`.
+export const UpcomingCollegeProgram = z.object({
+  kind: Kind,
+  start: TimeValue,
+});
 export const PublicCollege = z.object({
   id: Int,
   name: z.string(),
   kind: z.string(),
   region: z.string(),
   directions: z.array(z.string()),
+  next_program: z.union([UpcomingCollegeProgram, z.null()]),
 });
 export const PublicSchool = z.object({
   id: Int,
@@ -111,7 +116,7 @@ export const PublicProgram = z.object({
   cohort: Int,
   kind: Kind,
   name: z.string(),
-  apply: ApplyValue.nullable(),
+  apply: z.union([ApplyValue, z.null()]),
   apply_start: UnixSeconds.nullable(),
   apply_deadline: UnixSeconds.nullable(),
   status: ProgramStatus.nullable(),

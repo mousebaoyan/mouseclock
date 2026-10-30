@@ -1,11 +1,10 @@
+import type { InferResponseType } from "hono/client";
 import { Link } from "react-router";
-import { apiContext } from "../api.server.ts";
-import {
-  readPublicApi,
-  publicCollegeListSchema,
-  type PublicCollegeList,
-} from "../colleges.server.ts";
+import { apiContext, readApi, type createApi } from "../api.server.ts";
+import { beijingYear, formatTime } from "../time.ts";
 import type { Route } from "./+types/colleges.ts";
+
+type CollegeList = InferResponseType<ReturnType<typeof createApi>["colleges"]["$get"], 200>;
 
 const TIER_LABELS: Record<string, string> = {
   c9: "C9",
@@ -19,6 +18,13 @@ const KIND_LABELS: Record<string, string> = {
   graduate_school: "研究生院",
 };
 
+const PROGRAM_KIND_LABELS = {
+  winter_camp: "冬令营",
+  summer_camp: "夏令营",
+  pre_recommendation: "预推免",
+  september_round: "九推",
+};
+
 export function meta() {
   return [
     { title: "院校清单 · 鼠钟" },
@@ -26,11 +32,12 @@ export function meta() {
   ];
 }
 
-export async function loader({ context }: Route.LoaderArgs): Promise<PublicCollegeList> {
-  return readPublicApi(await context.get(apiContext).colleges.$get(), publicCollegeListSchema);
+export async function loader({ context }: Route.LoaderArgs) {
+  const colleges = await readApi<CollegeList>(await context.get(apiContext).colleges.$get());
+  return { ...colleges, thisYear: beijingYear(new Date()) };
 }
 
-export default function Colleges({ loaderData }: { loaderData: PublicCollegeList }) {
+export default function Colleges({ loaderData }: Route.ComponentProps) {
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-3 py-6 sm:px-5">
       <header>
@@ -60,21 +67,41 @@ export default function Colleges({ loaderData }: { loaderData: PublicCollegeList
               </div>
               <ul className="divide-y divide-border">
                 {school.colleges.map((college) => (
-                  <li key={college.id} className="py-3">
-                    <Link
-                      to={`/colleges/${college.id}`}
-                      className="font-medium text-link underline-offset-4 hover:underline"
-                    >
-                      {college.name}
-                    </Link>
-                    <span className="ml-2 text-sm text-muted-foreground">
-                      {KIND_LABELS[college.kind] ?? college.kind} · {college.region}
-                    </span>
-                    {college.directions.length > 0 && (
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        方向：{college.directions.join("、")}
-                      </p>
-                    )}
+                  <li
+                    key={college.id}
+                    className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:gap-6"
+                  >
+                    <div className="min-w-0">
+                      <Link
+                        to={`/colleges/${college.id}`}
+                        className="font-medium text-link underline-offset-4 hover:underline"
+                      >
+                        {college.name}
+                      </Link>
+                      <span className="ml-2 text-sm text-muted-foreground">
+                        {KIND_LABELS[college.kind] ?? college.kind} · {college.region}
+                      </span>
+                      {college.directions.length > 0 && (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          方向：{college.directions.join("、")}
+                        </p>
+                      )}
+                    </div>
+                    <div className="shrink-0 text-sm sm:text-right">
+                      {college.next_program ? (
+                        <p className="flex items-center gap-2 whitespace-nowrap sm:justify-end">
+                          <span className="font-medium text-foreground">
+                            {formatTime(college.next_program.start, loaderData.thisYear)}
+                          </span>
+                          <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">
+                            {PROGRAM_KIND_LABELS[college.next_program.kind]}
+                          </span>
+                          <span className="text-xs text-muted-foreground">开始报名</span>
+                        </p>
+                      ) : (
+                        <p className="text-muted-foreground">近期没有需要关注的动态哦~</p>
+                      )}
+                    </div>
                   </li>
                 ))}
               </ul>

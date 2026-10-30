@@ -1,4 +1,6 @@
 import type { TimeValue } from "../server/modules/programs/schemas.ts";
+import type { Status } from "../server/modules/programs/time.ts";
+export { statusOf, type Status } from "../server/modules/programs/time.ts";
 
 // Times as the notice wrote them (design §8.2): pages never show the instants worked out for
 // sorting and reminders. The year is left out when it is `thisYear`, as people write dates.
@@ -28,23 +30,11 @@ export function formatWindow(window: { start?: TimeValue; end?: TimeValue }, thi
   return start ? `${start} 起` : end ? `至 ${end}` : "";
 }
 
-// Design §9.1, from the instants the API gives in Unix seconds. With neither, the notice gave
-// no times, and the page says so rather than guess.
-export type Status = "upcoming" | "open" | "closed";
 export const STATUS_LABELS: Record<Status, string> = {
   upcoming: "未开始",
   open: "报名中",
   closed: "已截止",
 };
-
-export function statusOf(
-  program: { apply_start: number | null; apply_deadline: number | null },
-  now: number,
-): Status | null {
-  if (program.apply_deadline !== null && program.apply_deadline <= now) return "closed";
-  if (program.apply_start !== null && program.apply_start > now) return "upcoming";
-  return program.apply_start === null && program.apply_deadline === null ? null : "open";
-}
 
 // The year in Beijing, for formatTime.
 export function beijingYear(now: Date) {

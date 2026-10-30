@@ -58,6 +58,7 @@ export const sourcesRoutes = createRouter()
       responses: {
         200: { description: "按学校分组的学院清单", content: json(PublicCollegeList) },
         401: errorResponse("没有登录"),
+        403: errorResponse("账号已冻结"),
       },
     }),
     async (c) => {
@@ -73,7 +74,9 @@ export const sourcesRoutes = createRouter()
       request: { params: IdParam },
       responses: {
         200: { description: "学院、来源和历年项目", content: json(PublicCollegeDetail) },
+        400: errorResponse("学院编号格式有误"),
         401: errorResponse("没有登录"),
+        403: errorResponse("账号已冻结"),
         404: errorResponse("学院不存在"),
       },
     }),
