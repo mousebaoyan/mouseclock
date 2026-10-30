@@ -548,3 +548,148 @@ test("college activity is absent when no eligible future application remains", a
     schools: [{ colleges: [{ id: seeded.collegeId, next_program: null }] }],
   });
 });
+
+test("project origins prefer the latest application notice, deduplicate snapshots and retain related notices", async () => {
+  const seeded = await fixture();
+  const first = await program(seeded, { cohort: 2027, kind: "summer_camp", name: "夏令营" });
+  const second = await program(seeded, {
+    cohort: 2027,
+    kind: "pre_recommendation",
+    name: "预推免",
+  });
+  const original = await db
+    .selectFrom("snapshots")
+    .innerJoin("notices", "notices.id", "snapshots.notice_id")
+    .select(["notices.id", "notices.url", "notices.title"])
+    .where("snapshots.id", "=", seeded.snapshotId)
+    .executeTakeFirstOrThrow();
+  const notices = await db
+    .insertInto("notices")
+    .values([
+      {
+        source_id: seeded.sourceId,
+        url: "https://college.example/notices/new-call",
+        title: "新版报名通知",
+        published_on: "2026-05-02",
+      },
+      {
+        source_id: seeded.sourceId,
+        url: "https://college.example/notices/extension",
+        title: "延期通知",
+        published_on: "2026-05-03",
+      },
+      {
+        source_id: seeded.sourceId,
+        url: "https://college.example/notices/results",
+        title: "结果通知",
+        published_on: "2026-05-04",
+        removed_at: now,
+      },
+    ])
+    .returning(["id", "url", "title"])
+    .execute();
+  for (const [index, notice] of notices.entries()) {
+    const snapshots = await db
+      .insertInto("snapshots")
+      .values([
+        { notice_id: notice.id, fetched_at: now, html: "<p>原文</p>", text: "原文" },
+        { notice_id: notice.id, fetched_at: now, html: "<p>更新原文</p>", text: "更新原文" },
+      ])
+      .returning("id")
+      .execute();
+    for (const [snapshotIndex, snapshot] of snapshots.entries()) {
+      await db
+        .insertInto("program_versions")
+        .values({
+          program_id: first,
+          snapshot_id: snapshot.id,
+          number: 2 + index * 2 + snapshotIndex,
+          role: index === 0 ? "call" : index === 1 ? "update" : "result",
+          fields: {},
+          changes: [],
+        })
+        .execute();
+    }
+  }
+  const res = await api.colleges[":id"].$get({ param: { id: String(seeded.collegeId) } }, member);
+  expect(res.status).toBe(200);
+  if (res.status !== 200) throw new Error("College detail failed");
+  const projects = (await res.json()).programs.flatMap((group) => group.programs);
+  expect(projects.find((item) => item.id === first)?.notices).toEqual([
+    { ...notices[0], role: "call", removed: false },
+    { ...original, role: "call", removed: false },
+    { ...notices[2], role: "result", removed: true },
+    { ...notices[1], role: "update", removed: false },
+  ]);
+  expect(projects.find((item) => item.id === second)?.notices).toEqual([
+    { ...original, role: "call", removed: false },
+  ]);
+});
+
+test("project origins use the latest related notice when no application version exists", async () => {
+  const seeded = await fixture();
+  const id = await program(seeded, { cohort: 2027, kind: "summer_camp", name: "仅有补充信息" });
+  await db
+    .updateTable("program_versions")
+    .set({ role: "update" })
+    .where("program_id", "=", id)
+    .execute();
+  const notice = await db
+    .insertInto("notices")
+    .values({
+      source_id: seeded.sourceId,
+      url: "https://college.example/results",
+      title: "考核结果",
+    })
+    .returning(["id", "url", "title"])
+    .executeTakeFirstOrThrow();
+  const snapshot = await db
+    .insertInto("snapshots")
+    .values({
+      notice_id: notice.id,
+      fetched_at: now,
+      html: "<p>结果</p>",
+      text: "结果",
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  await db
+    .insertInto("program_versions")
+    .values({
+      program_id: id,
+      snapshot_id: snapshot.id,
+      number: 2,
+      role: "result",
+      fields: {},
+      changes: [],
+    })
+    .execute();
+  const res = await api.colleges[":id"].$get({ param: { id: String(seeded.collegeId) } }, member);
+  expect(res.status).toBe(200);
+  if (res.status !== 200) throw new Error("College detail failed");
+  const projects = (await res.json()).programs.flatMap((group) => group.programs);
+  expect(projects.find((item) => item.id === id)?.notices[0]).toEqual({
+    ...notice,
+    role: "result",
+    removed: false,
+  });
+});
+
+test("a project without versions has no fabricated original notice", async () => {
+  const seeded = await fixture();
+  const project = await db
+    .insertInto("programs")
+    .values({
+      college_id: seeded.collegeId,
+      cohort: 2027,
+      kind: "summer_camp",
+      name: "暂无通知",
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const res = await api.colleges[":id"].$get({ param: { id: String(seeded.collegeId) } }, member);
+  expect(res.status).toBe(200);
+  expect(await res.json()).toMatchObject({
+    programs: [{ programs: [{ id: project.id, notices: [] }] }],
+  });
+});

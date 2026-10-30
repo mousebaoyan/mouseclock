@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { Int, IntParam, UnixSeconds } from "../../platform/http.ts";
-import { ApplyValue, Kind, TimeValue } from "../programs/schemas.ts";
+import { ApplyValue, Kind, Role, TimeValue } from "../programs/schemas.ts";
 
 export const PAGE_SIZE = 20;
 export const PageQuery = z.object({
@@ -111,6 +111,13 @@ export const PublicSource = z.object({
   unavailable_reason: z.string().nullable(),
 });
 export const ProgramStatus = z.enum(["upcoming", "open", "closed"]);
+export const ProgramNotice = z.object({
+  id: Int,
+  title: z.string(),
+  url: z.string(),
+  role: Role,
+  removed: z.boolean(),
+});
 export const PublicProgram = z.object({
   id: Int,
   cohort: Int,
@@ -120,6 +127,7 @@ export const PublicProgram = z.object({
   apply_start: UnixSeconds.nullable(),
   apply_deadline: UnixSeconds.nullable(),
   status: ProgramStatus.nullable(),
+  notices: z.array(ProgramNotice),
 });
 export const PublicProgramCohort = z.object({
   cohort: Int,

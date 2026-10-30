@@ -1,5 +1,5 @@
 import { sql, type Transaction } from "kysely";
-import { jsonObjectFrom } from "kysely/helpers/postgres";
+import { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/postgres";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
@@ -8,7 +8,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
 import { statusOf } from "../programs/time.ts";
-import type { ApplyValue, Kind, TimeValue } from "../programs/schemas.ts";
+import type { ApplyValue, Kind, Role, TimeValue } from "../programs/schemas.ts";
 import {
   PAGE_SIZE,
   type SchoolInput,
@@ -274,6 +274,26 @@ export async function getPublicCollege(id: number, now = new Date()) {
             and field.key in ('apply:start', 'apply:end', 'apply:rolling')
         )`.as("apply"),
       )
+      .select((eb) =>
+        jsonArrayFrom(
+          eb
+            .selectFrom("program_versions as version")
+            .innerJoin("snapshots", "snapshots.id", "version.snapshot_id")
+            .innerJoin("notices", "notices.id", "snapshots.notice_id")
+            .select([
+              "notices.id",
+              "notices.title",
+              "notices.url",
+              "version.number as version_number",
+              sql<Role>`version.role`.as("role"),
+              sql<boolean>`notices.removed_at is not null`.as("removed"),
+            ])
+            .whereRef("version.program_id", "=", "programs.id")
+            .distinctOn("notices.id")
+            .orderBy("notices.id")
+            .orderBy("version.number", "desc"),
+        ).as("notices"),
+      )
       .where("college_id", "=", id)
       .where("deleted_at", "is", null)
       .orderBy("cohort", "desc")
@@ -293,6 +313,19 @@ export async function getPublicCollege(id: number, now = new Date()) {
       apply_start: applyStart,
       apply_deadline: applyDeadline,
       status: statusOf({ apply_start: applyStart, apply_deadline: applyDeadline }, unix(now)),
+      notices: program.notices
+        .sort(
+          (a, b) =>
+            Number(b.role === "call") - Number(a.role === "call") ||
+            b.version_number - a.version_number,
+        )
+        .map(({ id: noticeId, title, url, role, removed }) => ({
+          id: noticeId,
+          title,
+          url,
+          role,
+          removed,
+        })),
     };
   });
   const grouped = new Map<number, typeof programItems>();

@@ -1,7 +1,7 @@
 import type { InferResponseType } from "hono/client";
 import { Link } from "react-router";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import type { ApplyValue } from "../../server/modules/programs/schemas.ts";
+import type { ApplyValue, Role } from "../../server/modules/programs/schemas.ts";
 import { formatWindow, beijingYear, STATUS_LABELS } from "../time.ts";
 import type { Route } from "./+types/college-detail.ts";
 
@@ -15,6 +15,11 @@ const KIND_LABELS: Record<string, string> = {
   summer_camp: "夏令营",
   pre_recommendation: "预推免",
   september_round: "九推",
+};
+const NOTICE_ROLE_LABELS: Record<Role, string> = {
+  call: "报名通知",
+  update: "补充通知",
+  result: "结果通知",
 };
 const COLLEGE_KIND_LABELS: Record<string, string> = {
   college: "学院",
@@ -64,9 +69,12 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
         </p>
       </header>
       <section className="rounded-xl border border-border bg-card p-4 sm:p-5">
-        <h2 className="text-lg font-semibold">通知来源</h2>
+        <h2 className="text-lg font-semibold">学院通知栏目</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          学院发布通知的栏目入口，具体项目的原文见下方。
+        </p>
         {college.sources.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">还没有接入通知来源。</p>
+          <p className="mt-3 text-sm text-muted-foreground">还没有接入通知栏目。</p>
         ) : (
           <ul className="mt-3 divide-y divide-border">
             {college.sources.map((source) => (
@@ -123,6 +131,36 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
                       <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">
                         {program.status ? STATUS_LABELS[program.status] : "未说明"}
                       </span>
+                    </div>
+                    <div className="mt-3 text-sm">
+                      <p className="text-muted-foreground">原文出处</p>
+                      {program.notices.length > 0 ? (
+                        <ul className="mt-1 space-y-2">
+                          {program.notices.map((notice) => (
+                            <li
+                              key={notice.id}
+                              className="flex flex-wrap items-baseline gap-x-2 gap-y-1"
+                            >
+                              <span className="text-xs text-muted-foreground">
+                                {NOTICE_ROLE_LABELS[notice.role]}
+                              </span>
+                              <a
+                                href={notice.url}
+                                target="_blank"
+                                rel="nofollow noopener"
+                                className="min-w-0 break-words text-link underline-offset-4 hover:underline"
+                              >
+                                {notice.title}
+                              </a>
+                              {notice.removed && (
+                                <span className="text-xs text-warning">原文已删除</span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="mt-1 text-muted-foreground">暂无原文链接。</p>
+                      )}
                     </div>
                     <p className="mt-3 text-sm">
                       <span className="text-muted-foreground">报名时间：</span>
