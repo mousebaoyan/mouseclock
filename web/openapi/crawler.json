@@ -1212,7 +1212,6 @@
         "enum": [
           "timeout",
           "unreachable",
-          "disallowed",
           "too_many_redirects",
           "http_status",
           "no_items",
@@ -1234,7 +1233,7 @@
                 "$ref": "#/components/schemas/Failure"
               },
               {
-                "description": "前四种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
+                "description": "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
               }
             ]
           },
@@ -1269,7 +1268,7 @@
                 "$ref": "#/components/schemas/Failure"
               },
               {
-                "description": "前四种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
+                "description": "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
               }
             ]
           },

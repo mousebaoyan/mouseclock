@@ -82,8 +82,8 @@ CREATE TABLE crawl_runs (
   source_id        integer NOT NULL REFERENCES sources (id),
   started_at       timestamptz NOT NULL,
   finished_at      timestamptz NOT NULL,
-  failure          text    CHECK (failure IN ('timeout', 'unreachable', 'disallowed',
-                     'too_many_redirects', 'http_status', 'no_items', 'error')), -- NULL: the list was read
+  failure          text    CHECK (failure IN ('timeout', 'unreachable', 'too_many_redirects',
+                     'http_status', 'no_items', 'error')), -- NULL: the list was read
   detail           text    NOT NULL DEFAULT '', -- what failed, as `HTTP 403`
   listed           integer NOT NULL,
   new_count        integer NOT NULL,
