@@ -19,6 +19,27 @@
 | [接口](docs/api.md) | 接口约定和清单、鼠洞登录、MCP、抓取节点 |
 | [开发约定](docs/development.md) | 模块划分、抓取和判别的写法、时间、日志、测试、术语 |
 
+## 本地 Docker 预览
+
+使用 Docker Compose 同时启动网站和 PostgreSQL，无需在宿主机安装 Node。Windows 可在 WSL 的 Ubuntu 中运行以下命令：
+
+```sh
+cd web
+docker compose -f compose.yaml -f compose.preview.yaml up -d --build --wait
+# 仅首次运行、数据库为空时填入示例数据：
+docker compose -f compose.yaml -f compose.preview.yaml exec web pnpm seed
+```
+
+访问 `http://localhost:5173/colleges`，点击「登录」后选择假用户「鼠鼠」。示例数据均为虚构；该配置用于本机开发预览。镜像使用 DaoCloud 缓存，依赖使用 npmmirror，数据库保存在 Docker 卷中。
+
+环境配置、依赖、构建缓存、日志和测试报告不提交；本地导出数据、截图及临时文件放在 `.local/`，由 Git 忽略。模拟账号和示例数据脚本随代码保留，运行生成的数据库记录留在 Docker 命名卷中。
+
+停止预览并保留数据：
+
+```sh
+docker compose -f compose.yaml -f compose.preview.yaml down
+```
+
 ## 参与开发
 
 欢迎一起做。怎么认领任务、提交 PR 见 [CONTRIBUTING.md](CONTRIBUTING.md)；开发的规矩和文档索引见 [AGENTS.md](AGENTS.md)，人和编码 agent 都适用。
