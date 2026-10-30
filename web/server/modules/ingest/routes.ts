@@ -57,18 +57,10 @@ const Config = z
   .record(z.string(), z.unknown())
   .openapi("Config", { description: "抓取节点自己的配置，格式由抓取节点定" });
 const Failure = z
-  .enum([
-    "timeout",
-    "unreachable",
-    "disallowed",
-    "too_many_redirects",
-    "http_status",
-    "no_items",
-    "error",
-  ])
+  .enum(["timeout", "unreachable", "too_many_redirects", "http_status", "no_items", "error"])
   .openapi("Failure", {
     description:
-      "前四种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误",
+      "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误",
   });
 const Detail = z.string().max(1000).openapi({ description: "具体原因，比如 HTTP 403" });
 const Usage = z

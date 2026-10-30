@@ -130,15 +130,7 @@ class Evidence(BaseModel):
 
 
 type Failure = Annotated[
-    Literal[
-        "timeout",
-        "unreachable",
-        "disallowed",
-        "too_many_redirects",
-        "http_status",
-        "no_items",
-        "error",
-    ],
+    Literal["timeout", "unreachable", "too_many_redirects", "http_status", "no_items", "error"],
     Field(description="不写就是列表读到了"),
 ]
 

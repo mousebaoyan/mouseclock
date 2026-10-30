@@ -5,9 +5,8 @@ from itertools import pairwise
 from urllib.parse import urlsplit
 
 import httpx
-import pytest
 
-from crawler.crawl.fetch import INTERVAL, USER_AGENT, Fetcher, FetchError, Response
+from crawler.crawl.fetch import INTERVAL, USER_AGENT, Fetcher
 
 
 class FakeSites:
@@ -65,66 +64,24 @@ def test_one_request_at_a_time_per_site_with_a_pause() -> None:
         lambda f: asyncio.gather(f.get("http://a/1"), f.get("http://a/2"), f.get("http://b/1"))
     )
 
-    # robots.txt and two pages on a; robots.txt and a page on b, which doesn't wait for a.
-    assert len(sites.times("a")) == 3
+    # b doesn't wait for a.
+    assert len(sites.times("a")) == 2
     assert all(gap >= INTERVAL for gap in gaps(sites.times("a")))
     assert sites.most_in_flight["a"] == 1
     assert sites.most_hosts_in_flight == 2
 
 
-def test_robots_txt_is_obeyed_wildcards_and_all() -> None:
-    sites = FakeSites(
-        {
-            "http://a/robots.txt": httpx.Response(
-                200, text="User-agent: *\nDisallow: /private/\nDisallow: /*.pdf$\n"
-            ),
-            "http://a/news/1.htm": httpx.Response(200),
-        }
-    )
-
-    async def fetch_all(f: Fetcher) -> list[Response | BaseException]:
-        urls = ["http://a/news/1.htm", "http://a/private/1.htm", "http://a/files/form.pdf"]
-        return await asyncio.gather(*(f.get(url) for url in urls), return_exceptions=True)
-
-    ok, private, pdf = sites.run(fetch_all)
-
-    assert isinstance(ok, Response)
-    for result in (private, pdf):
-        assert isinstance(result, FetchError)
-        assert result.failure == "disallowed"
-    assert [url for _, url in sites.requests] == ["http://a/robots.txt", "http://a/news/1.htm"]
-
-
-def test_robots_txt_server_error_means_not_now() -> None:
-    sites = FakeSites({"http://a/robots.txt": httpx.Response(503)})
-
-    with pytest.raises(FetchError) as caught:
-        sites.run(lambda f: f.get("http://a/1"))
-
-    assert caught.value.failure == "unreachable"
-    assert [url for _, url in sites.requests] == ["http://a/robots.txt"]
-
-
-def test_a_redirect_to_another_site_meets_that_sites_rules() -> None:
+def test_a_redirect_to_another_site_waits_its_turn_there() -> None:
     sites = FakeSites(
         {
             "http://a/old": httpx.Response(301, headers={"location": "http://b/new"}),
-            "http://b/robots.txt": httpx.Response(200, text="User-agent: *\nDisallow: /new\n"),
+            "http://b/1": httpx.Response(200),
+            "http://b/new": httpx.Response(200),
         }
     )
 
-    with pytest.raises(FetchError) as caught:
-        sites.run(lambda f: f.get("http://a/old"))
+    moved = sites.run(lambda f: asyncio.gather(f.get("http://b/1"), f.get("http://a/old")))[1]
 
-    assert caught.value.failure == "disallowed"
-    assert "http://b/new" not in [url for _, url in sites.requests]
-
-
-def test_a_longer_crawl_delay_wins() -> None:
-    sites = FakeSites(
-        {"http://a/robots.txt": httpx.Response(200, text="User-agent: *\nCrawl-delay: 20\n")}
-    )
-
-    sites.run(lambda f: asyncio.gather(f.get("http://a/1"), f.get("http://a/2")))
-
-    assert gaps(sites.times("a")) == [20, 20]
+    assert moved.url == "http://b/new"
+    assert len(sites.times("b")) == 2
+    assert all(gap >= INTERVAL for gap in gaps(sites.times("b")))
