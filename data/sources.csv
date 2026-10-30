@@ -1,43 +1,46 @@
 school,college,url,months,note
 北京科技大学,人工智能学院,https://ai.ustb.edu.cn/xwgg/tzgg/,8 9,
+北京科技大学,研究生院,https://yzxc.ustb.edu.cn/xlytm/hdap/index.htm,6 8,
 北京科技大学,自动化学院,https://saee.ustb.edu.cn/tzgg/index.htm,8 9,
 北京科技大学,计算机与通信工程学院,https://scce.ustb.edu.cn/xydt/tzgg.htm,8 9,
-北京邮电大学,人工智能学院,https://ai.bupt.edu.cn/tzgg.htm,7,试采时普通请求返回HTTP 412，未完成采集，待人工或浏览器确认
-北京邮电大学,信息与通信工程学院,https://sice.bupt.edu.cn/rcpy/yjsjy/zsgz.htm,7,试采时普通请求返回HTTP 412，未完成采集，待人工或浏览器确认
-北京邮电大学,智能工程与自动化学院,https://iea.bupt.edu.cn/rcpy/zsxx/yjszs.htm,7,试采时普通请求返回HTTP 412，未完成采集，待人工或浏览器确认
-北京邮电大学,电子工程学院,https://see.bupt.edu.cn/rcpy/zsxx.htm,7,
-北京邮电大学,研究生院,https://yzb.bupt.edu.cn/zsjj/ssyjs.htm,7,
-北京邮电大学,网络空间安全学院,https://scss.bupt.edu.cn/zsjy1/yjszs.htm,7,
-北京邮电大学,计算机学院（国家示范性软件学院）,https://scs.bupt.edu.cn/rcpy1/yjspy/zsxx1.htm,7,
-北京邮电大学,集成电路学院,https://ic.bupt.edu.cn/rcpy1/yjspy.htm,7,
-电子科技大学,信息与软件工程学院,https://sise.uestc.edu.cn/xwtz/tzgg/ygk.htm,7 9,试采时普通请求返回HTTP 412，未完成采集，待人工或浏览器确认
-电子科技大学,信息与通信学院,https://www.sice.uestc.edu.cn/index/tzgg/yjsk.htm,7 9,
-电子科技大学,智能计算研究院,https://icct.uestc.edu.cn/xwzx/tzgg.htm,9,试采时普通请求返回HTTP 412，未完成采集，待人工或浏览器确认
-电子科技大学,机械与电气工程学院,https://www.smee.uestc.edu.cn/index/tzgg1/yjsglbgs.htm,6 9,
-电子科技大学,电子科学与工程学院,https://www.ese.uestc.edu.cn/tzgg/yjspy.htm,7 9,
-电子科技大学,自动化工程学院,https://www.auto.uestc.edu.cn/xwgg/tzgs.htm,6 9,
+北京邮电大学,人工智能学院,https://ai.bupt.edu.cn/tzgg.htm,7,要执行脚本才显示内容
+北京邮电大学,信息与通信工程学院,https://sice.bupt.edu.cn/rcpy/yjsjy/zsgz.htm,7,要执行脚本才显示内容
+北京邮电大学,智能工程与自动化学院,https://iea.bupt.edu.cn/rcpy/zsxx/yjszs.htm,7,要执行脚本才显示内容
+北京邮电大学,电子工程学院,https://see.bupt.edu.cn/rcpy/zsxx.htm,7,要执行脚本才显示内容
+北京邮电大学,研究生院,https://yzb.bupt.edu.cn/zsjj/ssyjs.htm,7,要执行脚本才显示内容
+北京邮电大学,网络空间安全学院,https://scss.bupt.edu.cn/zsjy1/yjszs.htm,7,要执行脚本才显示内容
+北京邮电大学,计算机学院（国家示范性软件学院）,https://scs.bupt.edu.cn/rcpy1/yjspy/zsxx1.htm,7,要执行脚本才显示内容
+北京邮电大学,集成电路学院,https://ic.bupt.edu.cn/rcpy1/yjspy.htm,7,要执行脚本才显示内容
+电子科技大学,信息与软件工程学院,https://sise.uestc.edu.cn/xwtz/tzgg/ygk.htm,7 9,要执行脚本才显示内容
+电子科技大学,信息与通信工程学院,https://www.sice.uestc.edu.cn/index/tzgg/yjsk.htm,7 9,
+电子科技大学,智能计算研究院,https://icct.uestc.edu.cn/xwzx/tzgg.htm,9,要执行脚本才显示内容
+电子科技大学,机械与电气工程学院,https://www.smee.uestc.edu.cn/index/tzgg1/yjsglbgs.htm,6 9,要执行脚本才显示内容
+电子科技大学,电子科学与工程学院,https://www.ese.uestc.edu.cn/tzgg/yjspy.htm,7 9,要执行脚本才显示内容
+电子科技大学,研究生院,https://yz.uestc.edu.cn/index/zytz.htm,6 9,
+电子科技大学,自动化工程学院,https://www.auto.uestc.edu.cn/xwgg/tzgs.htm,6 9,要执行脚本才显示内容
 电子科技大学,计算机科学与工程学院（网络空间安全学院）,https://www.scse.uestc.edu.cn/tzgg/ygk.htm,7 9,要执行脚本才显示内容
-电子科技大学,（深圳）高等研究院,https://sias.uestc.edu.cn/rcpy/yanjzs.htm,7 9,
+电子科技大学,（深圳）高等研究院,https://sias.uestc.edu.cn/rcpy/yanjzs.htm,7 9,要执行脚本才显示内容
 东南大学,电子科学与工程学院,https://electronic.seu.edu.cn/11484/list.htm,7,
 东南大学,研究生院,https://yzb.seu.edu.cn/6676/list.htm,7,
 东南大学,网络空间安全学院,https://cyber.seu.edu.cn/18210/list.htm,7,
-东南大学,蒙纳士大学国际学院（苏州）,https://smjgs.seu.edu.cn/8471/list1.htm,7,试采时列表页可请求，但解析器仅识别到1条候选链接，未完成采集，待完善解析或人工核对
+东南大学,蒙纳士大学国际学院（苏州）,https://smjgs.seu.edu.cn/8471/list1.htm,7,
 东南大学,计算机科学与工程学院、软件学院,https://cse.seu.edu.cn/49475/list.htm,7,
 厦门大学,人工智能研究院,https://iai.xmu.edu.cn/recruitment/zsxx.htm,7,
 厦门大学,信息学院,https://informatics.xmu.edu.cn/zsxx.htm,7 9,
-厦门大学,电子科学与技术学院、集成电路学院,https://ese.xmu.edu.cn/xydt/zsxx.htm,7,试采时列表页可请求，但解析器仅识别到1条候选链接，未完成采集，待完善解析或人工核对
-厦门大学,电影学院,https://film.xmu.edu.cn/zszp/zsxx.htm,8,试采时列表页可请求，但解析器仅识别到1条候选链接，未完成采集，待完善解析或人工核对
+厦门大学,电子科学与技术学院、集成电路学院,https://ese.xmu.edu.cn/xydt/zsxx.htm,7,
+厦门大学,电影学院,https://film.xmu.edu.cn/zszp/zsxx.htm,8,
 厦门大学,研究生院,https://zs.xmu.edu.cn/zxgg/yjs.htm,7 9,
-厦门大学,航空航天学院,https://aerospace.xmu.edu.cn/sy/rcpy/yjspy/zsxx.htm,7,试采时列表页可请求，但解析器仅识别到4条候选链接，未完成采集，待完善解析或人工核对
-西安电子科技大学,人工智能学院,https://sai.xidian.edu.cn/tzgg.htm,7 9,试采时robots.txt请求失败，Fetcher未继续抓取通知列表，待重试或人工核对
-西安电子科技大学,电子工程学院,https://see.xidian.edu.cn/yjs/158.htm,7 9,试采时robots.txt请求失败，Fetcher未继续抓取通知列表，待重试或人工核对
+厦门大学,航空航天学院,https://aerospace.xmu.edu.cn/sy/rcpy/yjspy/zsxx.htm,7,
+西安电子科技大学,人工智能学院,https://sai.xidian.edu.cn/tzgg.htm,7 9,
+西安电子科技大学,电子工程学院,https://see.xidian.edu.cn/yjs/158.htm,7 9,
 西安电子科技大学,研究生院,https://gr.xidian.edu.cn/yjsy/yjszs.htm,7,
-西安电子科技大学,网络与信息安全学院,https://ce.xidian.edu.cn/sy/tzgg.htm,7 9,试采时robots.txt请求失败，Fetcher未继续抓取通知列表，待重试或人工核对
+西安电子科技大学,网络与信息安全学院,https://ce.xidian.edu.cn/sy/tzgg.htm,7 9,
 西安电子科技大学,计算机科学与技术学院（国家示范性软件学院）,https://cs.xidian.edu.cn/yjsjy/yjstz.htm,7 9,
-中国科学院大学,信息工程研究所,https://iie.cas.cn/xsjy/zsxx/sszs,6 9,
-中国科学院大学,前沿交叉科学学院,https://sais.ucas.ac.cn/index.php/zh/xwgs/tgzs,5 8,补采历史列表页（start=20）时请求超时，本次该页未采集，待重试；其他已采列表页可访问
-中国科学院大学,杭州高等研究所-智能科学与技术学院,http://hias.ucas.ac.cn/znkxyjs/zsjy/zsxx.htm,5 9,
-中国科学院大学,沈阳自动化研究所,https://sia.cas.cn/zpjy/yjsjy/,7 8 12,
-中国科学院大学,自动化研究所,https://ia.cas.cn/yjsjy/zs/sszs,7 8,
+中国科学院大学,信息工程研究所,http://iie.cas.cn/xsjy/zsxx/sszs/,6 9,会跳转到 HTTP
+中国科学院大学,前沿交叉科学学院,https://sais.ucas.ac.cn/index.php/zh/xwgs/tgzs,5 8,
+中国科学院大学,杭州高等研究院智能科学与技术学院,http://hias.ucas.ac.cn/znkxyjs/zsjy/zsxx.htm,5 9,
+中国科学院大学,沈阳自动化研究所,https://sia.cas.cn/zpjy/yjsjy/zs/zsgg/,7 8 12,
+中国科学院大学,研究生院,https://admission.ucas.ac.cn/showarticle/newslist/1beb211c-ea0d-4c97-b5ce-61efa7addfcd,9,
+中国科学院大学,自动化研究所,http://ia.cas.cn/yjsjy/zs/sszs/,7 8,会跳转到 HTTP
 中国科学院大学,计算技术研究所,https://www.ict.ac.cn/yjsjy/zsxx/sszs/,7 8,
 中国科学院大学,软件研究所,https://is.cas.cn/yjsjy/zsxx/,5 8,
