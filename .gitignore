@@ -1,0 +1,20 @@
+# Local configuration; keep the reproducible example.
+.env
+.env.*
+!.env.example
+
+# Local data exports, screenshots, scratch files and tool caches.
+.local/
+.cache/
+.pnpm-store/
+*.log
+
+# Test and browser reports.
+coverage/
+playwright-report/
+test-results/
+
+# Operating system metadata.
+.DS_Store
+Thumbs.db
+Desktop.ini

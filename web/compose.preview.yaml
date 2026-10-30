@@ -1,0 +1,38 @@
+# Local preview, including the fake login provider. Run with compose.yaml.
+services:
+  postgres:
+    image: m.daocloud.io/docker.io/library/postgres:18
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mouseclock -d mouseclock"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.preview
+    init: true
+    environment:
+      DATABASE_URL: postgres://mouseclock:mouseclock@postgres:5432/mouseclock
+      PUBLIC_URL: http://localhost:5173
+      MOUSEHOLE_URL: http://localhost:5173/fake-mousehole
+      MOUSEHOLE_CLIENT_ID: mouseclock-dev
+      MOUSEHOLE_CLIENT_SECRET: dev-secret-not-for-production
+    ports:
+      - 127.0.0.1:5173:5173
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "--input-type=module",
+          "-e",
+          "const r = await fetch('http://localhost:5173/healthz'); process.exit(r.ok ? 0 : 1)",
+        ]
+      interval: 5s
+      timeout: 5s
+      start_period: 30s
+      retries: 20

@@ -1,0 +1,15 @@
+node_modules
+build
+.react-router
+.git
+.env
+.env.*
+!.env.example
+.local
+.cache
+.pnpm-store
+coverage
+playwright-report
+test-results
+*.log
+*.tsbuildinfo

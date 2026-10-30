@@ -8,7 +8,7 @@
 - 错误统一返回 `{ "error": { "code": "...", "message": "..." } }`：`code` 是英文，给程序判断；`message` 是中文，给人看。
 - **认证**：网页用会话 Cookie；Agent 和脚本用个人令牌，`Authorization: Bearer <令牌>`；抓取节点用抓取节点令牌（第 6 节）。带 `Authorization: Bearer` 的请求只按令牌认人，不看会话 Cookie。
 - **令牌的权限范围**：`read` 只能查询；`personal` 还能订阅、关注、记报名、提交反馈和修改申请。直接修改、审核和管理的接口只认网页会话，带令牌调用返回 `403`。
-- **权限**（[总体设计 §6.2](design.md#62-权限)）：访客调列表接口只拿到预览，调别的接口返回 `401 login_required`；冻结的按访客算，返回 `403 member_frozen`；禁言中的做不了的返回 `403 muted`，等级不够的 `403 level_required`，修改权限被收回的 `403 edit_revoked`，不是管理员或站长的 `403 forbidden`。
+- **权限**（[总体设计 §6.2](design.md#62-权限)）：访客调总表 `GET /programs` 只拿到预览，调别的接口返回 `401 login_required`；冻结的按访客算，返回 `403 member_frozen`；禁言中的做不了的返回 `403 muted`，等级不够的 `403 level_required`，修改权限被收回的 `403 edit_revoked`，不是管理员或站长的 `403 forbidden`。
 - **频率限制**：按会话和令牌分别限制，超了返回 `429`。
 
 ## 2. 鼠洞登录
@@ -42,7 +42,7 @@
 | | `GET /programs/{id}` | 详情：字段和证据、状态、订阅人数 |
 | | `GET /programs/{id}/versions` | 版本和快照 |
 | | `GET /programs/{id}/edits` | 修改记录 |
-| 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页 |
+| 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页；均需登录（`read`），冻结账号拒绝访问 |
 | 订阅和关注 | `PUT`、`DELETE /programs/{id}/subscription` | 订阅、取消；超过 10 个返回 `409 subscription_limit` |
 | | `PUT`、`DELETE /colleges/{id}/follow` | 关注、取消 |
 | 我的报名 | `PUT`、`DELETE /programs/{id}/application` | 进度和备注 |
@@ -66,6 +66,15 @@
 | | `GET`、`POST /admin/colleges`，`GET`、`PATCH /admin/colleges/{id}` | 管理员查询、新增、修改学院 |
 | | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
 | | `/admin/tags`、`/admin/users`、`/admin/settings` | 标签预设、修改权限、系统设置 |
+
+### 3.1 院校清单和学院页
+
+- `GET /colleges` 按学校分组返回全部学院（不分页），附学校层次；包括尚未接入来源或收录项目的学院。学校、学院按名称排列，同名学院按编号排列。
+- 院校清单中，每个学院附带报名开始时间最近、尚未开始的一个项目，不限制项目类型（冬令营、夏令营、预推免、九推及归入九推的补录均参与）；按报名开始时刻升序、项目编号升序选取，已删除、已截止或未说明开始时间的项目不参与。没有符合条件的项目时为 `null`。页面在学院行右侧显示原文开始时间和类型，没有时显示「近期没有需要关注的动态哦~」；手机上显示在学院信息下方。
+- `GET /colleges/{id}` 返回学院和所属学校、来源的列表页网址、栏目及无法抓取的原因，以及未删除的历年项目。项目按届降序分组，同届按报名截止时间升序排列，未说明截止时间的排最后，同一时间按编号排列。每个项目附带对应的原文通知（标题、网址、用途及原文是否已删除），同一通知的多次抓取只展示一次。报名通知优先，同类按项目版本号降序排列；没有报名通知时展示最近的其他通知，没有关联通知时返回空列表。学院的来源栏目与项目的通知原文分别展示。
+- 报名时间保留通知原文的精度，未说明为 `null`，只写「额满即止」也保留。状态按请求时刻计算：已到截止时间为「已截止」，开始时间未到为「未开始」，其余有开始或截止时间的为「报名中」，两者都没有则为 `null`。换算规则见[总体设计 §8.2](design.md#82-抽取)。
+- 两个接口都调用 `authorize(c, "read")`：访客返回 `401 login_required`，冻结账号返回 `403 member_frozen`，禁言账号仍可读取。不存在的学院返回 `404 not_found`，编号格式有误返回 `400 invalid_request`。
+- 页面入口为 `/colleges` 和 `/colleges/:id`，总表和项目详情页中的学院名链接到后者。
 
 ## 4. MCP
 

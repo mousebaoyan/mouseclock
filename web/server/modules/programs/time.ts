@@ -33,3 +33,15 @@ export function deadlineOf(value: TimeValue) {
   const [year, month, day] = numbers(value.date, "-");
   return beijing(year, month, value.mark ? day : day + 1);
 }
+
+export type Status = "upcoming" | "open" | "closed";
+
+// Design §9.1: neither instant means that the notice gave no application times.
+export function statusOf(
+  program: { apply_start: number | null; apply_deadline: number | null },
+  now: number,
+): Status | null {
+  if (program.apply_deadline !== null && program.apply_deadline <= now) return "closed";
+  if (program.apply_start !== null && program.apply_start > now) return "upcoming";
+  return program.apply_start === null && program.apply_deadline === null ? null : "open";
+}
