@@ -133,15 +133,14 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
                       </span>
                     </div>
                     <div className="mt-3 text-sm">
-                      <p className="text-muted-foreground">原文出处</p>
                       {program.notices.length > 0 ? (
-                        <ul className="mt-1 space-y-2">
+                        <ul className="space-y-2">
                           {program.notices.map((notice) => (
                             <li
                               key={notice.id}
                               className="flex flex-wrap items-baseline gap-x-2 gap-y-1"
                             >
-                              <span className="text-xs text-muted-foreground">
+                              <span className="text-muted-foreground">
                                 {NOTICE_ROLE_LABELS[notice.role]}
                               </span>
                               <a
@@ -159,7 +158,7 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
                           ))}
                         </ul>
                       ) : (
-                        <p className="mt-1 text-muted-foreground">暂无原文链接。</p>
+                        <p className="text-muted-foreground">暂无原文链接。</p>
                       )}
                     </div>
                     <p className="mt-3 text-sm">
