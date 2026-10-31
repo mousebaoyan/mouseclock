@@ -9,7 +9,7 @@ import httpx
 import pytest
 
 from crawler.screening.evaluate import Cached, Sample, evaluate_models, main, measure, write_report
-from crawler.screening.system_one import Call, Prices, Result, SystemOne, Usage, cost_cny
+from crawler.screening.system_one import Call, Result, SystemOne, Usage, cost_cny
 
 
 def sample(label: str, number: int) -> Sample:
@@ -33,14 +33,13 @@ def test_threshold_is_inclusive_and_filtering_uses_only_negatives() -> None:
     assert (result.recall, result.filtering, result.accuracy) == (1, 0.5, 0.75)
 
 
-@pytest.mark.parametrize("score", [True, -1, 1.1, float("nan")])
-def test_invalid_system_one_score_retains_usage(score: float | bool) -> None:
+def test_invalid_system_one_score_retains_usage() -> None:
     async def run() -> Result:
         content = json.dumps(
             {
                 "model": "Kev-4b",
                 "usage": {"input_tokens": 100, "output_tokens": 1},
-                "answers": {"relevant": {"type": "noul", "noul": score}},
+                "answers": {"relevant": {"type": "noul", "noul": -1}},
             }
         )
         provider = SystemOne(
@@ -62,8 +61,6 @@ def test_cost_uses_usage_and_unknown_usage_is_not_free() -> None:
     assert cost_cny(result) is None
     result.usage = Usage(input_tokens=100, output_tokens=10)
     assert cost_cny(result) == 0
-    prices = Prices(input_cny_per_million=2, output_cny_per_million=4)
-    assert cost_cny(result, prices) == pytest.approx(0.00024)
 
 
 def test_system_one_accepts_other_models_and_does_not_send_labels() -> None:

@@ -7,6 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
 API_URL = "https://api.siliconflow.cn/v1/systemone"
 DEFAULT_MODELS = ("Kev-4b",)
+INPUT_CNY_PER_MILLION = 0.0
+OUTPUT_CNY_PER_MILLION = 0.0
 INSTRUCTIONS = (
     "判断通知是否与面向本科生的保研招生有关。相关包括冬令营、夏令营、暑期学校、"
     "学术交流营、研修班、开放日、预推免、九推、推荐免试、直博、优秀本科生提前选拔"
@@ -18,15 +20,6 @@ INSTRUCTIONS = (
 )
 type Probability = Annotated[float, Field(strict=True, ge=0, le=1, allow_inf_nan=False)]
 type TokenCount = Annotated[int, Field(strict=True, ge=0)]
-type Price = Annotated[float, Field(ge=0, allow_inf_nan=False)]
-
-
-class Prices(BaseModel):
-    input_cny_per_million: Price = 0
-    output_cny_per_million: Price = 0
-
-
-DEFAULT_PRICES = Prices()
 
 
 class Call(BaseModel):
@@ -67,12 +60,12 @@ class Envelope(BaseModel):
     answers: JsonValue
 
 
-def cost_cny(result: Result, prices: Prices = DEFAULT_PRICES) -> float | None:
+def cost_cny(result: Result) -> float | None:
     if result.usage is None:
         return None
     return (
-        result.usage.input_tokens * prices.input_cny_per_million
-        + result.usage.output_tokens * prices.output_cny_per_million
+        result.usage.input_tokens * INPUT_CNY_PER_MILLION
+        + result.usage.output_tokens * OUTPUT_CNY_PER_MILLION
     ) / 1_000_000
 
 

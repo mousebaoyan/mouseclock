@@ -12,9 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from crawler.screening.system_one import (
     DEFAULT_MODELS,
-    DEFAULT_PRICES,
     Call,
-    Prices,
     Result,
     SystemOne,
     cost_cny,
@@ -145,7 +143,6 @@ async def evaluate_models(
     output: Path,
     api_key: str | None,
     retry_errors: bool = False,
-    prices: Prices = DEFAULT_PRICES,
 ) -> tuple[list[Metrics], list[dict[str, object]]]:
     cache_path = output / "scores.jsonl"
     cache: dict[str, Cached] = {}
@@ -209,9 +206,9 @@ async def evaluate_models(
                             )
                     results = [cache[call.model_dump_json()].result for call in calls]
                     errors = Counter(result.error for result in results if result.error is not None)
-                    costs = [cost_cny(result, prices) for result in results]
+                    costs = [cost_cny(result) for result in results]
                     unique_results = [cache[key].result for key in unique]
-                    measured_costs = [cost_cny(result, prices) for result in unique_results]
+                    measured_costs = [cost_cny(result) for result in unique_results]
                     fee = (
                         sum(value for value in costs if value is not None) / len(samples) * 1000
                         if all(value is not None for value in costs)
@@ -286,14 +283,12 @@ def write_report(
     samples: list[Sample],
     metrics: list[Metrics],
     runs: list[dict[str, object]],
-    prices: Prices = DEFAULT_PRICES,
 ) -> None:
     report: dict[str, object] = {
         "samples": len(samples),
         "positive": sum(sample.relevant == "1" for sample in samples),
         "negative": sum(sample.relevant == "0" for sample in samples),
         "sources": len({sample.source_url for sample in samples}),
-        "prices_cny_per_million": prices.model_dump(),
         "status": "failed"
         if any(run.get("pilot_error") or run.get("errors") for run in runs)
         else "complete",
@@ -367,8 +362,8 @@ def write_report(
     lines.extend(
         [
             "",
-            "费用按实测输入和输出 token 与指定单价折算;未知用量不视为零费用。",
-            f"单价(元/百万 token):{prices.model_dump()}。",
+            "费用按实测输入和输出 token 与常量单价折算;未知用量不视为零费用。",
+            "输入和输出单价见 system_one.py 中的常量。",
             "",
             "## 全部门槛",
             "",
@@ -408,14 +403,7 @@ def main() -> int:
     parser.add_argument("--keywords-only", action="store_true")
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--retry-errors", action="store_true")
-    parser.add_argument("--input-price", type=float, default=0, help="CNY per million input tokens")
-    parser.add_argument(
-        "--output-price", type=float, default=0, help="CNY per million output tokens"
-    )
     args = parser.parse_args()
-    prices = Prices(
-        input_cny_per_million=args.input_price, output_cny_per_million=args.output_price
-    )
     key = None
     if not args.keywords_only and not args.reuse_only:
         key = os.environ.get("SYSTEM_ONE_API_KEY", "").strip()
@@ -427,10 +415,10 @@ def main() -> int:
     runs: list[dict[str, object]] = []
     if not args.keywords_only:
         model_metrics, runs = asyncio.run(
-            evaluate_models(samples, args.models, args.output, key, args.retry_errors, prices)
+            evaluate_models(samples, args.models, args.output, key, args.retry_errors)
         )
         metrics.extend(model_metrics)
-    write_report(args.output, samples, metrics, runs, prices)
+    write_report(args.output, samples, metrics, runs)
     print(f"samples={len(samples)} metrics={len(metrics)} output={args.output}")
     return int(any(run.get("pilot_error") or run.get("errors") for run in runs))
 
