@@ -1,7 +1,6 @@
 import argparse
 import asyncio
 import csv
-import getpass
 import json
 import os
 from collections import Counter
@@ -11,15 +10,13 @@ from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from crawler.screening.siliconflow import (
-    CHAT_MODELS,
-    PRICES,
-    PRICING_DATE,
-    PRICING_URL,
-    SYSTEM_ONE_PRICING_URL,
+from crawler.screening.system_one import (
+    DEFAULT_MODELS,
+    DEFAULT_PRICES,
     Call,
+    Prices,
     Result,
-    SiliconFlow,
+    SystemOne,
     cost_cny,
 )
 
@@ -133,11 +130,12 @@ def keyword_metrics(samples: list[Sample]) -> list[Metrics]:
             ],
             f"keywords/{name}",
             section,
-            0.5,
+            threshold,
             0,
         )
         for name, words in KEYWORDS.items()
         for section in (False, True)
+        for threshold in (0.0, 0.5, 1.0)
     ]
 
 
@@ -147,6 +145,7 @@ async def evaluate_models(
     output: Path,
     api_key: str | None,
     retry_errors: bool = False,
+    prices: Prices = DEFAULT_PRICES,
 ) -> tuple[list[Metrics], list[dict[str, object]]]:
     cache_path = output / "scores.jsonl"
     cache: dict[str, Cached] = {}
@@ -154,7 +153,7 @@ async def evaluate_models(
         for line in cache_path.read_text(encoding="utf-8").splitlines():
             cached = Cached.model_validate_json(line)
             cache[cached.call.model_dump_json()] = cached
-    provider = SiliconFlow(api_key) if api_key is not None else None
+    provider = SystemOne(api_key) if api_key is not None else None
     semaphore = asyncio.Semaphore(5)
     metrics: list[Metrics] = []
     runs: list[dict[str, object]] = []
@@ -210,9 +209,9 @@ async def evaluate_models(
                             )
                     results = [cache[call.model_dump_json()].result for call in calls]
                     errors = Counter(result.error for result in results if result.error is not None)
-                    costs = [cost_cny(model, result) for result in results]
+                    costs = [cost_cny(result, prices) for result in results]
                     unique_results = [cache[key].result for key in unique]
-                    measured_costs = [cost_cny(model, result) for result in unique_results]
+                    measured_costs = [cost_cny(result, prices) for result in unique_results]
                     fee = (
                         sum(value for value in costs if value is not None) / len(samples) * 1000
                         if all(value is not None for value in costs)
@@ -227,18 +226,18 @@ async def evaluate_models(
                             "errors": dict(errors),
                             "cost_per_1000_cny": fee,
                             "dataset_weighted_input_tokens": sum(
-                                result.usage.prompt_tokens for result in results if result.usage
+                                result.usage.input_tokens for result in results if result.usage
                             ),
                             "dataset_weighted_output_tokens": sum(
-                                result.usage.completion_tokens for result in results if result.usage
+                                result.usage.output_tokens for result in results if result.usage
                             ),
                             "measured_input_tokens": sum(
-                                result.usage.prompt_tokens
+                                result.usage.input_tokens
                                 for result in unique_results
                                 if result.usage
                             ),
                             "measured_output_tokens": sum(
-                                result.usage.completion_tokens
+                                result.usage.output_tokens
                                 for result in unique_results
                                 if result.usage
                             ),
@@ -283,23 +282,27 @@ async def evaluate_models(
 
 
 def write_report(
-    output: Path, samples: list[Sample], metrics: list[Metrics], runs: list[dict[str, object]]
+    output: Path,
+    samples: list[Sample],
+    metrics: list[Metrics],
+    runs: list[dict[str, object]],
+    prices: Prices = DEFAULT_PRICES,
 ) -> None:
     report: dict[str, object] = {
         "samples": len(samples),
         "positive": sum(sample.relevant == "1" for sample in samples),
         "negative": sum(sample.relevant == "0" for sample in samples),
         "sources": len({sample.source_url for sample in samples}),
-        "pricing_date": PRICING_DATE,
-        "pricing_source": PRICING_URL,
-        "system_one_alpha_pricing_source": SYSTEM_ONE_PRICING_URL,
+        "prices_cny_per_million": prices.model_dump(),
+        "status": "failed"
+        if any(run.get("pilot_error") or run.get("errors") for run in runs)
+        else "complete",
         "cost_basis": (
             "Observed token usage at the published rate, scaled by dataset rows; not an invoice"
         ),
         "evaluation_scope": (
             "Development-set evaluation; keyword vocabulary and thresholds are dataset-informed"
         ),
-        "prices_cny_per_million_input_output_cached": PRICES,
         "keywords": KEYWORDS,
         "runs": runs,
         "metrics": [row.model_dump() for row in metrics],
@@ -321,15 +324,15 @@ def write_report(
         "门槛为保留分数的下限,分数等于门槛时保留。",
         "",
         "词表及门槛参考了当前数据,属于开发集评估。相关通知零漏检只适用于本次标注集,"
-        "后续应按学院或时间留出独立测试数据。聊天模型输出的分数是自评分,不是校准概率。",
+        "后续应按学院或时间留出独立测试数据。",
         "",
         "## 关键词规则",
         "",
-        "| 组 | 召回率 | 无关过滤率 | 准确率 | 漏检 |",
-        "| --- | ---: | ---: | ---: | ---: |",
+        "| 组 | 门槛 | 召回率 | 无关过滤率 | 准确率 | 漏检 |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
     ]
     lines.extend(
-        f"| {row.method} | {percent(row.recall)} | {percent(row.filtering)} | "
+        f"| {row.method} | {row.threshold!r} | {percent(row.recall)} | {percent(row.filtering)} | "
         f"{percent(row.accuracy)} | {row.false_negative} |"
         for row in metrics
         if row.method.startswith("keywords/") and not row.with_section
@@ -339,9 +342,8 @@ def write_report(
     lines.extend(
         [
             "",
-            "## API:零漏检条件下过滤率最高的候选门槛",
+            "## System One:零漏检时的最高门槛",
             "",
-            "过滤率相同时优先接近 0.5 的已测试门槛。待维护者确认。",
             "",
             "| 模型 | 带栏目名 | 门槛 | 召回率 | 无关过滤率 | 准确率 | 元/千条 |",
             "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
@@ -355,21 +357,18 @@ def write_report(
         eligible = [row for row in rows if row.recall == 1]
         if not eligible:
             continue
-        best = max(eligible, key=lambda row: (row.true_negative, -abs(row.threshold - 0.5)))
+        best = max(eligible, key=lambda row: row.threshold)
         fee = f"{best.cost_per_1000_cny:.6f}" if best.cost_per_1000_cny is not None else "待核实"
         lines.append(
-            f"| {best.method} | {'是' if best.with_section else '否'} | {best.threshold:g} | "
+            f"| {best.method} | {'是' if best.with_section else '否'} | {best.threshold!r} | "
             f"{percent(best.recall)} | {percent(best.filtering)} | "
             f"{percent(best.accuracy)} | {fee} |"
         )
     lines.extend(
         [
             "",
-            "费用按本次输入、输出、缓存命中 token 及官方价格折算,非账户实际账单;"
-            "千条费用按当前标题分布估算,不含抓取正文和后续抽取的费用。",
-            f"价格核对日期:{PRICING_DATE};[硅基流动价格页]({PRICING_URL})。",
-            "System One 按 Alpha 当前免费公告估算为 0 元,正式收费后需要更新价格。",
-            f"[System One Alpha 价格说明]({SYSTEM_ONE_PRICING_URL})。",
+            "费用按实测输入和输出 token 与指定单价折算;未知用量不视为零费用。",
+            f"单价(元/百万 token):{prices.model_dump()}。",
             "",
             "## 全部门槛",
             "",
@@ -378,7 +377,7 @@ def write_report(
         ]
     )
     lines.extend(
-        f"| {row.method} | {'是' if row.with_section else '否'} | {row.threshold:g} | "
+        f"| {row.method} | {'是' if row.with_section else '否'} | {row.threshold!r} | "
         f"{percent(row.recall)} | {percent(row.filtering)} | {percent(row.accuracy)} | "
         f"{row.false_negative} |"
         for row in metrics
@@ -401,30 +400,40 @@ def percent(value: float | None) -> str:
     return f"{value:.2%}" if value is not None else "不适用"
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description="Evaluate screening without crawling source sites")
     parser.add_argument("--data", type=Path, default=Path("../data/screening.csv"))
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--models", nargs="+", default=["Kev-4b", *CHAT_MODELS])
+    parser.add_argument("--models", nargs="+", default=list(DEFAULT_MODELS))
     parser.add_argument("--keywords-only", action="store_true")
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--retry-errors", action="store_true")
+    parser.add_argument("--input-price", type=float, default=0, help="CNY per million input tokens")
+    parser.add_argument(
+        "--output-price", type=float, default=0, help="CNY per million output tokens"
+    )
     args = parser.parse_args()
+    prices = Prices(
+        input_cny_per_million=args.input_price, output_cny_per_million=args.output_price
+    )
+    key = None
+    if not args.keywords_only and not args.reuse_only:
+        key = os.environ.get("SYSTEM_ONE_API_KEY", "").strip()
+        if not key:
+            parser.error("SYSTEM_ONE_API_KEY is required")
     samples = read_samples(args.data)
     args.output.mkdir(parents=True, exist_ok=True)
     metrics = keyword_metrics(samples)
     runs: list[dict[str, object]] = []
     if not args.keywords_only:
-        key = None
-        if not args.reuse_only:
-            key = os.environ.get("SILICONFLOW_API_KEY") or getpass.getpass("API key (hidden): ")
         model_metrics, runs = asyncio.run(
-            evaluate_models(samples, args.models, args.output, key, args.retry_errors)
+            evaluate_models(samples, args.models, args.output, key, args.retry_errors, prices)
         )
         metrics.extend(model_metrics)
-    write_report(args.output, samples, metrics, runs)
+    write_report(args.output, samples, metrics, runs, prices)
     print(f"samples={len(samples)} metrics={len(metrics)} output={args.output}")
+    return int(any(run.get("pilot_error") or run.get("errors") for run in runs))
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
