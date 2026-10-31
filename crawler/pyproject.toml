@@ -5,12 +5,16 @@ description = "鼠钟的抓取节点：抓取、初筛和抽取"
 requires-python = ">=3.14"
 dependencies = [
     "httpx>=0.28",
+    "onnxruntime>=1.31.1",
+    "psutil>=7.2.2",
     "pydantic>=2.14.1",
+    "rapidocr>=3.10.0",
 ]
 
 [dependency-groups]
 dev = [
     "datamodel-code-generator>=0.86.0",
+    "pillow>=13.0.0",
     "pyright>=1.1.400",
     "pytest>=9.1",
     "ruff>=0.17",
