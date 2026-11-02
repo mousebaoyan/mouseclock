@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels its older run; every push to main keeps its own run.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: true
+
 jobs:
   web:
     runs-on: ubuntu-latest
