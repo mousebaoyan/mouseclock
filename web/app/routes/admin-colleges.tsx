@@ -1,9 +1,8 @@
 import { data, Form, Link, redirect, useNavigation } from "react-router";
 import { CollegeInput, SchoolInput } from "../../server/modules/sources/schemas.ts";
-import { apiContext } from "../api.server.ts";
+import { apiContext, readApi } from "../api.server.ts";
 import {
   formText,
-  readApi,
   type SchoolsPage,
   type SchoolDetail,
   type CollegesPage,

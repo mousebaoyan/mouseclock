@@ -44,9 +44,12 @@ export function SiteHeader({ me }: { me: Me | null }) {
           <NavLink to="/" end className={navLink}>
             总表
           </NavLink>
+          <NavLink to="/colleges" className={navLink}>
+            院校清单
+          </NavLink>
           {me?.can.admin && (
             <NavLink to="/admin/colleges" className={navLink}>
-              院校清单
+              管理院校
             </NavLink>
           )}
           {me?.can.admin && (

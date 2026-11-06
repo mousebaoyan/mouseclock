@@ -6,6 +6,7 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
+import type { ApplyValue, Kind } from "../programs/schemas.ts";
 import {
   PAGE_SIZE,
   type SchoolInput,
@@ -17,6 +18,8 @@ import {
   type PageQuery,
   type CollegeQuery,
   type SourceQuery,
+  type PublicSchool,
+  type PublicProgramCohort,
 } from "./schemas.ts";
 
 export type Actor = { user_id: number; via: "web" | "seed" };
@@ -165,6 +168,121 @@ export async function getCollege(id: number) {
   return row;
 }
 
+export async function listPublicColleges() {
+  const rows = await db
+    .selectFrom("colleges")
+    .innerJoin("schools", "schools.id", "colleges.school_id")
+    .select([
+      "schools.id as school_id",
+      "schools.name as school_name",
+      "schools.short_name as school_short_name",
+      "schools.tiers as school_tiers",
+      "colleges.id",
+      "colleges.name",
+      "colleges.kind",
+      "colleges.region",
+      "colleges.directions",
+    ])
+    .orderBy("schools.name")
+    .orderBy("colleges.name")
+    .orderBy("colleges.id")
+    .execute();
+
+  const schools = new Map<number, z.infer<typeof PublicSchool>>();
+  for (const row of rows) {
+    let school = schools.get(row.school_id);
+    if (!school) {
+      school = {
+        id: row.school_id,
+        name: row.school_name,
+        short_name: row.school_short_name,
+        tiers: row.school_tiers,
+        colleges: [],
+      };
+      schools.set(row.school_id, school);
+    }
+    school.colleges.push({
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      region: row.region,
+      directions: row.directions,
+    });
+  }
+  return { schools: [...schools.values()] };
+}
+
+export async function getPublicCollege(id: number) {
+  const college = await db
+    .selectFrom("colleges")
+    .innerJoin("schools", "schools.id", "colleges.school_id")
+    .select([
+      "colleges.id",
+      "colleges.name",
+      "colleges.kind",
+      "colleges.region",
+      "colleges.directions",
+      "schools.id as school_id",
+      "schools.name as school_name",
+    ])
+    .where("colleges.id", "=", id)
+    .executeTakeFirst();
+  if (!college) throw new AppError(404, "not_found", "学院不存在");
+
+  const [sources, programs] = await Promise.all([
+    db
+      .selectFrom("sources")
+      .select(["id", "url", "section", "unavailable_reason"])
+      .where("college_id", "=", id)
+      .orderBy("id")
+      .execute(),
+    db
+      .selectFrom("programs")
+      .select(["id", "cohort", "name", "apply_start", "apply_deadline"])
+      .select(sql<Kind>`programs.kind`.as("kind"))
+      .select(
+        sql<ApplyValue | null>`(
+          select jsonb_object_agg(substring(field.key from 7), field.value)
+          from program_fields as field
+          where field.program_id = programs.id
+            and field.key in ('apply:start', 'apply:end', 'apply:rolling')
+        )`.as("apply"),
+      )
+      .where("college_id", "=", id)
+      .where("deleted_at", "is", null)
+      .orderBy("cohort", "desc")
+      .orderBy("apply_deadline", (order) => order.asc().nullsLast())
+      .orderBy("id")
+      .execute(),
+  ]);
+  const grouped = new Map<number, z.infer<typeof PublicProgramCohort>["programs"]>();
+  for (const { cohort, apply_start, apply_deadline, ...program } of programs) {
+    const current = grouped.get(cohort) ?? [];
+    current.push({
+      ...program,
+      apply_start: apply_start ? unix(apply_start) : null,
+      apply_deadline: apply_deadline ? unix(apply_deadline) : null,
+    });
+    grouped.set(cohort, current);
+  }
+
+  return {
+    id: college.id,
+    school: {
+      id: college.school_id,
+      name: college.school_name,
+    },
+    name: college.name,
+    kind: college.kind,
+    region: college.region,
+    directions: college.directions,
+    sources,
+    programs: [...grouped].map(([cohort, cohortPrograms]) => ({
+      cohort,
+      programs: cohortPrograms,
+    })),
+  };
+}
 export async function createCollege(actor: Actor, values: z.infer<typeof CollegeInput>) {
   return write(async (trx) => {
     const row = await trx

@@ -1,5 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { Int, IntParam, UnixSeconds } from "../../platform/http.ts";
+import { ApplyValue, Kind } from "../programs/schemas.ts";
 
 export const PAGE_SIZE = 20;
 export const PageQuery = z.object({
@@ -80,3 +81,49 @@ export const RunSummary = z.object({
 export function Page<T extends z.ZodType>(item: T) {
   return z.object({ items: z.array(item), page: Int, next_page: Int.nullable() });
 }
+
+// Public college pages keep the school grouping and the original application window visible.
+// The computed instants are included for status and countdowns; pages still display `apply`.
+export const PublicCollege = z.object({
+  id: Int,
+  name: z.string(),
+  kind: z.string(),
+  region: z.string(),
+  directions: z.array(z.string()),
+});
+export const PublicSchool = z.object({
+  id: Int,
+  name: z.string(),
+  short_name: z.string(),
+  tiers: z.array(z.string()),
+  colleges: z.array(PublicCollege),
+});
+export const PublicCollegeList = z.object({ schools: z.array(PublicSchool) });
+export const PublicSource = z.object({
+  id: Int,
+  url: z.string(),
+  section: z.string(),
+  unavailable_reason: z.string().nullable(),
+});
+export const PublicProgram = z.object({
+  id: Int,
+  kind: Kind,
+  name: z.string(),
+  apply: z.union([ApplyValue, z.null()]),
+  apply_start: UnixSeconds.nullable(),
+  apply_deadline: UnixSeconds.nullable(),
+});
+export const PublicProgramCohort = z.object({
+  cohort: Int,
+  programs: z.array(PublicProgram),
+});
+export const PublicCollegeDetail = z.object({
+  id: Int,
+  school: School.pick({ id: true, name: true }),
+  name: z.string(),
+  kind: z.string(),
+  region: z.string(),
+  directions: z.array(z.string()),
+  sources: z.array(PublicSource),
+  programs: z.array(PublicProgramCohort),
+});
