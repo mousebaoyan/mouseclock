@@ -67,24 +67,15 @@ def test_unparenthesized_weekday_keeps_the_clock(text: str) -> None:
     [
         ("6月1日下午2点至5点", "14:00", "17:00"),
         ("6月1日晚上7点至9点", "19:00", "21:00"),
-        ("6月1日下午2点至上午5点", None, None),
         ("6月1日8:00至17:00之前", "08:00", "17:00"),
     ],
 )
-def test_clock_range_inherits_period_only_when_omitted(
-    text: str, start: str | None, end: str | None
-) -> None:
+def test_clock_range_inherits_period_only_when_omitted(text: str, start: str, end: str) -> None:
     [found] = find_dates(text, date(2027, 5, 1))
     assert found.text == text
-    if start is None:
-        assert found.issue == "invalid_date"
-        assert found.value is None
-        assert found.end_value is None
-    else:
-        assert end is not None
-        assert found.value == TimeToMinute(date=date(2027, 6, 1), time=start)
-        assert found.end_value == TimeToMinute(date=date(2027, 6, 1), time=end)
-        assert found.issue is None
+    assert found.value == TimeToMinute(date=date(2027, 6, 1), time=start)
+    assert found.end_value == TimeToMinute(date=date(2027, 6, 1), time=end)
+    assert found.issue is None
 
 
 def test_explicit_next_day_does_not_inherit_the_previous_afternoon() -> None:
@@ -103,15 +94,6 @@ def test_additional_notice_expressions_keep_all_time_information() -> None:
     [period] = find_dates("7月中下旬", publication)
     assert period.value == TimeToMonth(month="2027-07", part="mid")
     assert period.end_value == TimeToMonth(month="2027-07", part="late")
-
-
-@pytest.mark.parametrize("text", ["9月19日17:00-08:00", "9月19日8:00-24:01"])
-def test_unusable_same_day_clock_range_returns_no_partial_value(text: str) -> None:
-    [found] = find_dates(text, date(2027, 8, 1))
-    assert found.text == text
-    assert found.issue == "invalid_date"
-    assert found.value is None
-    assert found.end_value is None
 
 
 @pytest.mark.parametrize(
@@ -342,6 +324,9 @@ def test_missing_publication_retains_the_expression_without_guessing(text: str) 
         "6月30日12:60",
         "6月14日至1日",
         "2027年6月1日至2026年6月14日",
+        "9月19日17:00-08:00",
+        "9月19日8:00-24:01",
+        "6月1日下午2点至上午5点",
     ],
 )
 def test_invalid_dates_and_reversed_ranges_are_not_silently_repaired(text: str) -> None:
