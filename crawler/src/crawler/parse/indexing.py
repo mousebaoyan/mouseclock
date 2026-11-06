@@ -1,11 +1,14 @@
-"""An index into snapshot text; IDs are local to one invocation, never global identifiers."""
+"""IDs are local to one invocation; offsets are Python indices into snapshot text.
+
+Pass documents in body/attachment order and hyperlinks with absolute targets from the reader.
+"""
 
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import date
 from typing import Literal
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import unquote, urlsplit
 
 from crawler.crawl.contract import Evidence
 from crawler.parse.dates import DateMatch, find_dates
@@ -31,7 +34,6 @@ class Hyperlink:
 class Document:
     text: str
     attachment: int | None = None
-    url: str | None = None
     hyperlinks: tuple[Hyperlink, ...] = ()
 
 
@@ -51,9 +53,7 @@ class Reference:
     start: int
     end: int
     text: str
-    target: str | None
-    href: str | None = None
-    issue: Literal["invalid_target"] | None = None
+    target: str
 
 
 @dataclass(frozen=True)
@@ -65,8 +65,6 @@ class DateMention:
 
 @dataclass(frozen=True)
 class NoticeIndex:
-    source_url: str | None
-    published_on: date | None
     sentences: dict[str, Sentence]
     dates: dict[str, DateMention]
     links: dict[str, Reference]
@@ -81,38 +79,33 @@ class NoticeIndex:
 class _LocatedReference:
     start: int
     end: int
-    target: str | None
+    target: str
     kind: Literal["url", "email"]
-    href: str | None = None
 
 
-def _target(href: str, base_url: str | None) -> tuple[str | None, Literal["url", "email"]]:
-    if not urlsplit(href).scheme and base_url is None:
-        raise ValueError("Relative hyperlink requires a base URL")
-    target = urljoin(base_url, href) if base_url is not None else href
-    parts = urlsplit(target)
+def _target(href: str) -> tuple[str, Literal["url", "email"]] | None:
+    try:
+        parts = urlsplit(href)
+    except ValueError:
+        return None
     if parts.scheme == "mailto":
         address = unquote(parts.path)
-        return (address if re.fullmatch(_EMAIL, address) is not None else None), "email"
-    if parts.scheme in {"http", "https"}:
-        return (target if parts.netloc else None), "url"
-    raise ValueError("Link must be an HTTP(S) URL or a single mailto address")
+        if re.fullmatch(_EMAIL, address) is not None:
+            return address, "email"
+    elif parts.scheme in {"http", "https"} and parts.netloc:
+        return href, "url"
+    return None
 
 
-def _references(document: Document, source_url: str | None) -> list[_LocatedReference]:
+def _references(document: Document) -> list[_LocatedReference]:
     references: list[_LocatedReference] = []
-    for link in sorted(document.hyperlinks, key=lambda link: link.start):
-        if not 0 <= link.start < link.end <= len(document.text):
-            raise ValueError("Hyperlink offsets must select nonempty document text")
-        if references and link.start < references[-1].end:
-            raise ValueError("Hyperlink spans must not overlap")
-        target, kind = _target(link.href, document.url or source_url)
-        references.append(_LocatedReference(link.start, link.end, target, kind, link.href))
+    for link in document.hyperlinks:
+        target = _target(link.href)
+        if target is not None:
+            references.append(_LocatedReference(link.start, link.end, *target))
     for match in _REFERENCE.finditer(document.text):
         start, end = match.span()
-        if any(
-            ref.target is not None and start < ref.end and end > ref.start for ref in references
-        ):
+        if any(start < ref.end and end > ref.start for ref in references):
             continue
         raw = match[0].rstrip(".,;:!?")
         for opening, closing in (("(", ")"), ("[", "]"), ("{", "}")):
@@ -120,11 +113,11 @@ def _references(document: Document, source_url: str | None) -> list[_LocatedRefe
                 raw = raw[:-1]
         end = start + len(raw)
         if match["email"] is not None:
-            target = raw[7:] if raw[:7].lower() == "mailto:" else raw
-            kind = "email"
+            target = (raw[7:] if raw[:7].lower() == "mailto:" else raw, "email")
         else:
-            target, kind = _target(raw, document.url or source_url)
-        references.append(_LocatedReference(start, end, target, kind))
+            target = _target(raw)
+        if target is not None:
+            references.append(_LocatedReference(start, end, *target))
     return sorted(references, key=lambda reference: reference.start)
 
 
@@ -166,20 +159,10 @@ def _sentences(text: str, references: list[_LocatedReference]) -> list[tuple[int
     return trimmed
 
 
-def index_documents(
-    documents: Sequence[Document], *, published_on: date | None, source_url: str | None = None
-) -> NoticeIndex:
-    index = NoticeIndex(source_url, published_on, {}, {}, {}, {})
-    sources: set[int | None] = set()
-    for document in sorted(
-        documents, key=lambda document: -1 if document.attachment is None else document.attachment
-    ):
-        if document.attachment in sources:
-            raise ValueError("Each snapshot document must appear only once")
-        if document.attachment is not None and not 0 <= document.attachment <= 99:
-            raise ValueError("Attachment position must be between 0 and 99")
-        sources.add(document.attachment)
-        references = _references(document, source_url)
+def index_documents(documents: Sequence[Document], *, published_on: date | None) -> NoticeIndex:
+    index = NoticeIndex({}, {}, {}, {})
+    for document in documents:
+        references = _references(document)
         reference_position = 0
         for start, end in _sentences(document.text, references):
             sentence_id = f"S{len(index.sentences) + 1}"
@@ -200,8 +183,6 @@ def index_documents(
                     ref.end,
                     document.text[ref.start : ref.end],
                     ref.target,
-                    ref.href,
-                    None if ref.target is not None else "invalid_target",
                 )
                 reference_position += 1
             address_spans = [

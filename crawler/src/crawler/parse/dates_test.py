@@ -6,6 +6,80 @@ from crawler.crawl.contract import TimeToDay, TimeToMinute, TimeToMonth, TimeVal
 from crawler.parse.dates import find_dates
 
 
+def test_additional_notice_expressions_keep_all_time_information() -> None:
+    publication = date(2027, 5, 1)
+    [deadline] = find_dates("6月28日止\uff0817时\uff09", publication)
+    assert deadline.value == TimeToMinute(date=date(2027, 6, 28), time="17:00")
+    [before] = find_dates("7月4日之前", publication)
+    assert before.value == TimeToDay(date=date(2027, 7, 4), mark="before")
+    [period] = find_dates("7月中下旬", publication)
+    assert period.value == TimeToMonth(month="2027-07", part="mid")
+    assert period.end_value == TimeToMonth(month="2027-07", part="late")
+
+
+@pytest.mark.parametrize("text", ["9月19日17:00-08:00", "9月19日8:00-24:01"])
+def test_unusable_same_day_clock_range_returns_no_partial_value(text: str) -> None:
+    [found] = find_dates(text, date(2027, 8, 1))
+    assert found.text == text
+    assert found.issue == "invalid_date"
+    assert found.value is None
+    assert found.end_value is None
+
+
+@pytest.mark.parametrize(
+    ("gap", "clock", "expected"),
+    [
+        ("中午", "12\uff1a00", "12:00"),
+        ("上午", "9点", "09:00"),
+        ("上午", "10:30", "10:30"),
+        ("中午", "12时30分", "12:30"),
+        ("下午", "2:30", "14:30"),
+        ("下午", "12点", "12:00"),
+        ("晚上", "8点", "20:00"),
+        ("晚上", "11:30", "23:30"),
+        ("\uff08周五\uff09", "17:00", "17:00"),
+        ("\uff08星期五\uff09下午", "2点", "14:00"),
+        ("(星期五)", "17:00", "17:00"),
+        ("下午\uff08周五\uff09", "3点", "15:00"),
+    ],
+)
+def test_clock_after_period_or_weekday_preserves_minute_precision(
+    gap: str, clock: str, expected: str
+) -> None:
+    text = f"8月10日{gap}{clock}前"
+    [found] = find_dates(text, date(2027, 7, 1))
+    assert found.text == text
+    assert found.issue is None
+    assert found.value == TimeToMinute(date=date(2027, 8, 10), time=expected)
+
+
+@pytest.mark.parametrize(
+    ("text", "start_day", "end_day", "start_time", "end_time"),
+    [
+        ("9月19\u201320日", 19, 20, None, None),
+        ("9月19-20日", 19, 20, None, None),
+        ("9月19日8:00-17:00", 19, 19, "08:00", "17:00"),
+        ("9月19日上午9:30至下午5点", 19, 19, "09:30", "17:00"),
+    ],
+)
+def test_abbreviated_day_and_same_day_clock_ranges(
+    text: str, start_day: int, end_day: int, start_time: str | None, end_time: str | None
+) -> None:
+    [found] = find_dates(text, date(2027, 8, 1))
+    assert found.text == text
+    assert found.issue is None
+    assert found.value == (
+        TimeToMinute(date=date(2027, 9, start_day), time=start_time)
+        if start_time
+        else TimeToDay(date=date(2027, 9, start_day))
+    )
+    assert found.end_value == (
+        TimeToMinute(date=date(2027, 9, end_day), time=end_time)
+        if end_time
+        else TimeToDay(date=date(2027, 9, end_day))
+    )
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
