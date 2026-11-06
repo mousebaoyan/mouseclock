@@ -36,7 +36,7 @@
 | `crawl_runs` | `ingest` | 一个来源每一轮的结果，抓取看板用：`failure` 为空就是列表读到了，`detail` 写具体原因；各项计数；`notice_failures` 是没抓成的通知和原因 |
 | `notices` | `ingest` | 列表里的一条通知，`(source_id, url)` 唯一。`screening_score` 和 `screened_in` 是初筛的分数和结论，为空就是还没初筛；`checked_at` 是上次抓正文的时间，重抓用；`removed_at` 有值是原文已删除。抽取出项目的才有版本，没有版本的就是无关 |
 | `snapshots` | `ingest` | 某次抓到的正文，文字和上一份相同就不存新的；`extracted_at` 为空说明还没交抽取的结果 |
-| `attachments` | `ingest` | 快照里的附件：名称、地址、类型、提取出的文字和文件本身。`position` 是在页面上的顺序，证据里的 `attachment` 指的就是它；文件在抓取节点上传后才有 |
+| `attachments` | `ingest` | 快照里的附件：名称、地址、类型、提取出的文字和文件本身。`position` 是在页面上的顺序，证据里的 `attachment` 指的就是它；文件在抓取节点上传后才有。`error` 记录下载失败原因，成功时为空，和原文文字分开保存 |
 | `model_calls` | `ingest` | 判别模型和 LLM 的用量，随产出的结果一起交来 |
 
 ## 项目
