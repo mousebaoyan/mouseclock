@@ -130,7 +130,7 @@ const ListingResult = z
           published_on: IsoDate.nullable(),
           step: z.enum(["screen", "fetch"]).openapi({
             description:
-              "screen：还没初筛；fetch：要抓正文，初筛通过还没抽取的，或者项目还没截止、一天没抓过的",
+              "screen：还没初筛；fetch：初筛通过但最新快照还没抽取的，或者项目还没截止、最新快照有附件下载失败或文件未补传，且一天没抓过的",
           }),
         })
         .openapi("PendingNotice"),
@@ -287,6 +287,10 @@ export const ingestRoutes = router
                           url: Url,
                           content_type: z.string().min(1).max(200),
                           text: z.string().max(2 * MB),
+                          error: z.string().min(1).max(2000).optional().openapi({
+                            description:
+                              "附件下载失败原因；不写表示下载正常，不影响通知正文和其他附件",
+                          }),
                         })
                         .openapi("AttachmentInfo"),
                     )
@@ -323,6 +327,7 @@ export const ingestRoutes = router
       security,
       request: {
         params: z.object({ id: IntParam, position: IntParam }),
+        query: z.object({ url: Url }),
         body: {
           content: {
             "application/octet-stream": { schema: z.string().openapi({ format: "binary" }) },
@@ -338,7 +343,12 @@ export const ingestRoutes = router
     }),
     async (c) => {
       const { id, position } = c.req.valid("param");
-      await storeAttachmentFile(id, position, Buffer.from(await c.req.arrayBuffer()));
+      await storeAttachmentFile(
+        id,
+        position,
+        c.req.valid("query").url,
+        Buffer.from(await c.req.arrayBuffer()),
+      );
       return c.body(null, 204);
     },
   )

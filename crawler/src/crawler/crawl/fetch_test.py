@@ -5,8 +5,9 @@ from itertools import pairwise
 from urllib.parse import urlsplit
 
 import httpx
+import pytest
 
-from crawler.crawl.fetch import INTERVAL, USER_AGENT, Fetcher
+from crawler.crawl.fetch import INTERVAL, USER_AGENT, Fetcher, FetchError
 
 
 class FakeSites:
@@ -85,3 +86,90 @@ def test_a_redirect_to_another_site_waits_its_turn_there() -> None:
     assert moved.url == "http://b/new"
     assert len(sites.times("b")) == 2
     assert all(gap >= INTERVAL for gap in gaps(sites.times("b")))
+
+
+def test_http_and_browser_permissions_share_the_completion_interval() -> None:
+    sites = FakeSites({"http://a/notice": httpx.Response(200)})
+
+    async def use(fetcher: Fetcher) -> None:
+        browser_request = await fetcher.permit("http://A:80/list.htm")
+        http_request = asyncio.create_task(fetcher.get("http://a/notice"))
+        await asyncio.sleep(0)
+        assert not sites.requests
+        sites.now = 3.0
+        browser_request.release()
+        # A late terminal event for the old request must not release another one's permit.
+        browser_request.release()
+        await http_request
+
+    sites.run(use)
+    assert sites.times("a") == [3.0 + INTERVAL]
+
+
+def test_cancelling_the_interval_wait_does_not_mark_a_request_finished() -> None:
+    async def run() -> None:
+        sites = FakeSites({})
+        waiting = asyncio.Event()
+        waits: list[float] = []
+        block = True
+
+        async def sleep(seconds: float) -> None:
+            waits.append(seconds)
+            if block:
+                waiting.set()
+                await asyncio.Future[None]()
+            sites.now += seconds
+
+        async with Fetcher(clock=sites.clock, sleep=sleep) as fetcher:
+            first = await fetcher.permit("http://a/first")
+            first.release()
+            queued = asyncio.create_task(fetcher.permit("http://a/cancelled"))
+            await waiting.wait()
+            queued.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await queued
+            block = False
+            async with asyncio.timeout(1):
+                next_request = await fetcher.permit("http://a/next")
+            next_request.release()
+        assert waits == [INTERVAL, INTERVAL]
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("failure", ["timeout", "unreachable", "cancelled"])
+def test_failed_or_cancelled_http_requests_release_the_shared_permission(failure: str) -> None:
+    async def run() -> None:
+        sites = FakeSites({})
+        started = asyncio.Event()
+        requests = 0
+
+        async def handle(request: httpx.Request) -> httpx.Response:
+            nonlocal requests
+            requests += 1
+            if requests == 1:
+                started.set()
+                if failure == "cancelled":
+                    await asyncio.Future[None]()
+                if failure == "timeout":
+                    raise httpx.ReadTimeout("Timed out", request=request)
+                raise httpx.ConnectError("Connection failed", request=request)
+            return httpx.Response(200)
+
+        async with Fetcher(httpx.MockTransport(handle), sites.clock, sites.sleep) as fetcher:
+            task = asyncio.create_task(fetcher.get("http://a/first"))
+            await started.wait()
+            if failure == "cancelled":
+                task.cancel()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+            else:
+                with pytest.raises(FetchError) as caught:
+                    await task
+                assert caught.value.failure == failure
+            async with asyncio.timeout(1):
+                response = await fetcher.get("http://a/next")
+            assert response.status == 200
+            assert sites.now == INTERVAL
+
+    asyncio.run(run())

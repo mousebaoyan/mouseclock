@@ -29,7 +29,7 @@ class PendingNotice(BaseModel):
     step: Annotated[
         Literal["screen", "fetch"],
         Field(
-            description="screen：还没初筛；fetch：要抓正文，初筛通过还没抽取的，或者项目还没截止、一天没抓过的"
+            description="screen：还没初筛；fetch：初筛通过但最新快照还没抽取的，或者项目还没截止、最新快照有附件下载失败或文件未补传，且一天没抓过的"
         ),
     ]
 
@@ -114,6 +114,14 @@ class AttachmentInfo(BaseModel):
     url: Annotated[str, Field(max_length=2000)]
     content_type: Annotated[str, Field(max_length=200, min_length=1)]
     text: Annotated[str, Field(max_length=2097152)]
+    error: Annotated[
+        str | None,
+        Field(
+            description="附件下载失败原因；不写表示下载正常，不影响通知正文和其他附件",
+            max_length=2000,
+            min_length=1,
+        ),
+    ] = None
 
 
 type ValueItem = Annotated[str, Field(max_length=500, min_length=1)]
