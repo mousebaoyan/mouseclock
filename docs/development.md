@@ -83,6 +83,7 @@ crawler/                抓取节点
 - 网站的测试连真实的 PostgreSQL：开始前迁移一个模板库，每个测试文件复制一个自己的库，可以并行跑。
 - 抓取节点的测试不连外网：请求用 httpx 的 `MockTransport`，时间用假的时钟，不真的等待（见 `crawl/fetch_test.py`）。
 - **假的鼠洞**：`test/fake-mousehole.ts` 照鼠洞的接口实现了授权、换令牌和 `/me`，带几个各种权限的假用户。测试里 `fetch` 都转给它，请求别的网站直接报错；开发版的 `MOUSEHOLE_URL` 指向自己时（`.env.example` 就是这样），它挂在 `/fake-mousehole` 下，点「登录」可以挑用哪个假用户。
+- **本地的真鼠洞**：要对着本地跑的鼠洞试登录时，在鼠洞后台的「应用」页登记鼠钟，回调地址填 `http://localhost:5174/login/callback`。鼠洞的开发版占着 5173，鼠钟换到 5174，命令行上的变量优先于 `.env`：`PUBLIC_URL=http://localhost:5174 MOUSEHOLE_URL=http://localhost:5173 MOUSEHOLE_CLIENT_ID=… MOUSEHOLE_CLIENT_SECRET=… pnpm dev --port 5174`。
 - 测试数据：保存下来的列表页、固定的模型响应、假的邮件服务器和假的鼠洞授权方。保存的页面只用来测解析，不放正文和附件；某个网站出过问题的，把那一页存下来做测试数据。
 - 判别和抽取的效果不写成单元测试，用标注集评估（[总体设计 §8.5](design.md#85-实验)）。
 
