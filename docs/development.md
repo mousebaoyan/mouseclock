@@ -64,6 +64,31 @@ crawler/                抓取节点
 - 判别模型和 LLM 的提示词放在调用它的代码旁边。输出都按固定的结构解析，解析不了的当失败处理。
 - 每一轮抓取都交一份抓取记录，失败也交，写明原因；不在一轮里反复重试。各步抓不成时抛 `FetchError`（`Fetcher` 抛的）或 `StepError`（写明失败类别，比如 `http_status` 和「HTTP 403」），一轮的流程把它记进抓取记录；别的异常是 bug，照常抛出。
 
+### 2.1 列表配置
+
+`parse/listing.py` 的 `list_items(fetcher, source)` 可作为 `Steps.list_items`。不填配置时按常见建站系统的列表结构取；特殊页面用 `ListConfig` 校验 `WorkSource.config`。例如浙大计算机学院的 `http://www.cs.zju.edu.cn/csen/27006/list.htm`：
+
+```json
+{
+  "selectors": {
+    "items": "//div[contains(concat(' ',normalize-space(@class),' '),' jzlb ')]",
+    "title": "./div[@class='btt3']/a",
+    "link": "./div[@class='btt3']/a/@href",
+    "date": "./div[@class='fbsj4']",
+    "next": "//a[@class='next']/@href"
+  },
+  "force_http": true
+}
+```
+
+- `selectors` 可省略，表示通用解析；填写时 `items`、`title`、`link` 必填。全部选择器都是 XPath 1.0：`items` 相对于整页，必须选中条目元素；`title`、`link`、`date` 相对于每个条目；`next` 相对于整页。字段取第一个匹配的字符串或元素的文字，空白归一化。日期和翻页选择器可省略，分别表示日期未知、没有下一页。
+- `force_http` 默认 `false`。只有明确只能用 HTTP 的来源才设为 `true`（可单独配置 `{"force_http": true}`）：列表请求及同站翻页使用 HTTP；不自动在 HTTPS 失败后降级，不改写外站链接。
+- 链接按请求跳转后的实际地址解析为绝对网址，去掉片段；只接受 HTTP(S) 链接，不执行脚本。日期只认完整年月日，也支持同一个日期容器里分开的日和年月；缺失或无效时为 `null`，不从标题或当前年份猜。
+- 通用翻页优先读取「下一页」或 `rel="next"`；只有页码时，从 `aria-current="page"` 标明的当前页取紧邻的下一页码，不把「尾页」当下一页，不执行拼页码的脚本。
+- 普通轮次只读第一页；`backfill` 为真时保留近两年及日期未知的条目，按北京时间的今天计算两年前的同月同日，闰日取该月最后一天。已读网址去重；一页中此前未见的条目都有日期且都早于范围时停止，重复的置顶通知不阻碍截止判断；日期未知的条目不能作为停止依据。没有下一页也停止，翻页形成循环则记为错误。
+- 未识别出列表时返回空列表，由一轮流程记成 `no_items`；任一历史页读不到条目也不交部分回补结果。非 2xx 状态抛 `StepError("http_status", "HTTP …")`；非法配置（含 XPath 语法、返回类型错误）转成 `StepError("error", "配置不对：…")`，不让校验异常造成租约反复重来。
+- 模板及替换了通知内容的页面样例和测试放在 `parse/`，按页面结构补通用能力，不按学校域名写特判。配置供来源管理及 #46 的试抓生成共用；浏览器页面的取得不在本步骤实现。
+
 ## 3. 时间
 
 - 时刻存成带时区的时间戳；通知里写的"某天几点"一律按北京时间理解，时间值和换算的规则见[总体设计 §8.2](design.md#82-抽取)。
