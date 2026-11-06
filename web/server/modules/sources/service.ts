@@ -1,5 +1,4 @@
 import { sql, type Transaction } from "kysely";
-import { jsonArrayFrom, jsonObjectFrom } from "kysely/helpers/postgres";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
@@ -7,8 +6,7 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
-import { statusOf } from "../programs/time.ts";
-import type { ApplyValue, Kind, Role, TimeValue } from "../programs/schemas.ts";
+import type { ApplyValue, Kind } from "../programs/schemas.ts";
 import {
   PAGE_SIZE,
   type SchoolInput,
@@ -21,6 +19,7 @@ import {
   type CollegeQuery,
   type SourceQuery,
   type PublicSchool,
+  type PublicProgramCohort,
 } from "./schemas.ts";
 
 export type Actor = { user_id: number; via: "web" | "seed" };
@@ -169,7 +168,7 @@ export async function getCollege(id: number) {
   return row;
 }
 
-export async function listPublicColleges(now = new Date()) {
+export async function listPublicColleges() {
   const rows = await db
     .selectFrom("colleges")
     .innerJoin("schools", "schools.id", "colleges.school_id")
@@ -184,28 +183,6 @@ export async function listPublicColleges(now = new Date()) {
       "colleges.region",
       "colleges.directions",
     ])
-    .select((eb) =>
-      jsonObjectFrom(
-        eb
-          .selectFrom("programs")
-          .innerJoin("program_fields as start", (join) =>
-            join.onRef("start.program_id", "=", "programs.id").on("start.key", "=", "apply:start"),
-          )
-          .select([sql<Kind>`programs.kind`.as("kind"), sql<TimeValue>`start.value`.as("start")])
-          .whereRef("programs.college_id", "=", "colleges.id")
-          .where("programs.deleted_at", "is", null)
-          .where("programs.apply_start", ">", now)
-          .where((where) =>
-            where.or([
-              where("programs.apply_deadline", "is", null),
-              where("programs.apply_deadline", ">", now),
-            ]),
-          )
-          .orderBy("programs.apply_start")
-          .orderBy("programs.id")
-          .limit(1),
-      ).as("next_program"),
-    )
     .orderBy("schools.name")
     .orderBy("colleges.name")
     .orderBy("colleges.id")
@@ -230,13 +207,12 @@ export async function listPublicColleges(now = new Date()) {
       kind: row.kind,
       region: row.region,
       directions: row.directions,
-      next_program: row.next_program,
     });
   }
   return { schools: [...schools.values()] };
 }
 
-export async function getPublicCollege(id: number, now = new Date()) {
+export async function getPublicCollege(id: number) {
   const college = await db
     .selectFrom("colleges")
     .innerJoin("schools", "schools.id", "colleges.school_id")
@@ -248,8 +224,6 @@ export async function getPublicCollege(id: number, now = new Date()) {
       "colleges.directions",
       "schools.id as school_id",
       "schools.name as school_name",
-      "schools.short_name as school_short_name",
-      "schools.tiers as school_tiers",
     ])
     .where("colleges.id", "=", id)
     .executeTakeFirst();
@@ -274,26 +248,6 @@ export async function getPublicCollege(id: number, now = new Date()) {
             and field.key in ('apply:start', 'apply:end', 'apply:rolling')
         )`.as("apply"),
       )
-      .select((eb) =>
-        jsonArrayFrom(
-          eb
-            .selectFrom("program_versions as version")
-            .innerJoin("snapshots", "snapshots.id", "version.snapshot_id")
-            .innerJoin("notices", "notices.id", "snapshots.notice_id")
-            .select([
-              "notices.id",
-              "notices.title",
-              "notices.url",
-              "version.number as version_number",
-              sql<Role>`version.role`.as("role"),
-              sql<boolean>`notices.removed_at is not null`.as("removed"),
-            ])
-            .whereRef("version.program_id", "=", "programs.id")
-            .distinctOn("notices.id")
-            .orderBy("notices.id")
-            .orderBy("version.number", "desc"),
-        ).as("notices"),
-      )
       .where("college_id", "=", id)
       .where("deleted_at", "is", null)
       .orderBy("cohort", "desc")
@@ -301,38 +255,15 @@ export async function getPublicCollege(id: number, now = new Date()) {
       .orderBy("id")
       .execute(),
   ]);
-  const programItems = programs.map((program) => {
-    const applyStart = program.apply_start ? unix(program.apply_start) : null;
-    const applyDeadline = program.apply_deadline ? unix(program.apply_deadline) : null;
-    return {
-      id: program.id,
-      cohort: program.cohort,
-      kind: program.kind,
-      name: program.name,
-      apply: program.apply,
-      apply_start: applyStart,
-      apply_deadline: applyDeadline,
-      status: statusOf({ apply_start: applyStart, apply_deadline: applyDeadline }, unix(now)),
-      notices: program.notices
-        .sort(
-          (a, b) =>
-            Number(b.role === "call") - Number(a.role === "call") ||
-            b.version_number - a.version_number,
-        )
-        .map(({ id: noticeId, title, url, role, removed }) => ({
-          id: noticeId,
-          title,
-          url,
-          role,
-          removed,
-        })),
-    };
-  });
-  const grouped = new Map<number, typeof programItems>();
-  for (const program of programItems) {
-    const current = grouped.get(program.cohort) ?? [];
-    current.push(program);
-    grouped.set(program.cohort, current);
+  const grouped = new Map<number, z.infer<typeof PublicProgramCohort>["programs"]>();
+  for (const { cohort, apply_start, apply_deadline, ...program } of programs) {
+    const current = grouped.get(cohort) ?? [];
+    current.push({
+      ...program,
+      apply_start: apply_start ? unix(apply_start) : null,
+      apply_deadline: apply_deadline ? unix(apply_deadline) : null,
+    });
+    grouped.set(cohort, current);
   }
 
   return {
@@ -340,8 +271,6 @@ export async function getPublicCollege(id: number, now = new Date()) {
     school: {
       id: college.school_id,
       name: college.school_name,
-      short_name: college.school_short_name,
-      tiers: college.school_tiers,
     },
     name: college.name,
     kind: college.kind,

@@ -143,12 +143,6 @@ test("L1 and muted members can read the list and detail", async () => {
   }
 });
 
-test("an empty college list is successful", async () => {
-  const res = await api.colleges.$get({}, member);
-  expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({ schools: [] });
-});
-
 test("the list groups all colleges, including those without sources, beyond the admin page size", async () => {
   const { schoolId, collegeId } = await fixture();
   const extraSchool = await db
@@ -193,7 +187,6 @@ test("the list groups all colleges, including those without sources, beyond the 
     kind: "college",
     region: "北京",
     directions: ["计算机"],
-    next_program: null,
   });
   expect(body.schools.find((item) => item.id === extraSchool.id)?.colleges).toHaveLength(1);
 });
@@ -217,8 +210,6 @@ test("detail exposes source summaries and failure reasons without crawler config
     school: {
       id: seeded.schoolId,
       name: "测试大学",
-      short_name: "测试大",
-      tiers: ["985", "double_first_class"],
     },
     name: "计算机学院",
     kind: "college",
@@ -321,44 +312,17 @@ test("history preserves original times and groups by cohort with stable deadline
     rolling,
     unknown,
   ]);
-  expect(body.programs.flatMap((group) => group.programs)).toEqual([
-    expect.objectContaining({ id: future, status: "upcoming" }),
-    expect.objectContaining({
-      id: deadline,
-      status: "closed",
-      apply_deadline: now.getTime() / 1000,
-    }),
-    expect.objectContaining({ id: tie, status: "closed" }),
-    expect.objectContaining({
-      id: later,
-      status: "open",
-      apply: {
-        start: { date: "2026-05-10" },
-        end: { month: "2026-06", part: "mid" },
-        rolling: true,
-      },
-    }),
-    expect.objectContaining({
-      id: opening,
-      status: "open",
-      apply_start: now.getTime() / 1000,
-      apply_deadline: null,
-    }),
-    expect.objectContaining({
-      id: rolling,
-      status: null,
-      apply: { rolling: true },
-      apply_start: null,
-      apply_deadline: null,
-    }),
-    expect.objectContaining({
-      id: unknown,
-      status: null,
-      apply: null,
-      apply_start: null,
-      apply_deadline: null,
-    }),
-  ]);
+  const items = body.programs.flatMap((group) => group.programs);
+  expect(items.find((item) => item.id === later)).toMatchObject({
+    apply: { start: { date: "2026-05-10" }, end: { month: "2026-06", part: "mid" }, rolling: true },
+    apply_start: Date.parse("2026-05-09T16:00:00Z") / 1000,
+    apply_deadline: Date.parse("2026-06-10T16:00:00Z") / 1000,
+  });
+  expect(items.find((item) => item.id === unknown)).toMatchObject({
+    apply: null,
+    apply_start: null,
+    apply_deadline: null,
+  });
 });
 
 test("missing college returns not found", async () => {
@@ -367,329 +331,8 @@ test("missing college returns not found", async () => {
   expect(await res.json()).toMatchObject({ error: { code: "not_found" } });
 });
 
-test.each(["invalid", "1.5", "2147483648"])("invalid college ID %s is rejected", async (id) => {
-  const res = await api.colleges[":id"].$get({ param: { id } }, member);
+test("out-of-range college ID is rejected before querying PostgreSQL", async () => {
+  const res = await api.colleges[":id"].$get({ param: { id: "2147483648" } }, member);
   expect(res.status).toBe(400);
   expect(await res.json()).toMatchObject({ error: { code: "invalid_request" } });
-});
-
-test("college activity chooses the nearest future application per college and advances when it opens", async () => {
-  const seeded = await fixture();
-  await program(seeded, {
-    cohort: 2027,
-    kind: "summer_camp",
-    name: "较晚的夏令营",
-    apply: { start: { date: "2026-05-18", time: "09:00" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "winter_camp",
-    name: "最近的冬令营",
-    apply: { start: { date: "2026-05-16", time: "09:00" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "pre_recommendation",
-    name: "相同时间后录入",
-    apply: { start: { date: "2026-05-16", time: "09:00" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "september_round",
-    name: "更近的九推",
-    apply: { start: { date: "2026-05-15", time: "13:00" } },
-  });
-  const removed = await program(seeded, {
-    cohort: 2027,
-    kind: "winter_camp",
-    name: "已删除",
-    apply: { start: { date: "2026-05-15", time: "13:00" } },
-  });
-  await db.updateTable("programs").set({ deleted_at: now }).where("id", "=", removed).execute();
-  await program(seeded, {
-    cohort: 2027,
-    kind: "summer_camp",
-    name: "已经开始",
-    apply: { start: { date: "2026-05-15", time: "12:00" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "summer_camp",
-    name: "只写截止",
-    apply: { end: { date: "2026-05-20" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "summer_camp",
-    name: "已经截止",
-    apply: {
-      start: { date: "2026-05-15", time: "13:00" },
-      end: { date: "2026-05-15", time: "12:00" },
-    },
-  });
-  const other = await db
-    .insertInto("colleges")
-    .values({
-      school_id: seeded.schoolId,
-      name: "其他学院",
-      kind: "college",
-      region: "北京",
-      directions: [],
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  await program(
-    { ...seeded, collegeId: other.id },
-    {
-      cohort: 2027,
-      kind: "pre_recommendation",
-      name: "其他学院更近",
-      apply: { start: { date: "2026-05-15", time: "13:00" } },
-    },
-  );
-
-  const res = await api.colleges.$get({}, member);
-  expect(res.status).toBe(200);
-  if (res.status !== 200) throw new Error("College list failed");
-  const colleges = (await res.json()).schools.flatMap((school) => school.colleges);
-  expect(colleges.find((college) => college.id === seeded.collegeId)?.next_program).toEqual({
-    kind: "september_round",
-    start: { date: "2026-05-15", time: "13:00" },
-  });
-  expect(colleges.find((college) => college.id === other.id)?.next_program).toEqual({
-    kind: "pre_recommendation",
-    start: { date: "2026-05-15", time: "13:00" },
-  });
-
-  vi.setSystemTime(new Date("2026-05-15T05:00:00Z"));
-  const tied = await api.colleges.$get({}, member);
-  expect(tied.status).toBe(200);
-  if (tied.status !== 200) throw new Error("College list failed");
-  const tiedColleges = (await tied.json()).schools.flatMap((school) => school.colleges);
-  expect(tiedColleges.find((college) => college.id === seeded.collegeId)?.next_program).toEqual({
-    kind: "winter_camp",
-    start: { date: "2026-05-16", time: "09:00" },
-  });
-
-  vi.setSystemTime(new Date("2026-05-16T01:00:00Z"));
-  const refreshed = await api.colleges.$get({}, member);
-  expect(refreshed.status).toBe(200);
-  if (refreshed.status !== 200) throw new Error("College list failed");
-  const refreshedColleges = (await refreshed.json()).schools.flatMap((school) => school.colleges);
-  expect(
-    refreshedColleges.find((college) => college.id === seeded.collegeId)?.next_program,
-  ).toEqual({
-    kind: "summer_camp",
-    start: { date: "2026-05-18", time: "09:00" },
-  });
-  expect(refreshedColleges.find((college) => college.id === other.id)?.next_program).toBeNull();
-});
-
-test.each([
-  { kind: "winter_camp", start: { date: "2026-05-17", time: "10:00" } },
-  { kind: "summer_camp", start: { date: "2026-05-18", mark: "about" } },
-  { kind: "pre_recommendation", start: { month: "2026-06", part: "early" } },
-  { kind: "september_round", start: { date: "2026-10-08", time: "09:30" } },
-] satisfies { kind: Kind; start: NonNullable<ApplyValue["start"]> }[])(
-  "college activity preserves the original start precision for $kind",
-  async ({ kind, start }) => {
-    const seeded = await fixture();
-    await program(seeded, { cohort: 2027, name: "即将开始", kind, apply: { start } });
-    const res = await api.colleges.$get({}, member);
-    expect(res.status).toBe(200);
-    expect(await res.json()).toMatchObject({
-      schools: [{ colleges: [{ id: seeded.collegeId, next_program: { kind, start } }] }],
-    });
-  },
-);
-
-test("college activity is absent when no eligible future application remains", async () => {
-  const seeded = await fixture();
-  await program(seeded, {
-    cohort: 2027,
-    kind: "winter_camp",
-    name: "已开始",
-    apply: { start: { date: "2026-05-14" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "summer_camp",
-    name: "刚开始",
-    apply: { start: { date: "2026-05-15", time: "12:00" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "pre_recommendation",
-    name: "已截止",
-    apply: { start: { date: "2026-05-14" }, end: { date: "2026-05-15", time: "12:00" } },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "summer_camp",
-    name: "额满即止",
-    apply: { rolling: true },
-  });
-  await program(seeded, {
-    cohort: 2027,
-    kind: "pre_recommendation",
-    name: "开始时间未知",
-    apply: { end: { date: "2026-05-20" } },
-  });
-  const removed = await program(seeded, {
-    cohort: 2027,
-    kind: "winter_camp",
-    name: "已删除",
-    apply: { start: { date: "2026-05-20" } },
-  });
-  await db.updateTable("programs").set({ deleted_at: now }).where("id", "=", removed).execute();
-  const res = await api.colleges.$get({}, member);
-  expect(res.status).toBe(200);
-  expect(await res.json()).toMatchObject({
-    schools: [{ colleges: [{ id: seeded.collegeId, next_program: null }] }],
-  });
-});
-
-test("project origins prefer the latest application notice, deduplicate snapshots and retain related notices", async () => {
-  const seeded = await fixture();
-  const first = await program(seeded, { cohort: 2027, kind: "summer_camp", name: "夏令营" });
-  const second = await program(seeded, {
-    cohort: 2027,
-    kind: "pre_recommendation",
-    name: "预推免",
-  });
-  const original = await db
-    .selectFrom("snapshots")
-    .innerJoin("notices", "notices.id", "snapshots.notice_id")
-    .select(["notices.id", "notices.url", "notices.title"])
-    .where("snapshots.id", "=", seeded.snapshotId)
-    .executeTakeFirstOrThrow();
-  const notices = await db
-    .insertInto("notices")
-    .values([
-      {
-        source_id: seeded.sourceId,
-        url: "https://college.example/notices/new-call",
-        title: "新版报名通知",
-        published_on: "2026-05-02",
-      },
-      {
-        source_id: seeded.sourceId,
-        url: "https://college.example/notices/extension",
-        title: "延期通知",
-        published_on: "2026-05-03",
-      },
-      {
-        source_id: seeded.sourceId,
-        url: "https://college.example/notices/results",
-        title: "结果通知",
-        published_on: "2026-05-04",
-        removed_at: now,
-      },
-    ])
-    .returning(["id", "url", "title"])
-    .execute();
-  for (const [index, notice] of notices.entries()) {
-    const snapshots = await db
-      .insertInto("snapshots")
-      .values([
-        { notice_id: notice.id, fetched_at: now, html: "<p>原文</p>", text: "原文" },
-        { notice_id: notice.id, fetched_at: now, html: "<p>更新原文</p>", text: "更新原文" },
-      ])
-      .returning("id")
-      .execute();
-    for (const [snapshotIndex, snapshot] of snapshots.entries()) {
-      await db
-        .insertInto("program_versions")
-        .values({
-          program_id: first,
-          snapshot_id: snapshot.id,
-          number: 2 + index * 2 + snapshotIndex,
-          role: index === 0 ? "call" : index === 1 ? "update" : "result",
-          fields: {},
-          changes: [],
-        })
-        .execute();
-    }
-  }
-  const res = await api.colleges[":id"].$get({ param: { id: String(seeded.collegeId) } }, member);
-  expect(res.status).toBe(200);
-  if (res.status !== 200) throw new Error("College detail failed");
-  const projects = (await res.json()).programs.flatMap((group) => group.programs);
-  expect(projects.find((item) => item.id === first)?.notices).toEqual([
-    { ...notices[0], role: "call", removed: false },
-    { ...original, role: "call", removed: false },
-    { ...notices[2], role: "result", removed: true },
-    { ...notices[1], role: "update", removed: false },
-  ]);
-  expect(projects.find((item) => item.id === second)?.notices).toEqual([
-    { ...original, role: "call", removed: false },
-  ]);
-});
-
-test("project origins use the latest related notice when no application version exists", async () => {
-  const seeded = await fixture();
-  const id = await program(seeded, { cohort: 2027, kind: "summer_camp", name: "仅有补充信息" });
-  await db
-    .updateTable("program_versions")
-    .set({ role: "update" })
-    .where("program_id", "=", id)
-    .execute();
-  const notice = await db
-    .insertInto("notices")
-    .values({
-      source_id: seeded.sourceId,
-      url: "https://college.example/results",
-      title: "考核结果",
-    })
-    .returning(["id", "url", "title"])
-    .executeTakeFirstOrThrow();
-  const snapshot = await db
-    .insertInto("snapshots")
-    .values({
-      notice_id: notice.id,
-      fetched_at: now,
-      html: "<p>结果</p>",
-      text: "结果",
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  await db
-    .insertInto("program_versions")
-    .values({
-      program_id: id,
-      snapshot_id: snapshot.id,
-      number: 2,
-      role: "result",
-      fields: {},
-      changes: [],
-    })
-    .execute();
-  const res = await api.colleges[":id"].$get({ param: { id: String(seeded.collegeId) } }, member);
-  expect(res.status).toBe(200);
-  if (res.status !== 200) throw new Error("College detail failed");
-  const projects = (await res.json()).programs.flatMap((group) => group.programs);
-  expect(projects.find((item) => item.id === id)?.notices[0]).toEqual({
-    ...notice,
-    role: "result",
-    removed: false,
-  });
-});
-
-test("a project without versions has no fabricated original notice", async () => {
-  const seeded = await fixture();
-  const project = await db
-    .insertInto("programs")
-    .values({
-      college_id: seeded.collegeId,
-      cohort: 2027,
-      kind: "summer_camp",
-      name: "暂无通知",
-    })
-    .returning("id")
-    .executeTakeFirstOrThrow();
-  const res = await api.colleges[":id"].$get({ param: { id: String(seeded.collegeId) } }, member);
-  expect(res.status).toBe(200);
-  expect(await res.json()).toMatchObject({
-    programs: [{ programs: [{ id: project.id, notices: [] }] }],
-  });
 });

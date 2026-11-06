@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { Int, IntParam, UnixSeconds } from "../../platform/http.ts";
-import { ApplyValue, Kind, Role, TimeValue } from "../programs/schemas.ts";
+import { ApplyValue, Kind } from "../programs/schemas.ts";
 
 export const PAGE_SIZE = 20;
 export const PageQuery = z.object({
@@ -84,17 +84,12 @@ export function Page<T extends z.ZodType>(item: T) {
 
 // Public college pages keep the school grouping and the original application window visible.
 // The computed instants are included for status and countdowns; pages still display `apply`.
-export const UpcomingCollegeProgram = z.object({
-  kind: Kind,
-  start: TimeValue,
-});
 export const PublicCollege = z.object({
   id: Int,
   name: z.string(),
   kind: z.string(),
   region: z.string(),
   directions: z.array(z.string()),
-  next_program: z.union([UpcomingCollegeProgram, z.null()]),
 });
 export const PublicSchool = z.object({
   id: Int,
@@ -110,24 +105,13 @@ export const PublicSource = z.object({
   section: z.string(),
   unavailable_reason: z.string().nullable(),
 });
-export const ProgramStatus = z.enum(["upcoming", "open", "closed"]);
-export const ProgramNotice = z.object({
-  id: Int,
-  title: z.string(),
-  url: z.string(),
-  role: Role,
-  removed: z.boolean(),
-});
 export const PublicProgram = z.object({
   id: Int,
-  cohort: Int,
   kind: Kind,
   name: z.string(),
   apply: z.union([ApplyValue, z.null()]),
   apply_start: UnixSeconds.nullable(),
   apply_deadline: UnixSeconds.nullable(),
-  status: ProgramStatus.nullable(),
-  notices: z.array(ProgramNotice),
 });
 export const PublicProgramCohort = z.object({
   cohort: Int,
@@ -135,7 +119,7 @@ export const PublicProgramCohort = z.object({
 });
 export const PublicCollegeDetail = z.object({
   id: Int,
-  school: School,
+  school: School.pick({ id: true, name: true }),
   name: z.string(),
   kind: z.string(),
   region: z.string(),
