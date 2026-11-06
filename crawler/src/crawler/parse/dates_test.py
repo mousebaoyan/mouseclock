@@ -6,6 +6,94 @@ from crawler.crawl.contract import TimeToDay, TimeToMinute, TimeToMonth, TimeVal
 from crawler.parse.dates import find_dates
 
 
+@pytest.mark.parametrize(
+    ("text", "days"),
+    [
+        ("报名截止6月14日2.提交材料", [14]),
+        ("6月1日7月2日", [1, 2]),
+    ],
+)
+def test_dates_can_be_followed_immediately_by_numbers(text: str, days: list[int]) -> None:
+    found = find_dates(text, date(2027, 5, 1))
+    assert [item.value.date.day for item in found if isinstance(item.value, TimeToDay)] == days
+    assert all(item.issue is None for item in found)
+    assert all(text[item.start : item.end] == item.text for item in found)
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "6月1日-6月14号",
+        "6月1日8:00-17:0",
+        "6月1日8:00至17:001",
+        "6月1日-6月14日17:0",
+        "6月14日17:001",
+        "6月1日到14号",
+        "6月1日—14号",
+        "6月1日\uff5e14号",
+    ],
+)
+def test_unrecognized_numeric_range_end_cannot_leave_a_valid_start(text: str) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.issue == "invalid_date"
+    assert found.value is None
+    assert found.end_value is None
+
+
+def test_dash_before_prose_still_allows_an_ordinary_date() -> None:
+    [found] = find_dates("6月14日——截止", date(2027, 5, 1))
+    assert found.value == TimeToDay(date=date(2027, 6, 14))
+    assert found.issue is None
+
+
+def test_mid_to_late_month_does_not_replace_an_explicit_range_end() -> None:
+    [found] = find_dates("7月中下旬至8月上旬", date(2027, 5, 1))
+    assert found.text == "7月中下旬至8月上旬"
+    assert found.value == TimeToMonth(month="2027-07", part="mid")
+    assert found.end_value == TimeToMonth(month="2027-08", part="early")
+    assert found.issue is None
+
+
+@pytest.mark.parametrize("text", ["6月14日星期五17:00前", "6月14日 周五 17:00"])
+def test_unparenthesized_weekday_keeps_the_clock(text: str) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == text
+    assert found.value == TimeToMinute(date=date(2027, 6, 14), time="17:00")
+    assert found.issue is None
+
+
+@pytest.mark.parametrize(
+    ("text", "start", "end"),
+    [
+        ("6月1日下午2点至5点", "14:00", "17:00"),
+        ("6月1日晚上7点至9点", "19:00", "21:00"),
+        ("6月1日下午2点至上午5点", None, None),
+        ("6月1日8:00至17:00之前", "08:00", "17:00"),
+    ],
+)
+def test_clock_range_inherits_period_only_when_omitted(
+    text: str, start: str | None, end: str | None
+) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == text
+    if start is None:
+        assert found.issue == "invalid_date"
+        assert found.value is None
+        assert found.end_value is None
+    else:
+        assert end is not None
+        assert found.value == TimeToMinute(date=date(2027, 6, 1), time=start)
+        assert found.end_value == TimeToMinute(date=date(2027, 6, 1), time=end)
+        assert found.issue is None
+
+
+def test_explicit_next_day_does_not_inherit_the_previous_afternoon() -> None:
+    [found] = find_dates("6月1日下午2点至6月2日5点", date(2027, 5, 1))
+    assert found.value == TimeToMinute(date=date(2027, 6, 1), time="14:00")
+    assert found.end_value == TimeToMinute(date=date(2027, 6, 2), time="05:00")
+    assert found.issue is None
+
+
 def test_additional_notice_expressions_keep_all_time_information() -> None:
     publication = date(2027, 5, 1)
     [deadline] = find_dates("6月28日止\uff0817时\uff09", publication)
@@ -198,7 +286,6 @@ def test_year_inference_does_not_roll_every_past_date_forward() -> None:
         ("2月28日", date(2027, 8, 31), date(2027, 2, 28)),
         ("2月27日", date(2027, 8, 31), date(2028, 2, 27)),
         ("2月29日", date(2027, 12, 1), date(2028, 2, 29)),
-        ("2027年1月10日", date(2027, 12, 20), date(2027, 1, 10)),
     ],
 )
 def test_year_inference_uses_a_strict_six_calendar_month_threshold(

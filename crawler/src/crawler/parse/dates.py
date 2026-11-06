@@ -9,23 +9,24 @@ from typing import Literal
 from crawler.crawl.contract import TimeToDay, TimeToMinute, TimeToMonth, TimeValue
 
 _CLOCK = r"(?:[0-9]{1,2}[:\uff1a][0-9]{2}|[0-9]{1,2}[时点](?:[0-9]{1,2}分?)?)"
-_GAP = r"(?:[ \t]*(?:[\uff08(](?:星期|周)[一二三四五六日天][\uff09)]|上午|中午|下午|晚上))*[ \t]*"
+_WEEKDAY = r"[\uff08(]?(?:星期|周)[一二三四五六日天][\uff09)]?"
+_GAP = rf"(?:[ \t]*(?:{_WEEKDAY}|上午|中午|下午|晚上))*[ \t]*"
 # Spaces are allowed between components, but a line break ends an expression.
 _DAY = (
     rf"[0-9]{{1,2}}[ \t]*日(?:{_GAP}{_CLOCK}|[ \t]*止[ \t]*[\uff08(]{_CLOCK}[\uff09)])?"
     r"(?:[ \t]*(?:前后|左右|之前|前))?"
 )
 _MONTH = (
-    rf"(?:[0-9]{{4}}[ \t]*年[ \t]*)?[0-9]{{1,2}}[ \t]*月[ \t]*"
-    rf"(?:{_DAY}|中下旬|上旬|中旬|下旬|初|底)?"
+    rf"(?:[0-9]{{4}}[ \t]*年[ \t]*)?[0-9]{{1,2}}[ \t]*月"
+    rf"(?:[ \t]*(?:{_DAY}|中下旬|上旬|中旬|下旬|初|底))?"
 )
 _ATOM = rf"(?:即日起|{_MONTH})"
 _SEPARATOR = r"(?:至|到|—+|\u2013|\uff0d|\uff5e|~|-)"
 _EXPRESSION = re.compile(
     rf"(?<![0-9年月])(?P<first>(?:[0-9]{{4}}[ \t]*年[ \t]*)?"
     rf"[0-9]{{1,2}}[ \t]*月[ \t]*[0-9]{{1,2}}(?=[ \t]*{_SEPARATOR}[ \t]*{_DAY})|{_ATOM})"
-    rf"(?:[ \t]*{_SEPARATOR}[ \t]*(?P<last>{_ATOM}|{_DAY}|{_GAP}{_CLOCK}(?:前后|左右|前)?))?"
-    r"(?![0-9])"
+    rf"(?:[ \t]*{_SEPARATOR}[ \t]*(?P<last>{_ATOM}|{_DAY}|{_GAP}{_CLOCK}(?:前后|左右|之前|前)?))?"
+    r"(?!(?<=[0-9])[0-9])(?!(?<=月)[ \t]*[0-9])"
 )
 _POINT = re.compile(
     r"(?:(?P<year>[0-9]{4})年)?(?:(?P<month>[0-9]{1,2})月)?"
@@ -73,10 +74,13 @@ def _earliest(value: TimeValue) -> datetime:
 
 
 def _point(
-    text: str, published_on: date | None, previous: TimeValue | None = None
+    text: str,
+    published_on: date | None,
+    previous: TimeValue | None = None,
+    inherited_period: str | None = None,
 ) -> TimeValue | None:
     compact = re.sub(r"[ \t]", "", text)
-    compact = re.sub(r"[\uff08(](?:星期|周)[一二三四五六日天][\uff09)]", "", compact)
+    compact = re.sub(_WEEKDAY, "", compact)
     compact = re.sub(rf"止[\uff08(]({_CLOCK})[\uff09)]$", r"\1", compact)
     if compact == "即日起":
         return TimeToDay(date=published_on) if published_on is not None else None
@@ -114,7 +118,10 @@ def _point(
         if day_text is None or match["mark"] in {"前后", "左右"}:
             raise ValueError("Unsupported time precision")
         hour = int(hour_text)
-        if match["period"] in {"下午", "晚上"} and 1 <= hour <= 11:
+        period = match["period"]
+        if period is None and month_text is None and match["day"] is None:
+            period = inherited_period
+        if period in {"下午", "晚上"} and 1 <= hour <= 11:
             hour += 12
         minute = int(match["minute"] or match["clock_minute"] or 0)
         return TimeToMinute(date=calendar_day, time=f"{hour:02}:{minute:02}")
@@ -137,7 +144,8 @@ def find_dates(text: str, published_on: date | None) -> list[DateMatch]:
             first = match["first"]
             last = match["last"]
             if first.endswith("中下旬"):
-                last = first.removesuffix("中下旬") + "下旬"
+                if last is None:
+                    last = first.removesuffix("中下旬") + "下旬"
                 first = first.removesuffix("中下旬") + "中旬"
             if first[-1].isdigit() and "月" in first and "日" not in first:
                 first += "日"
@@ -145,11 +153,16 @@ def find_dates(text: str, published_on: date | None) -> list[DateMatch]:
             if value is None:
                 issue = "missing_publication"
             if last is not None:
-                end_value = _point(last, published_on, value)
+                period = re.search(r"上午|中午|下午|晚上", first)
+                end_value = _point(last, published_on, value, period[0] if period else None)
                 if end_value is None:
                     issue = "missing_publication"
                 elif value is not None and _earliest(end_value) < _earliest(value):
                     raise ValueError("Reversed date range")
+            if re.match(rf"[ \t]*{_SEPARATOR}[ \t]*[0-9]", text[match.end() :]):
+                issue = "invalid_date"
+            if re.match(r"[ \t]*[0-9]{1,2}[:\uff1a][0-9]", text[match.end() :]):
+                issue = "invalid_date"
         except ValueError:
             issue = "invalid_date"
         # An unresolved expression must never present a partially usable range.
