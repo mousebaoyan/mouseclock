@@ -1,14 +1,11 @@
 import asyncio
 import json
 import re
-from collections.abc import AsyncGenerator
-from contextlib import asynccontextmanager
 from typing import Any
 
 import httpx
 import pytest
 
-from crawler.crawl.attachments import Attachment, download_attachment
 from crawler.crawl.contract import (
     AttachmentInfo,
     ExtractedFields,
@@ -20,8 +17,8 @@ from crawler.crawl.contract import (
     Usage,
     WorkSource,
 )
-from crawler.crawl.fetch import Fetcher, FetchError, PageSession, Response
-from crawler.crawl.rounds import NoticePage, StepError, Steps, crawl_source
+from crawler.crawl.fetch import Fetcher, FetchError, PageSession
+from crawler.crawl.rounds import Attachment, NoticePage, StepError, Steps, crawl_source
 from crawler.crawl.website import Website
 
 SOURCE = WorkSource(
@@ -45,14 +42,11 @@ class FakeWebsite:
         self.pending = pending
         self.extracted = extracted
         self.calls: list[tuple[str, Any]] = []
-        self.upload_urls: list[str] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
         path = request.url.path.removeprefix("/api/v1/crawler")
         sent_json = request.headers.get("content-type") == "application/json"
         body: Any = json.loads(request.content) if sent_json else request.content
-        if request.method == "PUT":
-            self.upload_urls.append(request.url.params["url"])
         self.calls.append((f"{request.method} {path}", body))
         if path.endswith("/listing"):
             return httpx.Response(200, json={"new_count": 2, "pending": self.pending})
@@ -70,19 +64,14 @@ class FakeWebsite:
             )
         return httpx.Response(204)
 
-    def run(
-        self,
-        steps: Steps,
-        source: WorkSource = SOURCE,
-        transport: httpx.AsyncBaseTransport | None = None,
-    ) -> None:
+    def run(self, steps: Steps) -> None:
         async def main() -> None:
-            nowhere = transport or httpx.MockTransport(lambda _: httpx.Response(500))
+            nowhere = httpx.MockTransport(lambda _: httpx.Response(500))
             async with (
                 Fetcher(nowhere) as fetcher,
                 Website("http://site", "token", httpx.MockTransport(self.handle)) as website,
             ):
-                await crawl_source(source, fetcher, website, steps, clock=lambda: 1_800_000_000)
+                await crawl_source(SOURCE, fetcher, website, steps, clock=lambda: 1_800_000_000)
 
         asyncio.run(main())
 
@@ -176,48 +165,6 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     }
 
 
-def test_attachment_errors_are_reported_without_uploading_error_pages_or_losing_the_notice() -> (
-    None
-):
-    site = FakeWebsite([pending(1, "fetch")], extracted=frozenset())
-    files = {
-        "https://captcha.test/download": "<form>请输入验证码下载附件</form>".encode(),
-        "https://deleted.test/download": "<div>获取文件错误</div>".encode(),
-        "https://files.test/download?file=form.pdf&owner=2": b"%PDF-1.7\n",
-    }
-
-    def handle(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            200,
-            content=files[str(request.url)],
-            headers={"content-type": "text/html;charset=utf-8"},
-        )
-
-    async def read(pages: PageSession, _source: WorkSource, url: str) -> NoticePage:
-        attachments = [
-            await download_attachment(pages, link, name=f"申请表 {n}", page_url=url)
-            for n, link in enumerate(files)
-        ]
-        return NoticePage("<p>通知</p>", "通知", attachments)
-
-    site.run(Steps(list_items, screen, read, extract), transport=httpx.MockTransport(handle))
-
-    [snapshot] = site.called("POST /notices/1/snapshot")
-    assert [a["url"] for a in snapshot["attachments"]] == list(files)
-    assert [a.get("error") for a in snapshot["attachments"]] == [
-        "下载附件需要验证码",
-        "获取文件错误",
-        None,
-    ]
-    assert [a["text"] for a in snapshot["attachments"]] == ["", "", ""]
-    uploads = [(call, body) for call, body in site.calls if call.startswith("PUT ")]
-    assert uploads == [("PUT /snapshots/10/attachments/2", b"%PDF-1.7\n")]
-    assert site.upload_urls == ["https://files.test/download?file=form.pdf&owner=2"]
-    assert len(site.called("POST /snapshots/10/extraction")) == 1
-    [run] = site.called("POST /runs")
-    assert run["notice_failures"] == []
-
-
 def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
     site = FakeWebsite([pending(n, "fetch") for n in range(1, 5)], extracted=frozenset())
 
@@ -265,84 +212,20 @@ def test_a_list_that_cant_be_read_ends_the_round_with_the_reason() -> None:
         assert run["listed"] == 0
 
 
-@pytest.fixture
-def sessions(
-    monkeypatch: pytest.MonkeyPatch,
-) -> tuple[list[tuple[bool, PageSession]], list[PageSession]]:
-    entered: list[tuple[bool, PageSession]] = []
-    exited: list[PageSession] = []
-    original_session = Fetcher.session
-
-    @asynccontextmanager
-    async def session(fetcher: Fetcher, browser: bool) -> AsyncGenerator[PageSession]:
-        async with original_session(fetcher, browser) as pages:
-            entered.append((browser, pages))
-            try:
-                yield pages
-            finally:
-                exited.append(pages)
-
-    monkeypatch.setattr(Fetcher, "session", session)
-    return entered, exited
-
-
-def test_a_round_shares_one_session_and_reports_the_rendered_notice(
-    monkeypatch: pytest.MonkeyPatch,
-    sessions: tuple[list[tuple[bool, PageSession]], list[PageSession]],
-) -> None:
-    entered, exited = sessions
-    source = SOURCE.model_copy(update={"browser": True})
-    site = FakeWebsite([pending(1, "fetch")], extracted=frozenset({1}))
-    rendered = "<p>合成的渲染正文</p>"
-    seen: list[PageSession] = []
-
-    async def get(pages: PageSession, url: str) -> Response:
-        assert not exited
-        seen.append(pages)
-        html = "<ul><li>合成的列表</li></ul>" if url == source.url else rendered
-        return Response(url, 200, "text/html; charset=utf-8", html.encode())
-
-    async def listing(pages: PageSession, source: WorkSource) -> list[ListedItem]:
-        response = await pages.get(source.url)
-        assert "合成的列表" in response.body.decode()
-        return ITEMS
-
-    async def read(pages: PageSession, _source: WorkSource, url: str) -> NoticePage:
-        response = await pages.get(url)
-        return NoticePage(html=response.body.decode(), text="合成的渲染正文", attachments=[])
-
-    monkeypatch.setattr(PageSession, "get", get)
-    site.run(Steps(listing, screen, read, extract), source)
-
-    assert len(seen) == 2
-    assert seen[0] is seen[1]
-    assert entered == [(True, seen[0])]
-    assert exited == [seen[0]]
-    [snapshot] = site.called("POST /notices/1/snapshot")
-    assert snapshot["html"] == rendered
-    assert snapshot["text"] == "合成的渲染正文"
-
-
-@pytest.mark.parametrize("failure", [ValueError, asyncio.CancelledError])
-def test_a_session_exits_when_a_step_fails_or_is_cancelled(
-    sessions: tuple[list[tuple[bool, PageSession]], list[PageSession]],
-    failure: type[BaseException],
-) -> None:
-    entered, exited = sessions
+def test_a_session_that_cant_start_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
     site = FakeWebsite([], extracted=frozenset())
 
-    async def interrupted(pages: PageSession, _source: WorkSource) -> list[ListedItem]:
-        assert pages is entered[0][1]
-        raise failure("interrupted")
+    async def unavailable(_pages: PageSession) -> PageSession:
+        raise FetchError("unreachable", SOURCE.url)
 
-    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
-        raise AssertionError
+    async def unused_read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
+        raise AssertionError("Listing failed before notices could be read")
 
-    with pytest.raises(failure, match="interrupted"):
-        site.run(Steps(interrupted, screen, read, extract))
+    monkeypatch.setattr(PageSession, "__aenter__", unavailable)
+    site.run(Steps(list_items, screen, unused_read, extract))
 
-    assert len(entered) == 1
-    assert exited == [entered[0][1]]
-    assert not site.calls
-    with pytest.raises(RuntimeError, match="Page session is closed"):
-        asyncio.run(entered[0][1].get(SOURCE.url))
+    assert [call for call, _ in site.calls] == ["POST /runs"]
+    [run] = site.called("POST /runs")
+    assert run["failure"] == "unreachable"
+    assert run["detail"] == SOURCE.url
+    assert run["listed"] == 0

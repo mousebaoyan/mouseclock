@@ -141,7 +141,6 @@ CREATE TABLE attachments (
   url           text     NOT NULL,
   content_type  text     NOT NULL,
   text          text     NOT NULL,             -- extracted, or recognised in images
-  error         text,                         -- why the attachment could not be downloaded
   data          bytea,                         -- NULL until the crawler uploads the file
   PRIMARY KEY (snapshot_id, position)
 );
