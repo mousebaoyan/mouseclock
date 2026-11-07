@@ -48,56 +48,18 @@ def pair_programs(
     gold: list[LabelProgram],
     predicted: list[LabelProgram],
 ) -> list[tuple[LabelProgram | None, LabelProgram | None]]:
-    # Maximum one-to-one assignment, weighted toward project identity before field values.
-    size = max(len(gold), len(predicted))
-    if not size:
-        return []
-    costs = [[0] * size for _ in range(size)]
-    for i, expected in enumerate(gold):
-        a = values(expected)
-        for j, actual in enumerate(predicted):
-            b = values(actual)
-            costs[i][j] = -(
-                100 * sum(a[k] == b[k] for k in META)
-                + sum(a[k] == b.get(k) for k in FIELD_NAMES if k in a)
-            )
-    u, v, matching = [0] * (size + 1), [0] * (size + 1), [0] * (size + 1)
-    for row in range(1, size + 1):
-        matching[0] = row
-        column = 0
-        distance, used, previous = [10**9] * (size + 1), [False] * (size + 1), [0] * (size + 1)
-        while True:
-            used[column] = True
-            current = matching[column]
-            delta, following = 10**9, 0
-            for j in range(1, size + 1):
-                if used[j]:
-                    continue
-                cost = costs[current - 1][j - 1] - u[current] - v[j]
-                if cost < distance[j]:
-                    distance[j], previous[j] = cost, column
-                if distance[j] < delta:
-                    delta, following = distance[j], j
-            for j in range(size + 1):
-                if used[j]:
-                    u[matching[j]] += delta
-                    v[j] -= delta
-                else:
-                    distance[j] -= delta
-            column = following
-            if matching[column] == 0:
-                break
-        while column:
-            before = previous[column]
-            matching[column] = matching[before]
-            column = before
-    return [
-        (
-            gold[matching[j] - 1] if matching[j] <= len(gold) else None,
-            predicted[j - 1] if j <= len(predicted) else None,
-        )
-        for j in range(1, size + 1)
-    ]
+    remaining = list(predicted)
+    pairs: list[tuple[LabelProgram | None, LabelProgram | None]] = []
+    for expected in gold:
+        scores = [
+            sum(getattr(expected, k) == getattr(actual, k) for k in META) for actual in remaining
+        ]
+        match = max(range(len(scores)), key=scores.__getitem__) if scores else None
+        if match is not None and scores[match] == 0:
+            match = None
+        pairs.append((expected, remaining.pop(match) if match is not None else None))
+    pairs.extend((None, actual) for actual in remaining)
+    return pairs
 
 
 @dataclass
@@ -106,12 +68,18 @@ class Metric:
     expected: int = 0
     predicted: int = 0
     union: int = 0
+    wrong: int = 0
+    missing: int = 0
+    extra: int = 0
 
     def add(self, expected: JsonValue, actual: JsonValue) -> None:
         self.expected += expected is not None
         self.predicted += actual is not None
         self.union += expected is not None or actual is not None
         self.correct += expected is not None and actual is not None and expected == actual
+        self.wrong += expected is not None and actual is not None and expected != actual
+        self.missing += expected is not None and actual is None
+        self.extra += expected is None and actual is not None
 
     def report(self) -> dict[str, JsonValue]:
         return {
@@ -119,7 +87,10 @@ class Metric:
             "expected": self.expected,
             "predicted": self.predicted,
             "union": self.union,
-            "accuracy": self.correct / self.union if self.union else None,
+            "wrong": self.wrong,
+            "missing": self.missing,
+            "extra": self.extra,
+            "accuracy": self.correct / self.expected if self.expected else None,
             "recall": self.correct / self.expected if self.expected else None,
             "precision": self.correct / self.predicted if self.predicted else None,
         }

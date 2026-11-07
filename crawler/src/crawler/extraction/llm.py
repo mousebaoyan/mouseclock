@@ -8,9 +8,9 @@ import httpx
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 
 from crawler.extraction.numbered import SelectedExtraction, indexed_input
-from crawler.extraction.prompt import INSTRUCTIONS
-from crawler.extraction.schema import Notice, response_schema
-from crawler.parse.indexing import Document, index_documents
+from crawler.extraction.prompt import DIRECT_INSTRUCTIONS, INSTRUCTIONS
+from crawler.extraction.schema import Extraction, Notice, response_schema
+from crawler.parse.indexing import Document, Hyperlink, index_documents
 
 API_URL = "https://api.siliconflow.cn/v1/chat/completions"
 DEFAULT_MODELS = (
@@ -77,19 +77,40 @@ class Call(BaseModel):
     payload: dict[str, JsonValue]
 
 
-def make_call(notice: Notice, text: str, model: str, mode: Mode) -> Call:
+def make_call(
+    notice: Notice,
+    text: str,
+    model: str,
+    mode: Mode,
+    *,
+    hyperlinks: tuple[Hyperlink, ...] = (),
+    api_url: str = API_URL,
+    method: Literal["numbered", "direct"] = "numbered",
+) -> Call:
     data = notice.model_dump(mode="json", exclude={"programs"})
-    data["indexed"] = indexed_input(
-        index_documents([Document(text)], published_on=notice.published_on)
-    )
-    options: dict[str, JsonValue] = {"enable_thinking": mode != "off"}
+    if method == "numbered":
+        data["indexed"] = indexed_input(
+            index_documents(
+                [Document(text, hyperlinks=hyperlinks)], published_on=notice.published_on
+            )
+        )
+    else:
+        data["text"] = text
+        data["hyperlinks"] = [{"text": text[h.start : h.end], "href": h.href} for h in hyperlinks]
+    options: dict[str, JsonValue] = {}
+    if api_url == API_URL:
+        options["enable_thinking"] = mode != "off"
     if mode != "off":
         options["reasoning_effort"] = mode
     return Call(
+        api_url=api_url,
         payload={
             "model": model,
             "messages": [
-                {"role": "system", "content": INSTRUCTIONS},
+                {
+                    "role": "system",
+                    "content": INSTRUCTIONS if method == "numbered" else DIRECT_INSTRUCTIONS,
+                },
                 {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
             ],
             "response_format": {
@@ -97,13 +118,15 @@ def make_call(notice: Notice, text: str, model: str, mode: Mode) -> Call:
                 "json_schema": {
                     "name": "notice_extraction",
                     "strict": True,
-                    "schema": response_schema(SelectedExtraction),
+                    "schema": response_schema(
+                        SelectedExtraction if method == "numbered" else Extraction
+                    ),
                 },
             },
             "max_tokens": MAX_TOKENS,
             "temperature": 0,
             **options,
-        }
+        },
     )
 
 
@@ -165,8 +188,6 @@ class LLM:
                         result.error = "finish_" + choice.finish_reason
                     elif result.content is None:
                         result.error = "empty_content"
-                    else:
-                        SelectedExtraction.model_validate_json(result.content, strict=True)
         except httpx.HTTPError as error:
             result.error = type(error).__name__
         except TimeoutError:

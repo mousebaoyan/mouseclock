@@ -1,12 +1,15 @@
 import asyncio
+import codecs
+import re
 from datetime import UTC, datetime
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urljoin
 
-from pydantic import BaseModel
+from pydantic import BaseModel, TypeAdapter
 
 from crawler.crawl.fetch import Fetcher
+from crawler.parse.indexing import Hyperlink
 
 CONTAINERS = {
     "gp-content",
@@ -32,6 +35,7 @@ class Page(BaseModel):
     final_url: str
     text: str
     fetched_at: datetime
+    hyperlinks: tuple[Hyperlink, ...] = ()
 
 
 class PageError(ValueError):
@@ -46,6 +50,8 @@ class ArticleParser(HTMLParser):
         self.active = 0
         self.parts: list[str] = []
         self.suppressed = 0
+        self.hyperlinks: list[Hyperlink] = []
+        self.link_start: tuple[int, str] | None = None
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
@@ -62,9 +68,15 @@ class ArticleParser(HTMLParser):
                 self.parts.append("\n")
             href = values.get("href")
             if tag == "a" and href and not href.startswith(("javascript:", "#")):
-                self.parts.append(" " + urljoin(self.url, href) + " ")
+                self.link_start = (len("".join(self.parts)), urljoin(self.url, href))
 
     def handle_endtag(self, tag: str) -> None:
+        if tag == "a" and self.link_start is not None:
+            start, href = self.link_start
+            end = len("".join(self.parts))
+            if end > start:
+                self.hyperlinks.append(Hyperlink(start, end, href))
+            self.link_start = None
         if self.active and not self.suppressed and tag in BLOCKS:
             self.parts.append("\n")
         if tag in {"script", "style"} and self.suppressed:
@@ -80,27 +92,26 @@ class ArticleParser(HTMLParser):
             self.parts.append(data)
 
 
-def article_text(html: str, url: str) -> str:
+def article(html: str, url: str) -> tuple[str, tuple[Hyperlink, ...]]:
     parser = ArticleParser(url)
     parser.feed(html)
-    text = "\n".join(line.strip() for line in "".join(parser.parts).splitlines() if line.strip())
-    if not text:
+    text = "".join(parser.parts)
+    if not text.strip():
         raise PageError("article_container_not_found")
-    return text
+    return text, tuple(parser.hyperlinks)
 
 
 def cached_page(url: str, path: Path) -> Page | None:
-    if path.exists():
-        page = Page.model_validate_json(path.read_bytes())
-        if page.url != url:
-            raise PageError("page_cache_url_mismatch")
-        return page
-    return None
+    if not path.exists():
+        return None
+    return TypeAdapter(dict[str, Page]).validate_json(path.read_bytes()).get(url)
 
 
 def save_page(page: Page, path: Path) -> None:
+    pages = TypeAdapter(dict[str, Page]).validate_json(path.read_bytes()) if path.exists() else {}
+    pages[page.url] = page
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(page.model_dump_json(indent=2) + "\n", encoding="utf-8", newline="\n")
+    path.write_bytes(TypeAdapter(dict[str, Page]).dump_json(pages, indent=2) + b"\n")
 
 
 async def read_page(url: str, path: Path, fetcher: Fetcher, *, reuse_only: bool) -> Page:
@@ -112,12 +123,18 @@ async def read_page(url: str, path: Path, fetcher: Fetcher, *, reuse_only: bool)
     response = await fetcher.get(url)
     if response.status != 200:
         raise PageError(f"http_{response.status}")
-    # httpx's response decoder is not available on Fetcher's immutable response.
-    html = response.body.decode("utf-8-sig")
+    declaration = (
+        (response.content_type or "") + " " + response.body[:4096].decode("ascii", errors="ignore")
+    )
+    match = re.search(r"charset\s*=\s*['\"]?([\w.-]+)", declaration, re.IGNORECASE)
+    encoding = codecs.lookup(match[1] if match else "utf-8-sig").name
+    html = response.body.decode(encoding)
+    text, hyperlinks = article(html, response.url)
     page = Page(
         url=url,
         final_url=response.url,
-        text=article_text(html, response.url),
+        text=text,
+        hyperlinks=hyperlinks,
         fetched_at=datetime.now(UTC),
     )
     await asyncio.to_thread(save_page, page, path)

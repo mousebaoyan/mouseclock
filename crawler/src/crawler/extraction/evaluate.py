@@ -5,12 +5,14 @@ import os
 from collections import Counter
 from pathlib import Path
 from statistics import mean, median, quantiles
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 
 from crawler.crawl.fetch import Fetcher, FetchError
+from crawler.extraction.diagnostics import date_coverage
 from crawler.extraction.llm import (
+    API_URL,
     DEFAULT_MODELS,
     LLM,
     MAX_TOKENS,
@@ -43,7 +45,8 @@ class Options(BaseModel):
     limit: Annotated[int | None, Field(gt=0)] = None
     reuse_only: bool
     prepare_only: bool
-    retry_errors: bool = False
+    api_url: str = API_URL
+    method: Literal["numbered", "direct"] = "numbered"
 
 
 def write_json(path: Path, value: JsonValue) -> None:
@@ -125,10 +128,13 @@ def markdown(report: dict[str, JsonValue]) -> str:
     rows = [
         "# 抽取摸底实验",
         "",
-        "本轮使用 #75 的 S/D/L/E 编号,程序按引用还原时间值、报名入口和证据。",
-        "参数为请求值,不保证服务端采用;实际推理 token 单列。准确率不计双方都缺省的字段,",
+        "本轮使用 #75 的 S/D/L/E 编号,程序按引用还原时间值、报名入口和证据。"
+        if report.get("method") == "numbered"
+        else "本轮由模型直接写时间值、报名网址和原句证据,正文与超链接分开提供。",
+        "参数为请求值,不保证服务端采用;实际推理 token 单列。准确率分母是标注有值的数量,",
         "只对标注集已有的项目元数据与 apply/apply_url/event/degrees 计准确率,其他字段只校验证据。",
-        "多项目采用一对一最优匹配,先匹配学院、届、类型、作用,再以字段值打破平局。",
+        "多项目按学院、届、类型、作用相同项最多的一项一对一配对,不使用待评分字段打破平局。",
+        "没有共同元数据的不配对,剩余项目分别算漏抽或多抽;元数据差异单独计错。",
         "失败记录为未抽取,保留已返回用量;证据匹配只忽略空白,不能替代语义核验。",
         "",
         "费用按官方单价估算,本轮估算含已知缓存与北京时间优惠;参考费用统一按常规时段、不计缓存。",
@@ -161,6 +167,26 @@ def markdown(report: dict[str, JsonValue]) -> str:
     rows.extend(
         [
             "",
+            "| 模型 / 请求设置 | 字段 | 标注数 | 正确 | 错误 | 漏抽 | 多抽 |",
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    if isinstance(experiments, dict):
+        for name, item in experiments.items():
+            fields = item.get("fields") if isinstance(item, dict) else None
+            if not isinstance(fields, dict):
+                continue
+            for key in ("apply.start", "apply.end", "event.start", "event.end", "apply_url"):
+                metric = fields.get(key)
+                if isinstance(metric, dict):
+                    rows.append(
+                        f"| {name} | {key} | {metric.get('expected')} | "
+                        f"{metric.get('correct')} | {metric.get('wrong')} | "
+                        f"{metric.get('missing')} | {metric.get('extra')} |"
+                    )
+    rows.extend(
+        [
+            "",
             "逐字段指标、分母、截止召回率/精确率和失败网址见 report.json。",
             "报告中的比例取值 0-1。正文与包含证据的响应缓存仅供本地使用,不提交。",
             "",
@@ -181,13 +207,13 @@ async def evaluate(options: Options) -> int:
     page_errors: list[JsonValue] = []
     pages: dict[str, Page] = {}
     async with Fetcher() as fetcher:
-        for index, notice in enumerate(notices):
+        for notice in notices:
             if notice not in selected:
                 continue
             try:
                 pages[notice.url] = await read_page(
                     notice.url,
-                    options.output / "pages" / f"{index:03}.json",
+                    options.output / "pages.json",
                     fetcher,
                     reuse_only=options.reuse_only,
                 )
@@ -197,12 +223,21 @@ async def evaluate(options: Options) -> int:
                 page_errors.append({"url": notice.url, "error": str(error)})
             except (ValidationError, UnicodeError) as error:
                 page_errors.append({"url": notice.url, "error": type(error).__name__})
+    coverage = (
+        date_coverage(
+            selected,
+            {url: Document(page.text, hyperlinks=page.hyperlinks) for url, page in pages.items()},
+        )
+        if not page_errors
+        else None
+    )
     write_json(
         options.output / "page-status.json",
         {
             "selected": len(selected),
             "ready": len(pages),
             "failures": page_errors,
+            "date_coverage": coverage,
         },
     )
     print(f"pages_ready={len(pages)}/{len(selected)} failures={len(page_errors)}", flush=True)
@@ -216,7 +251,8 @@ async def evaluate(options: Options) -> int:
     if records_path.exists():
         for line in records_path.read_text(encoding="utf-8").splitlines():
             entry = CachedCall.model_validate_json(line)
-            cache[entry.call.model_dump_json()] = entry.result
+            if entry.result.error is None:
+                cache[entry.call.model_dump_json()] = entry.result
     llm = LLM(key) if key and not options.reuse_only else None
     semaphore = asyncio.Semaphore(CONCURRENCY)
     groups: dict[tuple[str, Mode], tuple[Evaluation, list[Result]]] = {
@@ -226,30 +262,46 @@ async def evaluate(options: Options) -> int:
     async def run(notice: Notice, model: str, mode: Mode) -> Result:
         evaluation, results = groups[model, mode]
         page = pages[notice.url]
-        call = make_call(notice, page.text, model, mode)
+        call = make_call(
+            notice,
+            page.text,
+            model,
+            mode,
+            hyperlinks=page.hyperlinks,
+            api_url=options.api_url,
+            method=options.method,
+        )
         identity = call.model_dump_json()
         result = cache.get(identity)
-        if result is not None and options.retry_errors and result.error is not None:
-            result = None
         fresh = result is None
         if result is None:
             if llm is None:
                 raise ValueError("response_cache_missing")
             async with semaphore:
                 result = await llm.extract(call)
-        prediction: Extraction | None = None
-        if result.error is None and result.content is not None:
-            try:
-                prediction = resolve(
-                    SelectedExtraction.model_validate_json(result.content, strict=True),
-                    index_documents([Document(page.text)], published_on=notice.published_on),
-                )
-            except SelectionError, ValidationError:
-                result.error = "invalid_selection"
-        if fresh:
+        if fresh and result.error is None:
             cache[identity] = result
             with records_path.open("a", encoding="utf-8", newline="\n") as stream:
                 stream.write(CachedCall(call=call, result=result).model_dump_json() + "\n")
+        # Parsing is deliberately outside the cached provider result so fixes can be replayed.
+        result = result.model_copy()
+        prediction: Extraction | None = None
+        if result.error is None and result.content is not None:
+            try:
+                if options.method == "numbered":
+                    prediction = resolve(
+                        SelectedExtraction.model_validate_json(result.content, strict=True),
+                        index_documents(
+                            [Document(page.text, hyperlinks=page.hyperlinks)],
+                            published_on=notice.published_on,
+                        ),
+                    )
+                else:
+                    prediction = Extraction.model_validate_json(result.content, strict=True)
+            except SelectionError, ValidationError:
+                result.error = (
+                    "invalid_selection" if options.method == "numbered" else "invalid_output"
+                )
         evaluation.add(notice, prediction, page.text)
         results.append(result)
         if result.error or evaluation.notices % 10 == 0 or evaluation.notices == len(selected):
@@ -272,7 +324,8 @@ async def evaluate(options: Options) -> int:
         report: dict[str, JsonValue] = {
             "dataset": str(options.dataset),
             "urls": [n.url for n in selected],
-            "method": "numbered",
+            "method": options.method,
+            "date_coverage": coverage,
             "evaluated_fields": list[JsonValue](META + FIELD_NAMES),
             "settings": {
                 "concurrency": CONCURRENCY,
@@ -304,11 +357,10 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
-    parser.add_argument("--retry-errors", action="store_true")
+    parser.add_argument("--api-url", default=API_URL)
+    parser.add_argument("--method", choices=("numbered", "direct"), default="numbered")
     try:
         options = Options.model_validate(vars(parser.parse_args()))
-        if options.reuse_only and options.retry_errors:
-            parser.error("--retry-errors requires API access; omit --reuse-only")
         status = asyncio.run(evaluate(options))
     except ValidationError:
         parser.exit(1, "invalid_options_dataset_or_cache\n")
