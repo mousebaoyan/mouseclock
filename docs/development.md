@@ -64,6 +64,28 @@ crawler/                抓取节点
 - 判别模型和 LLM 的提示词放在调用它的代码旁边。输出都按固定的结构解析，解析不了的当失败处理。
 - 每一轮抓取都交一份抓取记录，失败也交，写明原因；不在一轮里反复重试。各步抓不成时抛 `FetchError`（`Fetcher` 抛的）或 `StepError`（写明失败类别，比如 `http_status` 和「HTTP 403」），一轮的流程把它记进抓取记录；别的异常是 bug，照常抛出。
 
+### 2.1 列表配置
+
+特殊列表通过 `ListConfig` 校验 `WorkSource.config`，管理员与 #46 的试抓生成使用同一格式。例如只能用 HTTP 的浙大计算机学院列表：
+
+```json
+{
+  "selectors": {
+    "items": "//div[contains(concat(' ',normalize-space(@class),' '),' jzlb ')]",
+    "title": "./div[@class='btt3']/a",
+    "link": "./div[@class='btt3']/a",
+    "date": "./div[@class='fbsj4']",
+    "next": "//a[@class='next']"
+  },
+  "force_http": true
+}
+```
+
+- `selectors` 可省略，表示按重复条目结构及完整日期通用解析；填写时 `items`、`title`、`link` 必填。
+- 选择器都是 XPath 1.0。`items` 相对于整页，选中条目元素；`title`、`link`、`date` 相对于条目；`next` 相对于整页。各字段取第一个匹配值；`title`、`date` 取字符串或元素文字，`link`、`next` 取字符串或元素的 `href`，按跳转后的页面地址解析成绝对网址。只接受 HTTP(S)，不执行脚本。
+- `date`、`next` 可省略，分别表示日期未知、没有下一页。日期只认完整年月日，也支持日与年月分开写，不猜年份。
+- `force_http` 默认 `false`，只有明确只能用 HTTP 的来源才设为 `true`；可单独配置 `{"force_http": true}`，对列表及同站翻页生效，不自动从 HTTPS 降级。
+
 ## 3. 时间
 
 - 时刻存成带时区的时间戳；通知里写的"某天几点"一律按北京时间理解，时间值和换算的规则见[总体设计 §8.2](design.md#82-抽取)。

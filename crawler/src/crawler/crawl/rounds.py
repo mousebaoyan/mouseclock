@@ -58,7 +58,7 @@ class NoticePage:
 class Steps:
     # The items on the source's list page, paging back two years when it is new (design §7.1).
     list_items: Callable[[Fetcher, WorkSource], Awaitable[list[ListedItem]]]
-    # A score for each notice by its title and the list's section (design §8.1).
+    # A score for each notice by its title alone (design §8.1).
     screen: Callable[
         [WorkSource, list[PendingNotice]], Awaitable[tuple[list[ScreeningResult], list[Usage]]]
     ]
