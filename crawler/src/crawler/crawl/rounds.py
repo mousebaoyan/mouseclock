@@ -5,6 +5,7 @@ that need it, extract, and report the round. The steps that read pages and ask m
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
 from crawler.crawl.contract import (
@@ -24,7 +25,7 @@ from crawler.crawl.contract import (
     Usage,
     WorkSource,
 )
-from crawler.crawl.fetch import Fetcher, FetchError
+from crawler.crawl.fetch import Fetcher, FetchError, PageSession
 from crawler.crawl.website import Website
 
 logger = logging.getLogger(__name__)
@@ -57,14 +58,14 @@ class NoticePage:
 @dataclass(frozen=True)
 class Steps:
     # The items on the source's list page, paging back two years when it is new (design §7.1).
-    list_items: Callable[[Fetcher, WorkSource], Awaitable[list[ListedItem]]]
+    list_items: Callable[[PageSession, WorkSource], Awaitable[list[ListedItem]]]
     # A score for each notice by its title and the list's section (design §8.1).
     screen: Callable[
         [WorkSource, list[PendingNotice]], Awaitable[tuple[list[ScreeningResult], list[Usage]]]
     ]
     # A notice's page with its attachments downloaded and read; None when the page answers
     # 404 or 410 (design §7.4).
-    read: Callable[[Fetcher, WorkSource, str], Awaitable[NoticePage | None]]
+    read: Callable[[PageSession, WorkSource, str], Awaitable[NoticePage | None]]
     # The programs a notice is about (design §8.2).
     extract: Callable[
         [NoticePage, ExtractionContext], Awaitable[tuple[list[ExtractedProgram], list[Usage]]]
@@ -85,61 +86,63 @@ async def crawl_source(
     clock: Callable[[], float] = time.time,
 ) -> None:
     started_at = int(clock())
-    try:
-        items = await steps.list_items(fetcher, source)
-        if not items:
-            raise StepError("no_items")
-    except (FetchError, StepError) as error:
-        logger.warning("Listing failed: %s", error, extra={"source_id": source.id})
-        failure, detail = _failure(error)
+    async with AsyncExitStack() as stack:
+        try:
+            pages = await stack.enter_async_context(fetcher.session(source.browser, url=source.url))
+            items = await steps.list_items(pages, source)
+            if not items:
+                raise StepError("no_items")
+        except (FetchError, StepError) as error:
+            logger.warning("Listing failed: %s", error, extra={"source_id": source.id})
+            failure, detail = _failure(error)
+            await website.run(
+                Run(
+                    source_id=source.id,
+                    started_at=started_at,
+                    finished_at=int(clock()),
+                    failure=failure,
+                    detail=detail,
+                    listed=0,
+                    new_count=0,
+                    useful_count=0,
+                    notice_failures=[],
+                )
+            )
+            return
+
+        listing = await website.listing(source.id, Listing(items=items))
+        new = [notice for notice in listing.pending if notice.step == "screen"]
+        to_fetch = [notice for notice in listing.pending if notice.step == "fetch"]
+        if new:
+            results, usage = await steps.screen(source, new)
+            await website.screening(source.id, Screening(results=results, usage=usage))
+            screened_in = {result.notice_id for result in results if result.screened_in}
+            to_fetch += [notice for notice in new if notice.id in screened_in]
+
+        useful = 0
+        failures: list[NoticeFailure] = []
+        for notice in to_fetch:
+            try:
+                programs = await _fetch_notice(notice, source, pages, website, steps, clock)
+            except (FetchError, StepError) as error:
+                logger.warning("Fetching a notice failed: %s", error, extra={"url": notice.url})
+                failure, detail = _failure(error)
+                failures.append(NoticeFailure(url=notice.url, failure=failure, detail=detail))
+                continue
+            if programs and notice.step == "screen":
+                useful += 1
+
         await website.run(
             Run(
                 source_id=source.id,
                 started_at=started_at,
                 finished_at=int(clock()),
-                failure=failure,
-                detail=detail,
-                listed=0,
-                new_count=0,
-                useful_count=0,
-                notice_failures=[],
+                listed=len(items),
+                new_count=listing.new_count,
+                useful_count=useful,
+                notice_failures=failures,
             )
         )
-        return
-
-    listing = await website.listing(source.id, Listing(items=items))
-    new = [notice for notice in listing.pending if notice.step == "screen"]
-    to_fetch = [notice for notice in listing.pending if notice.step == "fetch"]
-    if new:
-        results, usage = await steps.screen(source, new)
-        await website.screening(source.id, Screening(results=results, usage=usage))
-        screened_in = {result.notice_id for result in results if result.screened_in}
-        to_fetch += [notice for notice in new if notice.id in screened_in]
-
-    useful = 0
-    failures: list[NoticeFailure] = []
-    for notice in to_fetch:
-        try:
-            programs = await _fetch_notice(notice, source, fetcher, website, steps, clock)
-        except (FetchError, StepError) as error:
-            logger.warning("Fetching a notice failed: %s", error, extra={"url": notice.url})
-            failure, detail = _failure(error)
-            failures.append(NoticeFailure(url=notice.url, failure=failure, detail=detail))
-            continue
-        if programs and notice.step == "screen":
-            useful += 1
-
-    await website.run(
-        Run(
-            source_id=source.id,
-            started_at=started_at,
-            finished_at=int(clock()),
-            listed=len(items),
-            new_count=listing.new_count,
-            useful_count=useful,
-            notice_failures=failures,
-        )
-    )
 
 
 # Returns how many programs the notice turned out to be about; none when it was gone,
@@ -147,12 +150,12 @@ async def crawl_source(
 async def _fetch_notice(
     notice: PendingNotice,
     source: WorkSource,
-    fetcher: Fetcher,
+    pages: PageSession,
     website: Website,
     steps: Steps,
     clock: Callable[[], float],
 ) -> int:
-    page = await steps.read(fetcher, source, notice.url)
+    page = await steps.read(pages, source, notice.url)
     if page is None:
         await website.removed(notice.id)
         return 0

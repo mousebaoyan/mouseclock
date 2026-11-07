@@ -5,6 +5,7 @@ description = "鼠钟的抓取节点：抓取、初筛和抽取"
 requires-python = ">=3.14"
 dependencies = [
     "httpx>=0.28",
+    "playwright>=1.64.1",
     "pydantic>=2.14.1",
 ]
 
