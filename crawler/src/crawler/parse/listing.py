@@ -1,24 +1,14 @@
 import codecs
 import re
-from calendar import monthrange
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
-from urllib.parse import urldefrag, urljoin, urlsplit, urlunsplit
+from datetime import date
+from urllib.parse import urldefrag, urljoin, urlsplit
 
 from lxml import etree, html
 from lxml.html import HtmlElement
-from pydantic import (
-    BaseModel,
-    ConfigDict,
-    InstanceOf,
-    TypeAdapter,
-    ValidationError,
-    field_validator,
-)
+from pydantic import BaseModel, ConfigDict, field_validator
 
-from crawler.crawl.contract import ListedItem, WorkSource
-from crawler.crawl.fetch import Fetcher
-from crawler.crawl.rounds import StepError
+from crawler.crawl.contract import ListedItem
 
 
 class Selectors(BaseModel):
@@ -48,58 +38,10 @@ class ListConfig(BaseModel):
     force_http: bool = False
 
 
-_ELEMENTS = TypeAdapter(list[InstanceOf[HtmlElement]])
-_DATE = re.compile(r"(?<!\d)(\d{4})\s*[-./年]\s*(\d{1,2})\s*[-./月]\s*(\d{1,2})(?!\d)")
-_SPLIT_DATE = re.compile(r"(\d{1,2})\s+(\d{4})[-./](\d{1,2})")
-_DATE_NODES = (
-    ".//time/@datetime | .//*[contains(@class,'date') or contains(@class,'time') "
-    "or contains(@class,'news_meta') or contains(@class,'pull-right')]"
-)
-_LINK = ".//a[@href][1]/@href"
-_TEMPLATES = (
-    # The whole list includes pinned links to another site's admission system.
-    Selectors(
-        items="//ul[li/a[contains(@href,'info/') and contains(@href,'.htm')]]/li",
-        title=(
-            ".//a[1]/@title[normalize-space()] | .//h3[1] | .//a[1]/p[1] | "
-            ".//a[1][not(normalize-space(@title)) and not(.//h3) and not(p)]"
-        ),
-        link=_LINK,
-        date=_DATE_NODES,
-    ),
-    Selectors(
-        # WebPlus also uses news_list for footer links, without date markup.
-        items=(
-            "//ul[(contains(@class,'news_list') or contains(@class,'wp_article_list')) "
-            "and li[.//time or .//*[contains(@class,'news_meta') "
-            "or contains(@class,'date') or contains(@class,'time')]]]/li"
-        ),
-        title=".//a[1]/@title[normalize-space()] | .//a[1][not(normalize-space(@title))]",
-        link=_LINK,
-        date=_DATE_NODES,
-    ),
-    Selectors(
-        items="//ul[li/a[contains(@href,'/t20')]]/li",
-        title=".//a[1]",
-        link=_LINK,
-        date=_DATE_NODES,
-    ),
-    Selectors(
-        items="//ul[li/a/div[contains(@class,'infoBox')]]/li",
-        title=".//*[contains(concat(' ',normalize-space(@class),' '),' title ')]",
-        link=_LINK,
-        date=_DATE_NODES,
-    ),
-    Selectors(
-        items="//div[contains(@class,'views-element-container')]//li[contains(@class,'list-page')]",
-        title=(
-            ".//div[@class='title']/a/span[@class='text'] | "
-            ".//div[@class='title']/a[not(span[@class='text'])]"
-        ),
-        link=_LINK,
-        date=_DATE_NODES,
-    ),
-)
+_DATE = re.compile(r"(?<!\d)(\d{4})\s*[-./年]\s*(\d{1,2})\s*[-./月]\s*(\d{1,2})(?!\d)日?")
+_YEAR_LAST_DATE = re.compile(r"(?<!\d)(\d{1,2})[-./](\d{1,2})\s+(\d{4})(?!\d)")
+_YEAR_FIRST_DATE = re.compile(r"(?<!\d)(\d{4})\s+(\d{1,2})[-./](\d{1,2})(?!\d)")
+_SPLIT_DATE = re.compile(r"(?<!\d)(\d{1,2})\s+(\d{4})[-./](\d{1,2})(?!\d)")
 
 
 @dataclass(frozen=True)
@@ -109,39 +51,46 @@ class ListPage:
 
 
 def _elements(node: HtmlElement, expression: str) -> list[HtmlElement]:
-    result: object = node.xpath(expression, smart_strings=False)
-    try:
-        return _ELEMENTS.validate_python(result)
-    except ValidationError as error:
-        raise StepError("error", "配置不对: items 必须选中条目元素") from error
+    result: list[object] | str | float | bool = node.xpath(expression, smart_strings=False)
+    if not isinstance(result, list):
+        raise ValueError("items 必须选中条目元素")
+    values: list[object] = result
+    elements: list[HtmlElement] = []
+    for value in values:
+        if not isinstance(value, HtmlElement):
+            raise ValueError("items 必须选中条目元素")
+        elements.append(value)
+    return elements
 
 
-def _value(node: HtmlElement, expression: str | None, separator: str = "") -> str:
+def _value(node: HtmlElement, expression: str | None, *, href: bool = False) -> str:
     if expression is None:
         return ""
-    result: object = node.xpath(expression, smart_strings=False)
+    result: list[object] | str | float | bool = node.xpath(expression, smart_strings=False)
     if isinstance(result, list):
-        try:
-            values = TypeAdapter(list[InstanceOf[HtmlElement] | str]).validate_python(result)
-        except ValidationError as error:
-            raise StepError("error", "配置不对: 字段 XPath 必须返回文字或元素") from error
-        if not values:
-            return ""
-        value = values[0]
-    elif isinstance(result, str):
-        value = result
+        values: list[object] = result
+        if not all(isinstance(v, (HtmlElement, str)) for v in values):
+            raise ValueError("字段 XPath 必须返回文字或元素")
+        value = values[0] if values else ""
     else:
-        raise StepError("error", "配置不对: 字段 XPath 必须返回文字或元素")
-    text = separator.join(value.itertext()) if isinstance(value, HtmlElement) else value
+        value = result
+    if isinstance(value, HtmlElement):
+        text = value.get("href", "") if href else " ".join(value.itertext())
+    elif isinstance(value, str):
+        text = value
+    else:
+        raise ValueError("字段 XPath 必须返回文字或元素")
     return " ".join(text.split())
 
 
 def _date(text: str) -> date | None:
-    match = _DATE.search(text)
+    match = _SPLIT_DATE.search(text)
     if match:
-        year, month, day = map(int, match.groups())
-    elif match := _SPLIT_DATE.fullmatch(text):
         day, year, month = map(int, match.groups())
+    elif match := _YEAR_LAST_DATE.search(text):
+        month, day, year = map(int, match.groups())
+    elif (match := _YEAR_FIRST_DATE.search(text)) or (match := _DATE.search(text)):
+        year, month, day = map(int, match.groups())
     else:
         return None
     try:
@@ -203,83 +152,86 @@ def parse_listing(
     try:
         encoding = codecs.lookup(match[1] if match else "utf-8").name
         root = html.document_fromstring(
-            body, parser=html.HTMLParser(encoding=encoding, no_network=True)
+            body, parser=html.HTMLParser(encoding=encoding, no_network=True, remove_comments=True)
         )
     except (LookupError, etree.ParserError) as error:
-        raise StepError("error", "列表页无法解析") from error
+        raise ValueError("列表页无法解析") from error
     try:
-        configured = selectors is not None
-        candidates = (selectors,) if selectors is not None else _TEMPLATES
-        rows: list[HtmlElement] = []
-        for candidate in candidates:
-            rows = _elements(root, candidate.items)
-            if rows:
-                selectors = candidate
-                break
-        if selectors is None or not rows:
-            return ListPage([], None)
-        items: dict[str, ListedItem] = {}
-        for row in rows:
-            title = _value(row, selectors.title)
-            target = _url(url, _value(row, selectors.link))
-            if title and target:
-                item = ListedItem(
-                    url=target,
-                    title=title,
-                    published_on=_date(_value(row, selectors.date, " ")),
-                )
-                items.setdefault(target, item)
-        following = _url(url, _value(root, selectors.next)) if configured else _next(root, url)
-        return ListPage(list(items.values()), following)
+        if selectors is not None:
+            items: dict[str, ListedItem] = {}
+            for row in _elements(root, selectors.items):
+                title = _value(row, selectors.title)
+                target = _url(url, _value(row, selectors.link, href=True))
+                if title and target:
+                    items.setdefault(
+                        target,
+                        ListedItem(
+                            url=target, title=title, published_on=_date(_value(row, selectors.date))
+                        ),
+                    )
+            return ListPage(
+                list(items.values()), _url(url, _value(root, selectors.next, href=True))
+            )
     except etree.XPathError as error:
-        raise StepError("error", "配置不对: XPath 无法计算") from error
-    except ValidationError as error:
-        raise StepError("error", "列表条目或配置字段不符合结构") from error
+        raise ValueError("XPath 无法计算") from error
+    return ListPage(_generic_items(root, url), _next(root, url))
 
 
-async def list_items(
-    fetcher: Fetcher, source: WorkSource, *, today: date | None = None
-) -> list[ListedItem]:
-    try:
-        config = ListConfig.model_validate(source.config or {})
-    except ValidationError as error:
-        location = ".".join(str(value) for value in error.errors(include_input=False)[0]["loc"])
-        raise StepError("error", f"配置不对: {location}") from error
-
-    def request_url(url: str) -> str:
-        parts = urlsplit(url)
-        if config.force_http and parts.netloc == urlsplit(source.url).netloc:
-            return urlunsplit(parts._replace(scheme="http"))
-        return url
-
-    now = today or datetime.now(timezone(timedelta(hours=8))).date()
-    year = now.year - 2
-    cutoff = now.replace(year=year, day=min(now.day, monthrange(year, now.month)[1]))
-    current = request_url(source.url)
-    visited: set[str] = set()
-    items: dict[str, ListedItem] = {}
-    while True:
-        if current in visited:
-            raise StepError("error", "分页链接循环")
-        visited.add(current)
-        response = await fetcher.get(current)
-        visited.add(response.url)
-        if not 200 <= response.status < 300:
-            raise StepError("http_status", f"HTTP {response.status}")
-        page = parse_listing(response.body, response.url, config.selectors, response.content_type)
-        if not page.items:
-            return []
-        fresh = [item for item in page.items if item.url not in items]
-        if (
-            source.backfill
-            and fresh
-            and all(item.published_on is not None and item.published_on < cutoff for item in fresh)
+def _row_date(row: HtmlElement) -> tuple[bool, date | None]:
+    for node in row.iter():
+        value = " ".join(node.itertext())
+        if any(
+            pattern.fullmatch(value.strip())
+            for pattern in (_DATE, _SPLIT_DATE, _YEAR_LAST_DATE, _YEAR_FIRST_DATE)
         ):
-            break
-        for item in page.items:
-            if not source.backfill or item.published_on is None or item.published_on >= cutoff:
-                items.setdefault(item.url, item)
-        if not source.backfill or page.next_url is None:
-            break
-        current = request_url(page.next_url)
-    return list(items.values())
+            return True, _date(value)
+    text = " ".join(row.itertext())
+    if _DATE.search(text) or _SPLIT_DATE.search(text):
+        return True, _date(text)
+    for node in row.iter():
+        value = node.get("datetime", "")
+        if _DATE.search(value):
+            return True, _date(value)
+    return False, None
+
+
+def _title(anchor: HtmlElement) -> str:
+    text = anchor.get("title", "").strip()
+    if not text:
+        for expression in (
+            ".//h1 | .//h2 | .//h3 | "
+            ".//*[contains(concat(' ',normalize-space(@class),' '),' title ')]",
+            ".//*[contains(concat(' ',normalize-space(@class),' '),' text ')]",
+            "./p[1]",
+        ):
+            candidates = _elements(anchor, expression)
+            if candidates:
+                text = "".join(candidates[0].itertext())
+                break
+        if not text:
+            text = " ".join(anchor.itertext())
+    return " ".join(_DATE.sub("", text).split()).strip(" []【】()\uff08\uff09")
+
+
+def _generic_items(root: HtmlElement, url: str) -> list[ListedItem]:
+    best: list[ListedItem] = []
+    best_count = 0
+    for parent in root.iter():
+        items: dict[str, ListedItem] = {}
+        dated = 0
+        for row in parent:
+            links: dict[str, str] = {}
+            for anchor in row.iter("a"):
+                target = _url(url, anchor.get("href", ""))
+                title = _title(anchor)
+                if target and title:
+                    links.setdefault(target, title)
+            if len(links) != 1:
+                continue
+            target, title = next(iter(links.items()))
+            has_date, published = _row_date(row)
+            dated += has_date
+            items.setdefault(target, ListedItem(url=target, title=title, published_on=published))
+        if dated and dated >= best_count:
+            best_count, best = dated, list(items.values())
+    return best

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 import httpx
@@ -8,10 +8,11 @@ from pydantic import JsonValue
 from crawler.crawl.contract import WorkSource
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.fetch_test import FakeSites
+from crawler.crawl.listing import list_items
 from crawler.crawl.rounds import NoticePage, StepError, Steps, crawl_source
 from crawler.crawl.rounds_test import FakeWebsite, extract, screen
 from crawler.crawl.website import Website
-from crawler.parse.listing import Selectors, list_items, parse_listing
+from crawler.parse.listing import Selectors, parse_listing
 
 FIXTURES = Path(__file__).parent / "fixtures" / "listing"
 BASE = "https://example.edu.cn/notices.htm"
@@ -104,7 +105,13 @@ def test_documented_http_configuration_reads_the_real_page_structure() -> None:
             )
         }
     )
-    result = sites.run(lambda f: list_items(f, source(config=config), today=TODAY))
+    result = sites.run(
+        lambda f: list_items(
+            f,
+            source(config=config),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
     assert [(item.title, item.published_on) for item in result] == [
         ("示例招生通知甲", date(2026, 9, 10)),
         ("示例招生通知乙", date(2026, 9, 9)),
@@ -135,7 +142,13 @@ def test_backfill_keeps_boundary_and_unknown_dates_and_ignores_repeated_pinned_r
             ),
         }
     )
-    result = sites.run(lambda f: list_items(f, source(backfill=backfill), today=TODAY))
+    result = sites.run(
+        lambda f: list_items(
+            f,
+            source(backfill=backfill),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
     assert [item.title for item in result] == (
         ["自编通知1", "自编通知2", "自编通知3", "自编通知4"]
         if backfill
@@ -153,7 +166,13 @@ def test_leap_day_backfill_uses_calendar_years() -> None:
             ),
         }
     )
-    result = sites.run(lambda f: list_items(f, source(backfill=True), today=date(2024, 2, 29)))
+    result = sites.run(
+        lambda f: list_items(
+            f,
+            source(backfill=True),
+            clock=lambda: datetime(2024, 2, 29, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
     assert [item.published_on for item in result] == [date(2022, 2, 28)]
     assert len(sites.requests) == 2
 
@@ -178,7 +197,13 @@ def test_numbered_pager_advances_one_page_and_stops_at_last() -> None:
             ),
         }
     )
-    result = sites.run(lambda f: list_items(f, source(backfill=True), today=TODAY))
+    result = sites.run(
+        lambda f: list_items(
+            f,
+            source(backfill=True),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
     assert [item.title for item in result] == ["自编通知1", "自编通知2"]
     assert len(sites.requests) == 2
 
@@ -213,7 +238,13 @@ def test_explicit_http_config_and_redirect_base_are_used_for_pagination_and_link
     config: dict[str, JsonValue] = {"force_http": True}
     if configured:
         config["selectors"] = selectors
-    result = sites.run(lambda f: list_items(f, source(backfill=True, config=config), today=TODAY))
+    result = sites.run(
+        lambda f: list_items(
+            f,
+            source(backfill=True, config=config),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
     assert [item.url for item in result] == ["http://example.edu.cn/board/info/1001/1.htm"]
     assert [url for _, url in sites.requests] == list(sites.pages)
 
@@ -259,7 +290,15 @@ def test_historical_http_failure_does_not_return_partial_backfill(status: int) -
         }
     )
     with pytest.raises(StepError, match=f"HTTP {status}") as caught:
-        sites.run(lambda f: list_items(f, source(backfill=True), today=TODAY))
+        sites.run(
+            lambda f: list_items(
+                f,
+                source(backfill=True),
+                clock=lambda: datetime(
+                    2026, 11, 7, tzinfo=timezone(timedelta(hours=8))
+                ).timestamp(),
+            )
+        )
     assert caught.value.failure == "http_status"
 
 
@@ -281,5 +320,66 @@ def test_cyclic_pagination_is_an_error_instead_of_a_partial_success() -> None:
         }
     )
     with pytest.raises(StepError, match="分页链接循环"):
-        sites.run(lambda f: list_items(f, source(backfill=True), today=TODAY))
+        sites.run(
+            lambda f: list_items(
+                f,
+                source(backfill=True),
+                clock=lambda: datetime(
+                    2026, 11, 7, tzinfo=timezone(timedelta(hours=8))
+                ).timestamp(),
+            )
+        )
     assert len(sites.requests) == 2
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "opaque-links",
+        "month-day-year",
+        "year-month-day",
+        "table-rows",
+        "date-in-link",
+        "plain-span",
+        "empty-link",
+        "right-span",
+    ],
+)
+def test_repeated_structure_finds_dates_without_url_or_class_templates(name: str) -> None:
+    result = parse_listing((FIXTURES / f"{name}.html").read_bytes(), BASE)
+    assert [(item.title, item.published_on, item.url) for item in result.items] == [
+        ("自编招生通知1", date(2026, 9, 10), "https://example.edu.cn/article/101.htm"),
+        ("自编招生通知2", date(2026, 9, 9), "https://example.edu.cn/article/102.htm"),
+    ]
+
+
+def test_empty_historical_page_finishes_backfill_without_discarding_items() -> None:
+    sites = FakeSites(
+        {
+            BASE: httpx.Response(200, content=page([("1", "2026-09-10")], "p2")),
+            "https://example.edu.cn/p2": httpx.Response(200, text="<ul></ul>"),
+        }
+    )
+    result = sites.run(
+        lambda f: list_items(
+            f,
+            source(backfill=True),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
+    assert [item.title for item in result] == ["自编通知1"]
+    assert len(sites.requests) == 2
+
+
+def test_configured_links_and_next_elements_use_href_instead_of_text() -> None:
+    selectors = Selectors(
+        items="//li", title=".//a", link=".//a", date=".//span", next="//a[@rel='next']"
+    )
+    result = parse_listing(page([("1", "2026-09-10")], "p2"), BASE, selectors)
+    assert result.items[0].url == "https://example.edu.cn/info/1001/1.htm"
+    assert result.next_url == "https://example.edu.cn/p2"
+
+
+def test_html_comments_are_ignored_during_structure_detection() -> None:
+    result = parse_listing(page([("1", "2026-09-10")]) + b"<!-- navigation -->", BASE)
+    assert len(result.items) == 1

@@ -12,5 +12,13 @@
 | `drupal.html` | 原页明确声明 Drupal 10，Views 容器、`list-page`、`time/@datetime`；只有页码的翻页器 | [中大计算机学院硕士招生](https://cse.sysu.edu.cn/admission/master) |
 | `configured.html` | 独立招生发布系统，作为需要配置的页面测试，不计入前述五种通用系统 | [国科大硕士招生](https://admission.ucas.ac.cn/showarticle/newslist/1beb211c-ea0d-4c97-b5ce-61efa7addfcd) |
 | `zju-http.html` | WebPlus 的另一种布局，使用开发约定中的 XPath 配置和显式 HTTP，列出 `jzlb`、`btt3`、`fbsj4` | [浙大计算机招生信息](http://www.cs.zju.edu.cn/csen/27006/list.htm) |
+| `opaque-links.html` | 通知链接为不带 `info/` 的字母数字文件名 | [北科大研究生院](https://yzxc.ustb.edu.cn/xlytm/hdap/index.htm) |
+| `month-day-year.html` | 月日与年份分栏，标题和摘要在同一链接内 | [北科大计通学院](https://scce.ustb.edu.cn/xydt/tzgg.htm) |
+| `year-month-day.html` | 年份与月日分栏 | [电子科大信通学院](https://www.sice.uestc.edu.cn/index/tzgg/yjsk.htm) |
+| `table-rows.html` | 每条通知使用嵌套表格的行排版 | [东南大学研究生院](https://yzb.seu.edu.cn/6676/list.htm) |
+| `date-in-link.html` | 日期在标题链接内部 | [西电人工智能学院](https://sai.xidian.edu.cn/tzgg.htm) |
+| `plain-span.html` | 日期在无 class 的 `span` 内 | [西电研究生院](https://gr.xidian.edu.cn/yjsy/yjszs.htm) |
+| `empty-link.html` | 通知链接前有一个空链接 | [西电网信学院](https://ce.xidian.edu.cn/sy/tzgg.htm) |
+| `right-span.html` | 日期在 `right` 元素内 | [沈自](https://sia.cas.cn/zpjy/yjsjy/zs/zsgg/) |
 
 Drupal 样例用于补充不同系统的解析覆盖，不改动 `data/sources.csv`。分页边界、未知日期、重复置顶、重定向、HTTP、非法配置和失败场景使用测试里自编的页面及 `MockTransport`，不访问外网。
