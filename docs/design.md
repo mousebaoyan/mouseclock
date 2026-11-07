@@ -81,7 +81,7 @@
 | 数据库 | 服务器上 1Panel 的 PostgreSQL 18 | 和鼠洞共用实例，不加新服务 |
 | 抓取节点 | Python 3.14，uv 管依赖；Ruff 做 lint 和格式化，Pyright 的严格模式做类型检查，pytest 做测试 | 浏览器抓取、正文提取、PDF 和 Office 解析、中文的文字识别，Python 的库最全，代价是多一套工具链。3.15 刚发布，文字识别要用的 onnxruntime 还没有它的安装包。Pyright 和 VS Code 的 Pylance 是同一个引擎，编辑器里看到的错误和 CI 一致 |
 | 抓取 | httpx（异步）请求网页，Playwright 驱动浏览器（Chromium 的无头精简版），lxml 按 CSS 或 XPath 取出列表 | 各自领域的主流库 |
-| 正文、附件和文字识别 | 候选：trafilatura 取正文，pypdf 或 pdfplumber 读 PDF，python-docx 和 openpyxl 读 Office，RapidOCR 识别文字 | 都关在 `parse` 模块里，换了不影响别处；在[读正文和附件](https://github.com/mousebaoyan/mouseclock/issues/40)和[文字识别](https://github.com/mousebaoyan/mouseclock/issues/47)的任务里用真实的附件比较后定。不用 AGPL 许可的 PyMuPDF |
+| 正文、附件和文字识别 | 图片用 RapidOCR（PP-OCRv6 small，ONNX Runtime）识别文字；正文和其他附件的候选库：trafilatura、pypdf 或 pdfplumber、python-docx、openpyxl | 都关在 `parse` 模块里，换了不影响别处；图片的试验见第 5.2 节，其余在[读正文和附件](https://github.com/mousebaoyan/mouseclock/issues/40)里比较后定。扫描 PDF 跟随该任务选定的渲染库；不用 AGPL 许可的 PyMuPDF |
 | 接口的类型 | 网站用 Zod 写接口的定义，生成 OpenAPI 文档；抓取节点从这份文档生成 Pydantic 模型 | 两边语言不同，接口的类型也只有一个来源。抓取节点用 Pydantic 校验网站的返回和模型的输出 |
 | 判别接口和 LLM | 实验后定（第 8.5 节） | |
 
@@ -108,6 +108,8 @@ CPU 不是问题，要省的是带宽，做法见第 14 节。
 | 电科计算机学院 | 用了瑞数的反爬：先返回 202 和一段脚本，脚本设好 Cookie 后重新请求。Playwright 默认带着自动化标记（`navigator.webdriver` 为真），无头模式的 UA 里写着 `HeadlessChrome`，有一处就返回 400；关掉自动化标记、UA 里写成 `Chrome` 就能通过，UA 末尾照样写明鼠钟。首页 3.1 秒，内存峰值约 425MB；同一个会话里再开列表页，不用再过挑战 |
 
 **文字识别**：RapidOCR（PP-OCRv6）识别一张 20 行的中文页面约 1 秒，进程峰值约 690MB；抓取节点只有 4 核，会慢几倍。
+
+在 Windows、Python 3.14.5 上用 RapidOCR 3.10.0、ONNX Runtime 1.31.1 复测：Pillow 生成 1700×2100 的 21 行中文图片，识别出 21 行，3 种测试句子均原样识别；同一个实例首次调用 3.49 秒，重复调用 1.42 秒。另试一张图片，识别出 23 行。三次调用期间每 10 毫秒采样一次进程 RSS，峰值约 762 MiB。这些是开发机数据，抓取节点上的速度和内存仍需实测。
 
 抓取节点同时开 2 个浏览器页面、一次识别一张图，峰值约 1.4GB，3.6GB 内存够用（第 16 节）。
 
