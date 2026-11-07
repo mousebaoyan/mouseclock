@@ -49,8 +49,17 @@ def pair_programs(
     predicted: list[LabelProgram],
 ) -> list[tuple[LabelProgram | None, LabelProgram | None]]:
     remaining = list(predicted)
+    exact: dict[int, LabelProgram] = {}
+    for index, expected in enumerate(gold):
+        for match, actual in enumerate(remaining):
+            if all(getattr(expected, key) == getattr(actual, key) for key in META):
+                exact[index] = remaining.pop(match)
+                break
     pairs: list[tuple[LabelProgram | None, LabelProgram | None]] = []
-    for expected in gold:
+    for index, expected in enumerate(gold):
+        if index in exact:
+            pairs.append((expected, exact[index]))
+            continue
         scores = [
             sum(getattr(expected, k) == getattr(actual, k) for k in META) for actual in remaining
         ]
@@ -67,7 +76,6 @@ class Metric:
     correct: int = 0
     expected: int = 0
     predicted: int = 0
-    union: int = 0
     wrong: int = 0
     missing: int = 0
     extra: int = 0
@@ -75,7 +83,6 @@ class Metric:
     def add(self, expected: JsonValue, actual: JsonValue) -> None:
         self.expected += expected is not None
         self.predicted += actual is not None
-        self.union += expected is not None or actual is not None
         self.correct += expected is not None and actual is not None and expected == actual
         self.wrong += expected is not None and actual is not None and expected != actual
         self.missing += expected is not None and actual is None
@@ -86,12 +93,10 @@ class Metric:
             "correct": self.correct,
             "expected": self.expected,
             "predicted": self.predicted,
-            "union": self.union,
             "wrong": self.wrong,
             "missing": self.missing,
             "extra": self.extra,
             "accuracy": self.correct / self.expected if self.expected else None,
-            "recall": self.correct / self.expected if self.expected else None,
             "precision": self.correct / self.predicted if self.predicted else None,
         }
 

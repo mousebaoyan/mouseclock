@@ -100,7 +100,13 @@ def test_missing_deadline_and_false_positive_are_not_rewarded_for_absence() -> N
     negative = item.model_copy(update={"programs": []})
     metric.add(negative, extraction(), "Deadline: June 30, 24:00.")
     result = metric.metrics["apply.end"]
-    assert (result.correct, result.expected, result.predicted, result.union) == (0, 1, 1, 2)
+    assert (result.correct, result.expected, result.predicted, result.missing, result.extra) == (
+        0,
+        1,
+        1,
+        1,
+        1,
+    )
     assert metric.exact_notices == 0
 
 
@@ -128,6 +134,13 @@ def test_metadata_mismatch_does_not_turn_a_correct_deadline_into_missing_and_ext
     assert evaluation.metrics["college"].wrong == 1
     deadline = evaluation.metrics["apply.end"]
     assert (deadline.correct, deadline.missing, deadline.extra) == (1, 0, 0)
+
+
+def test_partial_match_does_not_take_another_projects_exact_match() -> None:
+    first = notice().programs[0]
+    second = first.model_copy(update={"college": "Mathematics"})
+    changed = first.model_copy(update={"cohort": 2028})
+    assert pair_programs([first, second], [second, changed]) == [(first, changed), (second, second)]
 
 
 def test_evidence_only_ignores_whitespace() -> None:

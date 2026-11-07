@@ -16,7 +16,6 @@ API_URL = "https://api.siliconflow.cn/v1/chat/completions"
 DEFAULT_MODELS = (
     "deepseek-ai/DeepSeek-V4.1-Flash",
     "tencent/Hy4-preview",
-    "zai-org/GLM-5.3-Flash",
     "deepseek-ai/DeepSeek-V4-Flash",
     "Qwen/Qwen3.8-27B",
 )
@@ -25,11 +24,10 @@ TIMEOUT = 180
 # CNY per million tokens: input, output, cached input; official pricing on 2026-11-07.
 # https://cloud-rd.siliconflow.cn/pricing
 PRICES = {
-    DEFAULT_MODELS[0]: (2.0, 8.0, 0.04),
-    DEFAULT_MODELS[1]: (6.0, 18.0, 0.3),
-    DEFAULT_MODELS[2]: (0.8, 2.8, 0.23),
-    DEFAULT_MODELS[3]: (3.0, 9.0, 0.3),
-    DEFAULT_MODELS[4]: (3.0, 12.0, 3.0),
+    "deepseek-ai/DeepSeek-V4.1-Flash": (2.0, 8.0, 0.04),
+    "tencent/Hy4-preview": (6.0, 18.0, 0.3),
+    "deepseek-ai/DeepSeek-V4-Flash": (3.0, 9.0, 0.3),
+    "Qwen/Qwen3.8-27B": (3.0, 12.0, 3.0),
 }
 type Mode = Literal["off", "low", "high"]
 type Count = Annotated[int, Field(strict=True, ge=0)]
@@ -72,7 +70,6 @@ class Result(BaseModel):
 
 
 class Call(BaseModel):
-    api_url: str = API_URL
     timeout_seconds: float = TIMEOUT
     payload: dict[str, JsonValue]
 
@@ -84,19 +81,15 @@ def make_call(
     mode: Mode,
     *,
     hyperlinks: tuple[Hyperlink, ...] = (),
-    api_url: str = API_URL,
 ) -> Call:
     data = notice.model_dump(mode="json", exclude={"programs"})
     data["indexed"] = indexed_input(
         index_documents([Document(text, hyperlinks=hyperlinks)], published_on=notice.published_on)
     )
-    options: dict[str, JsonValue] = {}
-    if api_url == API_URL:
-        options["enable_thinking"] = mode != "off"
+    options: dict[str, JsonValue] = {"enable_thinking": mode != "off"}
     if mode != "off":
         options["reasoning_effort"] = mode
     return Call(
-        api_url=api_url,
         payload={
             "model": model,
             "messages": [
@@ -158,7 +151,7 @@ class LLM:
         result = Result(elapsed_seconds=0, observed_at=datetime.now(UTC))
         try:
             async with asyncio.timeout(call.timeout_seconds):
-                response = await self.client.post(call.api_url, json=call.payload)
+                response = await self.client.post(API_URL, json=call.payload)
             if response.status_code != 200:
                 result.error = f"http_{response.status_code}"
             else:

@@ -12,7 +12,6 @@ from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 from crawler.crawl.fetch import Fetcher, FetchError
 from crawler.extraction.diagnostics import date_coverage
 from crawler.extraction.llm import (
-    API_URL,
     DEFAULT_MODELS,
     LLM,
     MAX_TOKENS,
@@ -45,7 +44,6 @@ class Options(BaseModel):
     limit: Annotated[int | None, Field(gt=0)] = None
     reuse_only: bool
     prepare_only: bool
-    api_url: str = API_URL
 
 
 def write_json(path: Path, value: JsonValue) -> None:
@@ -130,7 +128,7 @@ def markdown(report: dict[str, JsonValue]) -> str:
         "本轮使用 #75 的 S/D/L/E 编号,程序按引用还原时间值、报名入口和证据。",
         "参数为请求值,不保证服务端采用;实际推理 token 单列。准确率分母是标注有值的数量,",
         "只对标注集已有的项目元数据与 apply/apply_url/event/degrees 计准确率,其他字段只校验证据。",
-        "多项目按学院、届、类型、作用相同项最多的一项一对一配对,不使用待评分字段打破平局。",
+        "多项目先配学院、届、类型、作用全部相同的项目,剩余按相同项最多一对一配对。",
         "没有共同元数据的不配对,剩余项目分别算漏抽或多抽;元数据差异单独计错。",
         "失败记录为未抽取,保留已返回用量;证据匹配只忽略空白,不能替代语义核验。",
         "",
@@ -184,7 +182,7 @@ def markdown(report: dict[str, JsonValue]) -> str:
     rows.extend(
         [
             "",
-            "逐字段指标、分母、截止召回率/精确率和失败网址见 report.json。",
+            "逐字段指标、分母、截止准确率/精确率和失败网址见 report.json。",
             "报告中的比例取值 0-1。正文与包含证据的响应缓存仅供本地使用,不提交。",
             "",
         ]
@@ -265,7 +263,6 @@ async def evaluate(options: Options) -> int:
             model,
             mode,
             hyperlinks=page.hyperlinks,
-            api_url=options.api_url,
         )
         identity = call.model_dump_json()
         result = cache.get(identity)
@@ -348,12 +345,8 @@ def main() -> None:
     parser.add_argument("--limit", type=int)
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
-    parser.add_argument("--api-url", default=API_URL)
-    try:
-        options = Options.model_validate(vars(parser.parse_args()))
-        status = asyncio.run(evaluate(options))
-    except ValidationError:
-        parser.exit(1, "invalid_options_dataset_or_cache\n")
+    options = Options.model_validate(vars(parser.parse_args()))
+    status = asyncio.run(evaluate(options))
     raise SystemExit(status)
 
 
