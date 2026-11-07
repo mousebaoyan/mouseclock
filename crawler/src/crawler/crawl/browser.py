@@ -1,7 +1,8 @@
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Callable
+from contextlib import AbstractAsyncContextManager
 from urllib.parse import urljoin
 
 from playwright.async_api import (
@@ -29,7 +30,6 @@ from crawler.crawl.fetch import (
     TIMEOUT,
     USER_AGENT,
     FetchError,
-    Permit,
     Response,
 )
 
@@ -42,7 +42,7 @@ _logger = logging.getLogger(__name__)
 
 
 class Browser:
-    def __init__(self, permit: Callable[[str], Awaitable[Permit]]) -> None:
+    def __init__(self, permit: Callable[[str], AbstractAsyncContextManager[None]]) -> None:
         self.permit = permit
         self.slots = asyncio.Semaphore(PAGE_LIMIT)
         self._lock = asyncio.Lock()
@@ -59,11 +59,8 @@ class Browser:
                 browser = await playwright.chromium.launch(
                     headless=True, args=["--disable-blink-features=AutomationControlled"]
                 )
-                page = await browser.new_page()
-                try:
+                async with await browser.new_page() as page:
                     user_agent: str = await page.evaluate("navigator.userAgent")
-                finally:
-                    await page.close()
             except BaseException:
                 await playwright.stop()
                 raise
@@ -119,12 +116,10 @@ class BrowserSession:
             await route.continue_()
 
     async def get(self, url: str) -> Response:
-        async with self._owner.slots:
-            permit = await self._owner.permit(url)
+        async with self._owner.slots, self._owner.permit(url):
             started = time.monotonic()
             try:
-                page = await self._context.new_page()
-                try:
+                async with await self._context.new_page() as page:
                     last_response: PlaywrightResponse | None = None
 
                     def record_response(response: PlaywrightResponse) -> None:
@@ -151,46 +146,40 @@ class BrowserSession:
                         time.monotonic() - started,
                     )
                     return response
-                finally:
-                    await page.close()
             except PlaywrightTimeoutError as error:
                 raise FetchError("timeout", url) from error
             except PlaywrightError as error:
                 raise FetchError("unreachable", url) from error
-            finally:
-                permit.release()
 
     async def download(self, url: str, *, page_url: str) -> Response:
         for _ in range(MAX_REDIRECTS + 1):
-            permit = await self._owner.permit(url)
-            try:
-                response = await self._context.request.get(
-                    url,
-                    headers={"Referer": page_url},
-                    timeout=TIMEOUT * 1000,
-                    max_redirects=0,
-                    max_retries=0,
-                    fail_on_status_code=False,
-                )
+            async with self._owner.permit(url):
                 try:
-                    location = response.headers.get("location")
-                    if response.status in _REDIRECTS and location is not None:
-                        url = urljoin(response.url, location)
-                        continue
-                    return Response(
-                        response.url,
-                        response.status,
-                        response.headers.get("content-type"),
-                        await response.body(),
+                    response = await self._context.request.get(
+                        url,
+                        headers={"Referer": page_url},
+                        timeout=TIMEOUT * 1000,
+                        max_redirects=0,
+                        max_retries=0,
+                        fail_on_status_code=False,
                     )
-                finally:
-                    await response.dispose()
-            except PlaywrightTimeoutError as error:
-                raise FetchError("timeout", url) from error
-            except PlaywrightError as error:
-                raise FetchError("unreachable", url) from error
-            finally:
-                permit.release()
+                    try:
+                        location = response.headers.get("location")
+                        if response.status in _REDIRECTS and location is not None:
+                            url = urljoin(response.url, location)
+                            continue
+                        return Response(
+                            response.url,
+                            response.status,
+                            response.headers.get("content-type"),
+                            await response.body(),
+                        )
+                    finally:
+                        await response.dispose()
+                except PlaywrightTimeoutError as error:
+                    raise FetchError("timeout", url) from error
+                except PlaywrightError as error:
+                    raise FetchError("unreachable", url) from error
         raise FetchError("too_many_redirects", url)
 
     async def close(self) -> None:

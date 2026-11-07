@@ -3,7 +3,8 @@ page visit or HTTP request at a time per site, with a pause between them."""
 
 import asyncio
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal, Self
 
@@ -42,16 +43,6 @@ class _Site:
     finished_at: float = float("-inf")
 
 
-@dataclass
-class Permit:
-    _site: _Site
-    _clock: Callable[[], float]
-
-    def release(self) -> None:
-        self._site.finished_at = self._clock()
-        self._site.lock.release()
-
-
 class Fetcher:
     """One per crawler process, shared by everything that crawls, so the rules hold across tasks."""
 
@@ -79,28 +70,33 @@ class Fetcher:
         finally:
             await self._client.aclose()
 
-    def session(self, browser: bool, *, url: str) -> PageSession:
-        return PageSession(self, browser, url)
+    @asynccontextmanager
+    async def session(self, browser: bool, *, url: str) -> AsyncGenerator[PageSession]:
+        browser_session = None
+        if browser:
+            if self._browser is None:
+                # Keep the browser library unloaded until a source actually needs it.
+                from crawler.crawl.browser import Browser
 
-    def browser(self) -> Browser:
-        if self._browser is None:
-            # Keep the browser library unloaded until a source actually needs it.
-            from crawler.crawl.browser import Browser
-
-            self._browser = Browser(self.permit)
-        return self._browser
-
-    async def permit(self, url: str) -> Permit:
-        site = self._sites.setdefault(httpx.URL(url).netloc.decode("ascii"), _Site())
-        await site.lock.acquire()
+                self._browser = Browser(self.permit)
+            browser_session = await self._browser.session(url)
         try:
+            yield PageSession(self, browser_session)
+        finally:
+            if browser_session is not None:
+                await browser_session.close()
+
+    @asynccontextmanager
+    async def permit(self, url: str) -> AsyncGenerator[None]:
+        site = self._sites.setdefault(httpx.URL(url).netloc.decode("ascii"), _Site())
+        async with site.lock:
             wait = site.finished_at + INTERVAL - self._clock()
             if wait > 0:
                 await self._sleep(wait)
-            return Permit(site, self._clock)
-        except BaseException:
-            site.lock.release()
-            raise
+            try:
+                yield
+            finally:
+                site.finished_at = self._clock()
 
     async def get(self, url: str) -> Response:
         # Each hop on its own, so a redirect to another site waits its turn there too.
@@ -117,32 +113,19 @@ class Fetcher:
         raise FetchError("too_many_redirects", url)
 
     async def _send(self, url: str) -> httpx.Response:
-        permit = await self.permit(url)
-        try:
-            return await self._client.get(url)
-        except httpx.TimeoutException as error:
-            raise FetchError("timeout", url) from error
-        except httpx.TransportError as error:
-            raise FetchError("unreachable", url) from error
-        finally:
-            permit.release()
+        async with self.permit(url):
+            try:
+                return await self._client.get(url)
+            except httpx.TimeoutException as error:
+                raise FetchError("timeout", url) from error
+            except httpx.TransportError as error:
+                raise FetchError("unreachable", url) from error
 
 
 class PageSession:
-    def __init__(self, fetcher: Fetcher, browser: bool, url: str) -> None:
+    def __init__(self, fetcher: Fetcher, browser_session: BrowserSession | None) -> None:
         self._fetcher = fetcher
-        self._use_browser = browser
-        self._url = url
-        self._browser_session: BrowserSession | None = None
-
-    async def __aenter__(self) -> Self:
-        if self._use_browser:
-            self._browser_session = await self._fetcher.browser().session(self._url)
-        return self
-
-    async def __aexit__(self, *_: object) -> None:
-        if self._browser_session is not None:
-            await self._browser_session.close()
+        self._browser_session = browser_session
 
     async def get(self, url: str) -> Response:
         if self._browser_session is not None:
