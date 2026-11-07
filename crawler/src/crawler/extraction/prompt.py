@@ -46,13 +46,3 @@ apply_url.value 只能写 L 或 E 编号,不能写网址。每个字段 evidence
 简洁写值,仍附 S 编号证据。dates 的 label 可按语义写,其中 start/end 仍只能选 D 编号。
 不要把输入示例编号当成实际候选。
 """
-
-DIRECT_INSTRUCTIONS = (
-    INSTRUCTIONS[: INSTRUCTIONS.index("编号输出规则优先")]
-    .replace("这是基于编号的正文抽取实验", "这是模型直接写值的正文抽取实验")
-    .replace(
-        "evidence 必须是给定的 S 编号列表,不得重写原文句子。",
-        'evidence 是原文句子的列表,每项为 {"quote":"原句","attachment":null},逐字照抄。',
-    )
-    + "时间值和报名网址直接写值,证据照抄原句。正文的超链接另外提供,链接文字仍是原文。"
-)

@@ -8,8 +8,8 @@ import httpx
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 
 from crawler.extraction.numbered import SelectedExtraction, indexed_input
-from crawler.extraction.prompt import DIRECT_INSTRUCTIONS, INSTRUCTIONS
-from crawler.extraction.schema import Extraction, Notice, response_schema
+from crawler.extraction.prompt import INSTRUCTIONS
+from crawler.extraction.schema import Notice, response_schema
 from crawler.parse.indexing import Document, Hyperlink, index_documents
 
 API_URL = "https://api.siliconflow.cn/v1/chat/completions"
@@ -85,18 +85,11 @@ def make_call(
     *,
     hyperlinks: tuple[Hyperlink, ...] = (),
     api_url: str = API_URL,
-    method: Literal["numbered", "direct"] = "numbered",
 ) -> Call:
     data = notice.model_dump(mode="json", exclude={"programs"})
-    if method == "numbered":
-        data["indexed"] = indexed_input(
-            index_documents(
-                [Document(text, hyperlinks=hyperlinks)], published_on=notice.published_on
-            )
-        )
-    else:
-        data["text"] = text
-        data["hyperlinks"] = [{"text": text[h.start : h.end], "href": h.href} for h in hyperlinks]
+    data["indexed"] = indexed_input(
+        index_documents([Document(text, hyperlinks=hyperlinks)], published_on=notice.published_on)
+    )
     options: dict[str, JsonValue] = {}
     if api_url == API_URL:
         options["enable_thinking"] = mode != "off"
@@ -109,7 +102,7 @@ def make_call(
             "messages": [
                 {
                     "role": "system",
-                    "content": INSTRUCTIONS if method == "numbered" else DIRECT_INSTRUCTIONS,
+                    "content": INSTRUCTIONS,
                 },
                 {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
             ],
@@ -118,9 +111,7 @@ def make_call(
                 "json_schema": {
                     "name": "notice_extraction",
                     "strict": True,
-                    "schema": response_schema(
-                        SelectedExtraction if method == "numbered" else Extraction
-                    ),
+                    "schema": response_schema(SelectedExtraction),
                 },
             },
             "max_tokens": MAX_TOKENS,

@@ -5,7 +5,7 @@ import os
 from collections import Counter
 from pathlib import Path
 from statistics import mean, median, quantiles
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 
@@ -46,7 +46,6 @@ class Options(BaseModel):
     reuse_only: bool
     prepare_only: bool
     api_url: str = API_URL
-    method: Literal["numbered", "direct"] = "numbered"
 
 
 def write_json(path: Path, value: JsonValue) -> None:
@@ -128,9 +127,7 @@ def markdown(report: dict[str, JsonValue]) -> str:
     rows = [
         "# 抽取摸底实验",
         "",
-        "本轮使用 #75 的 S/D/L/E 编号,程序按引用还原时间值、报名入口和证据。"
-        if report.get("method") == "numbered"
-        else "本轮由模型直接写时间值、报名网址和原句证据,正文与超链接分开提供。",
+        "本轮使用 #75 的 S/D/L/E 编号,程序按引用还原时间值、报名入口和证据。",
         "参数为请求值,不保证服务端采用;实际推理 token 单列。准确率分母是标注有值的数量,",
         "只对标注集已有的项目元数据与 apply/apply_url/event/degrees 计准确率,其他字段只校验证据。",
         "多项目按学院、届、类型、作用相同项最多的一项一对一配对,不使用待评分字段打破平局。",
@@ -269,7 +266,6 @@ async def evaluate(options: Options) -> int:
             mode,
             hyperlinks=page.hyperlinks,
             api_url=options.api_url,
-            method=options.method,
         )
         identity = call.model_dump_json()
         result = cache.get(identity)
@@ -288,20 +284,15 @@ async def evaluate(options: Options) -> int:
         prediction: Extraction | None = None
         if result.error is None and result.content is not None:
             try:
-                if options.method == "numbered":
-                    prediction = resolve(
-                        SelectedExtraction.model_validate_json(result.content, strict=True),
-                        index_documents(
-                            [Document(page.text, hyperlinks=page.hyperlinks)],
-                            published_on=notice.published_on,
-                        ),
-                    )
-                else:
-                    prediction = Extraction.model_validate_json(result.content, strict=True)
-            except SelectionError, ValidationError:
-                result.error = (
-                    "invalid_selection" if options.method == "numbered" else "invalid_output"
+                prediction = resolve(
+                    SelectedExtraction.model_validate_json(result.content, strict=True),
+                    index_documents(
+                        [Document(page.text, hyperlinks=page.hyperlinks)],
+                        published_on=notice.published_on,
+                    ),
                 )
+            except SelectionError, ValidationError:
+                result.error = "invalid_selection"
         evaluation.add(notice, prediction, page.text)
         results.append(result)
         if result.error or evaluation.notices % 10 == 0 or evaluation.notices == len(selected):
@@ -324,7 +315,7 @@ async def evaluate(options: Options) -> int:
         report: dict[str, JsonValue] = {
             "dataset": str(options.dataset),
             "urls": [n.url for n in selected],
-            "method": options.method,
+            "method": "numbered",
             "date_coverage": coverage,
             "evaluated_fields": list[JsonValue](META + FIELD_NAMES),
             "settings": {
@@ -358,7 +349,6 @@ def main() -> None:
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--api-url", default=API_URL)
-    parser.add_argument("--method", choices=("numbered", "direct"), default="numbered")
     try:
         options = Options.model_validate(vars(parser.parse_args()))
         status = asyncio.run(evaluate(options))
