@@ -26,7 +26,6 @@ export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 export interface Attachments {
   content_type: string;
   data: Buffer | null;
-  error: string | null;
   name: string;
   position: number;
   snapshot_id: number;

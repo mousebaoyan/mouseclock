@@ -88,24 +88,6 @@ def test_a_redirect_to_another_site_waits_its_turn_there() -> None:
     assert all(gap >= INTERVAL for gap in gaps(sites.times("b")))
 
 
-def test_http_and_browser_permissions_share_the_completion_interval() -> None:
-    sites = FakeSites({"http://a/notice": httpx.Response(200)})
-
-    async def use(fetcher: Fetcher) -> None:
-        browser_request = await fetcher.permit("http://A:80/list.htm")
-        http_request = asyncio.create_task(fetcher.get("http://a/notice"))
-        await asyncio.sleep(0)
-        assert not sites.requests
-        sites.now = 3.0
-        browser_request.release()
-        # A late terminal event for the old request must not release another one's permit.
-        browser_request.release()
-        await http_request
-
-    sites.run(use)
-    assert sites.times("a") == [3.0 + INTERVAL]
-
-
 def test_cancelling_the_interval_wait_does_not_mark_a_request_finished() -> None:
     async def run() -> None:
         sites = FakeSites({})

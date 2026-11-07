@@ -5,10 +5,11 @@ that need it, extract, and report the round. The steps that read pages and ask m
 import logging
 import time
 from collections.abc import Awaitable, Callable
+from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
-from crawler.crawl.attachments import Attachment
 from crawler.crawl.contract import (
+    AttachmentInfo,
     ExtractedProgram,
     Extraction,
     ExtractionContext,
@@ -37,6 +38,12 @@ class StepError(Exception):
         super().__init__(failure if detail is None else f"{failure}: {detail}")
         self.failure: Failure = failure
         self.detail = detail
+
+
+@dataclass(frozen=True)
+class Attachment:
+    info: AttachmentInfo
+    data: bytes
 
 
 @dataclass(frozen=True)
@@ -78,9 +85,10 @@ async def crawl_source(
     steps: Steps,
     clock: Callable[[], float] = time.time,
 ) -> None:
-    async with fetcher.session(source.browser) as pages:
-        started_at = int(clock())
+    started_at = int(clock())
+    async with AsyncExitStack() as stack:
         try:
+            pages = await stack.enter_async_context(fetcher.session(source.browser, url=source.url))
             items = await steps.list_items(pages, source)
             if not items:
                 raise StepError("no_items")
@@ -161,11 +169,7 @@ async def _fetch_notice(
         ),
     )
     for position in result.missing_files:
-        attachment = page.attachments[position]
-        if attachment.data is not None:
-            await website.attachment(
-                result.snapshot_id, position, attachment.data, url=attachment.info.url
-            )
+        await website.attachment(result.snapshot_id, position, page.attachments[position].data)
     if result.extraction is None:
         return 0
     programs, usage = await steps.extract(page, result.extraction)

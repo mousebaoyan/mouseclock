@@ -52,10 +52,9 @@ class Website:
         body = await self._call("POST", f"/notices/{notice_id}/snapshot", snapshot)
         return SnapshotResult.model_validate_json(body)
 
-    async def attachment(self, snapshot_id: int, position: int, data: bytes, *, url: str) -> None:
+    async def attachment(self, snapshot_id: int, position: int, data: bytes) -> None:
         response = await self._client.put(
             f"/snapshots/{snapshot_id}/attachments/{position}",
-            params={"url": url},
             content=data,
             headers={"Content-Type": "application/octet-stream"},
         )

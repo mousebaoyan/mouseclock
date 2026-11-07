@@ -42,21 +42,14 @@ class _Site:
     finished_at: float = float("-inf")
 
 
-def site_key(url: str) -> str:
-    return httpx.URL(url).netloc.decode("ascii")
-
-
 @dataclass
 class Permit:
     _site: _Site
     _clock: Callable[[], float]
-    _released: bool = False
 
     def release(self) -> None:
-        if not self._released:
-            self._released = True
-            self._site.finished_at = self._clock()
-            self._site.lock.release()
+        self._site.finished_at = self._clock()
+        self._site.lock.release()
 
 
 class Fetcher:
@@ -86,8 +79,8 @@ class Fetcher:
         finally:
             await self._client.aclose()
 
-    def session(self, browser: bool) -> PageSession:
-        return PageSession(self, browser)
+    def session(self, browser: bool, *, url: str) -> PageSession:
+        return PageSession(self, browser, url)
 
     def browser(self) -> Browser:
         if self._browser is None:
@@ -98,7 +91,7 @@ class Fetcher:
         return self._browser
 
     async def permit(self, url: str) -> Permit:
-        site = self._sites.setdefault(site_key(url), _Site())
+        site = self._sites.setdefault(httpx.URL(url).netloc.decode("ascii"), _Site())
         await site.lock.acquire()
         try:
             wait = site.finished_at + INTERVAL - self._clock()
@@ -136,37 +129,27 @@ class Fetcher:
 
 
 class PageSession:
-    def __init__(self, fetcher: Fetcher, browser: bool) -> None:
+    def __init__(self, fetcher: Fetcher, browser: bool, url: str) -> None:
         self._fetcher = fetcher
         self._use_browser = browser
+        self._url = url
         self._browser_session: BrowserSession | None = None
-        self._lock = asyncio.Lock()
-        self._closed = False
 
     async def __aenter__(self) -> Self:
+        if self._use_browser:
+            self._browser_session = await self._fetcher.browser().session(self._url)
         return self
 
     async def __aexit__(self, *_: object) -> None:
-        self._closed = True
         if self._browser_session is not None:
             await self._browser_session.close()
 
-    async def _open_browser(self) -> BrowserSession:
-        async with self._lock:
-            if self._browser_session is None:
-                self._browser_session = await self._fetcher.browser().session()
-            return self._browser_session
-
     async def get(self, url: str) -> Response:
-        if self._closed:
-            raise RuntimeError("Page session is closed")
-        if self._use_browser:
-            return await (await self._open_browser()).get(url)
+        if self._browser_session is not None:
+            return await self._browser_session.get(url)
         return await self._fetcher.get(url)
 
     async def download(self, url: str, *, page_url: str) -> Response:
-        if self._closed:
-            raise RuntimeError("Page session is closed")
-        if self._use_browser:
-            return await (await self._open_browser()).download(url, page_url=page_url)
+        if self._browser_session is not None:
+            return await self._browser_session.download(url, page_url=page_url)
         return await self._fetcher.get(url)

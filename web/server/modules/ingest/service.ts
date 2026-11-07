@@ -19,8 +19,8 @@ const LEASE_MS = 2 * 3600_000;
 const INTERVAL_MS = 12 * 3600_000;
 const BUSY_INTERVAL_MS = 4 * 3600_000;
 const BUSY_MONTHS = new Set([3, 4, 5, 6, 7, 8, 9, 12, 1]);
-// Incomplete attachments and notices of programs still open are fetched daily (design §7.4),
-// in their source's round; programs without a deadline are watched for this long after creation.
+// Notices of programs still open are fetched again once a day to catch changes (design §7.4),
+// in their source's round; those without a deadline, for this long after the program appeared.
 const RECHECK_MS = 24 * 3600_000;
 const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
@@ -107,7 +107,7 @@ async function recordUsage(
 
 // Saves what the list showed and returns the source's notices that still need work: new ones
 // to screen; screened-in ones not yet extracted, which a round cut short leaves behind; and
-// those with incomplete attachments or programs still open, not fetched for a day (design §7.4).
+// those of programs still open, not fetched for a day (design §7.4).
 export async function recordListing(sourceId: number, items: ListedItem[]) {
   const now = new Date();
   return db.transaction().execute(async (trx) => {
@@ -130,53 +130,44 @@ export async function recordListing(sourceId: number, items: ListedItem[]) {
             .execute();
     const pending = await trx
       .selectFrom("notices as n")
-      .leftJoinLateral(
-        (eb) =>
-          eb
-            .selectFrom("snapshots")
-            .select(["id", "extracted_at"])
-            .whereRef("notice_id", "=", "n.id")
-            .orderBy("id", "desc")
-            .limit(1)
-            .as("latest"),
-        (join) => join.onTrue(),
-      )
       .select(["n.id", "n.url", "n.title", "n.published_on", "n.screening_score"])
       .where("n.source_id", "=", sourceId)
       .where("n.removed_at", "is", null)
       .where((eb) =>
         eb.or([
           eb("n.screening_score", "is", null),
-          eb.and([eb("n.screened_in", "=", true), eb("latest.extracted_at", "is", null)]),
           eb.and([
-            eb("n.checked_at", "<", new Date(now.getTime() - RECHECK_MS)),
-            eb.or([
+            eb("n.screened_in", "=", true),
+            eb.not(
               eb.exists(
                 eb
                   .selectFrom("snapshots as s")
-                  .innerJoin("program_versions as v", "v.snapshot_id", "s.id")
-                  .innerJoin("programs as p", "p.id", "v.program_id")
-                  .select("p.id")
+                  .select("s.id")
                   .whereRef("s.notice_id", "=", "n.id")
-                  .where("p.deleted_at", "is", null)
-                  .where((qb) =>
-                    qb.or([
-                      qb("p.apply_deadline", ">", now),
-                      qb.and([
-                        qb("p.apply_deadline", "is", null),
-                        qb("p.created_at", ">", new Date(now.getTime() - UNDATED_RECHECK_MS)),
-                      ]),
+                  .where("s.extracted_at", "is not", null),
+              ),
+            ),
+          ]),
+          eb.and([
+            eb("n.checked_at", "<", new Date(now.getTime() - RECHECK_MS)),
+            eb.exists(
+              eb
+                .selectFrom("snapshots as s")
+                .innerJoin("program_versions as v", "v.snapshot_id", "s.id")
+                .innerJoin("programs as p", "p.id", "v.program_id")
+                .select("p.id")
+                .whereRef("s.notice_id", "=", "n.id")
+                .where("p.deleted_at", "is", null)
+                .where((qb) =>
+                  qb.or([
+                    qb("p.apply_deadline", ">", now),
+                    qb.and([
+                      qb("p.apply_deadline", "is", null),
+                      qb("p.created_at", ">", new Date(now.getTime() - UNDATED_RECHECK_MS)),
                     ]),
-                  ),
-              ),
-              eb.exists(
-                eb
-                  .selectFrom("attachments as a")
-                  .select("a.position")
-                  .whereRef("a.snapshot_id", "=", "latest.id")
-                  .where((qb) => qb.or([qb("a.error", "is not", null), qb("a.data", "is", null)])),
-              ),
-            ]),
+                  ]),
+                ),
+            ),
           ]),
         ]),
       )
@@ -211,13 +202,7 @@ export async function recordScreening(
   });
 }
 
-type AttachmentSubmission = {
-  name: string;
-  url: string;
-  content_type: string;
-  text: string;
-  error?: string;
-};
+type AttachmentSubmission = { name: string; url: string; content_type: string; text: string };
 
 // A new snapshot only when the words changed, the attachments' included (design §7.4).
 export async function recordSnapshot(
@@ -240,28 +225,21 @@ export async function recordSnapshot(
       .orderBy("id", "desc")
       .limit(1)
       .executeTakeFirst();
-    const latestAttachments = latest
-      ? await trx
+    const latestTexts =
+      latest &&
+      (
+        await trx
           .selectFrom("attachments")
-          .select(["url", "content_type", "text"])
+          .select("text")
           .where("snapshot_id", "=", latest.id)
           .orderBy("position")
           .execute()
-      : [];
-    const attachments = submission.attachments.map((attachment, position) => {
-      const previous = latestAttachments.at(position);
-      // A failed download tells us nothing new about the file's existing words or type.
-      return attachment.error !== undefined &&
-        attachment.text === "" &&
-        previous?.url === attachment.url
-        ? { ...attachment, text: previous.text, content_type: previous.content_type }
-        : attachment;
-    });
+      ).map((a) => a.text);
     const unchanged =
       latest !== undefined &&
       latest.text === submission.text &&
-      latestAttachments.length === attachments.length &&
-      latestAttachments.every((attachment, i) => attachment.text === attachments[i].text);
+      latestTexts?.length === submission.attachments.length &&
+      latestTexts.every((text, i) => text === submission.attachments[i].text);
 
     const snapshot = unchanged
       ? latest
@@ -275,43 +253,17 @@ export async function recordSnapshot(
           })
           .returning(["id", "extracted_at"])
           .executeTakeFirstOrThrow();
-    if (unchanged) {
-      for (const [position, attachment] of attachments.entries()) {
-        await trx
-          .updateTable("attachments")
-          .set({
-            name: attachment.name,
-            url: attachment.url,
-            content_type: attachment.content_type,
-            error: attachment.error ?? null,
-            ...(latestAttachments[position].url !== attachment.url ? { data: null } : {}),
-          })
-          .where("snapshot_id", "=", snapshot.id)
-          .where("position", "=", position)
-          .execute();
-      }
-    } else if (attachments.length > 0) {
+    if (!unchanged && submission.attachments.length > 0) {
       await trx
         .insertInto("attachments")
         .values(
-          attachments.map((a, position) => ({
+          submission.attachments.map((a, position) => ({
             snapshot_id: snapshot.id,
             position,
             ...a,
           })),
         )
         .execute();
-      if (latest) {
-        await sql`
-          UPDATE attachments AS current SET data = previous.data
-          FROM attachments AS previous
-          WHERE current.snapshot_id = ${snapshot.id}
-            AND previous.snapshot_id = ${latest.id}
-            AND current.position = previous.position
-            AND current.url = previous.url AND current.text = previous.text
-            AND current.error IS NOT NULL
-        `.execute(trx);
-      }
     }
     await trx
       .updateTable("notices")
@@ -324,7 +276,6 @@ export async function recordSnapshot(
       .select("position")
       .where("snapshot_id", "=", snapshot.id)
       .where("data", "is", null)
-      .where("error", "is", null)
       .orderBy("position")
       .execute();
     return {
@@ -385,18 +336,12 @@ async function extractionContext(
   return { published_on: publishedOn, colleges, programs };
 }
 
-export async function storeAttachmentFile(
-  snapshotId: number,
-  position: number,
-  url: string,
-  data: Buffer,
-) {
+export async function storeAttachmentFile(snapshotId: number, position: number, data: Buffer) {
   const result = await db
     .updateTable("attachments")
     .set({ data })
     .where("snapshot_id", "=", snapshotId)
     .where("position", "=", position)
-    .where("url", "=", url)
     .executeTakeFirst();
   if (result.numUpdatedRows === 0n) throw new AppError(404, "not_found", "附件不存在");
 }
