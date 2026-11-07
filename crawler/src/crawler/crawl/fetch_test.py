@@ -102,19 +102,18 @@ def test_cancelling_the_interval_wait_does_not_mark_a_request_finished() -> None
                 await asyncio.Future[None]()
             sites.now += seconds
 
-        async with Fetcher(clock=sites.clock, sleep=sleep) as fetcher:
-            first = await fetcher.permit("http://a/first")
-            first.release()
-            queued = asyncio.create_task(fetcher.permit("http://a/cancelled"))
+        async with Fetcher(httpx.MockTransport(sites.handle), sites.clock, sleep) as fetcher:
+            await fetcher.get("http://a/first")
+            queued = asyncio.create_task(fetcher.get("http://a/cancelled"))
             await waiting.wait()
+            sites.now = 2
             queued.cancel()
             with pytest.raises(asyncio.CancelledError):
                 await queued
             block = False
             async with asyncio.timeout(1):
-                next_request = await fetcher.permit("http://a/next")
-            next_request.release()
-        assert waits == [INTERVAL, INTERVAL]
+                await fetcher.get("http://a/next")
+        assert waits == [INTERVAL, INTERVAL - 2]
 
     asyncio.run(run())
 

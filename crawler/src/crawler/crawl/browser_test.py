@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from typing import Self
 
 import httpx
 import pytest
@@ -74,7 +75,10 @@ class FakePage:
     async def content(self) -> str:
         return "<html>保研通知</html>"
 
-    async def close(self) -> None:
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
         self.closed = True
 
 
@@ -278,16 +282,15 @@ def test_last_main_navigation_response_is_used_without_a_cross_site_permit(
     ]
 
     async def main() -> None:
-        async with Fetcher() as fetcher:
-            destination_permit = await fetcher.permit("https://b/busy")
-            try:
-                async with fetcher.session(True, url="https://a/list") as session:
-                    response = await session.get("https://a/notice")
-                    assert response.status == 200
-                    assert response.url == "https://b/notice"
-                    assert response.body.decode() == "<html>保研通知</html>"
-            finally:
-                destination_permit.release()
+        async with (
+            Fetcher() as fetcher,
+            fetcher.permit("https://b/busy"),
+            fetcher.session(True, url="https://a/list") as session,
+        ):
+            response = await session.get("https://a/notice")
+            assert response.status == 200
+            assert response.url == "https://b/notice"
+            assert response.body.decode() == "<html>保研通知</html>"
 
     run(main)
 
@@ -368,7 +371,8 @@ def test_initialization_errors_include_the_source_url(
     async def main() -> None:
         async with Fetcher() as fetcher:
             with pytest.raises(FetchError) as caught:
-                await fetcher.browser().session("https://a/list")
+                async with fetcher.session(True, url="https://a/list"):
+                    pass
             assert caught.value.failure == failure
             assert caught.value.url == "https://a/list"
             assert all(context.closed for context in driver.contexts)
