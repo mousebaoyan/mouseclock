@@ -35,7 +35,7 @@ async def list_items(
     items: dict[str, ListedItem] = {}
     while True:
         if current in visited:
-            raise StepError("error", "分页链接循环")
+            break
         visited.add(current)
         response = await fetcher.get(current)
         visited.add(response.url)
@@ -46,7 +46,7 @@ async def list_items(
                 response.body, response.url, config.selectors, response.content_type
             )
         except ValueError as error:
-            raise StepError("error", f"配置不对: {error}") from error
+            raise StepError("error", str(error)) from error
         if not page.items:
             break
         fresh = [item for item in page.items if item.url not in items]

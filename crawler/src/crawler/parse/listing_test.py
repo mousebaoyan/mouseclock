@@ -250,16 +250,27 @@ def test_explicit_http_config_and_redirect_base_are_used_for_pagination_and_link
 
 
 @pytest.mark.parametrize(
-    "config",
+    ("config", "detail"),
     [
-        {"unknown": True},
-        {"force_http": "true"},
-        {"selectors": {"items": "[", "title": ".//a", "link": ".//a/@href"}},
-        {"selectors": {"items": "string(//li)", "title": ".//a", "link": ".//a/@href"}},
-        {"selectors": {"items": "//li", "title": ".//missing:title", "link": ".//a/@href"}},
+        ({"unknown": True}, "配置不对: unknown"),
+        ({"force_http": "true"}, "配置不对: force_http"),
+        (
+            {"selectors": {"items": "[", "title": ".//a", "link": ".//a/@href"}},
+            "配置不对: selectors.items",
+        ),
+        (
+            {"selectors": {"items": "string(//li)", "title": ".//a", "link": ".//a/@href"}},
+            "items 必须选中条目元素",
+        ),
+        (
+            {"selectors": {"items": "//li", "title": ".//missing:title", "link": ".//a/@href"}},
+            "XPath 无法计算",
+        ),
     ],
 )
-def test_bad_configuration_is_recorded_by_the_round(config: dict[str, JsonValue]) -> None:
+def test_bad_configuration_is_recorded_by_the_round(
+    config: dict[str, JsonValue], detail: str
+) -> None:
     sites = FakeSites({BASE: httpx.Response(200, content=page([("1", "2026-09-10")]))})
     website = FakeWebsite([], frozenset())
 
@@ -277,7 +288,7 @@ def test_bad_configuration_is_recorded_by_the_round(config: dict[str, JsonValue]
     sites.run(run)
     [record] = website.called("POST /runs")
     assert record["failure"] == "error"
-    assert record["detail"].startswith("配置不对")
+    assert record["detail"] == detail
     assert website.called("POST /sources/7/listing") == []
 
 
@@ -310,7 +321,7 @@ def test_unknown_and_invalid_dates_do_not_invent_publication_dates() -> None:
     assert parse_listing(b"", BASE).items == []
 
 
-def test_cyclic_pagination_is_an_error_instead_of_a_partial_success() -> None:
+def test_cyclic_pagination_finishes_backfill_without_discarding_items() -> None:
     sites = FakeSites(
         {
             BASE: httpx.Response(200, content=page([("1", "2026-09-10")], "p2")),
@@ -319,16 +330,14 @@ def test_cyclic_pagination_is_an_error_instead_of_a_partial_success() -> None:
             ),
         }
     )
-    with pytest.raises(StepError, match="分页链接循环"):
-        sites.run(
-            lambda f: list_items(
-                f,
-                source(backfill=True),
-                clock=lambda: datetime(
-                    2026, 11, 7, tzinfo=timezone(timedelta(hours=8))
-                ).timestamp(),
-            )
+    result = sites.run(
+        lambda f: list_items(
+            f,
+            source(backfill=True),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
+    )
+    assert [item.title for item in result] == ["自编通知1", "自编通知2"]
     assert len(sites.requests) == 2
 
 
@@ -383,3 +392,77 @@ def test_configured_links_and_next_elements_use_href_instead_of_text() -> None:
 def test_html_comments_are_ignored_during_structure_detection() -> None:
     result = parse_listing(page([("1", "2026-09-10")]) + b"<!-- navigation -->", BASE)
     assert len(result.items) == 1
+
+
+@pytest.mark.parametrize(
+    ("row", "title"),
+    [
+        (
+            '<a href="/1">【博士】自编招生通知\uff08第二批\uff09</a><span>2026-09-10</span>',
+            "【博士】自编招生通知\uff08第二批\uff09",
+        ),
+        (
+            '<a href="/1">关于2026年9月10日开展夏令营的通知</a><span>2026-09-09</span>',
+            "关于2026年9月10日开展夏令营的通知",
+        ),
+        (
+            '<a href="/1">关于<span>2026年9月10日</span>开展夏令营的通知</a>'
+            "<span>2026-09-09</span>",
+            "关于 2026年9月10日 开展夏令营的通知",
+        ),
+        (
+            '<a href="/1" title="关于2026年9月10日开展夏令营的通知">通知</a>'
+            "<span>2026-09-10</span>",
+            "关于2026年9月10日开展夏令营的通知",
+        ),
+        (
+            '<a href="/1"><span>09.10 2026</span>【博士】通知甲\uff08第二批\uff09</a>',
+            "【博士】通知甲\uff08第二批\uff09",
+        ),
+        ('<a href="/1"><span>10</span><span>2026-09</span>通知甲</a>', "通知甲"),
+        (
+            '<a href="/1">[<span>2026-09-10</span>]【博士】通知甲\uff08第二批\uff09</a>',
+            "【博士】通知甲\uff08第二批\uff09",
+        ),
+        (
+            '<a href="/1">[2026-09-10]关于2026年9月11日开展夏令营的通知</a>',
+            "关于2026年9月11日开展夏令营的通知",
+        ),
+        ('<a href="/1">【2026-09-10】通知甲\uff08第二批\uff09</a>', "通知甲\uff08第二批\uff09"),
+    ],
+)
+def test_title_removes_only_the_publication_date_and_its_enclosing_brackets(
+    row: str, title: str
+) -> None:
+    result = parse_listing(f'<meta charset="utf-8"><ul><li>{row}</li></ul>'.encode(), BASE)
+    [item] = result.items
+    assert item.title == title
+    assert item.published_on == (date(2026, 9, 9) if "2026-09-09" in row else date(2026, 9, 10))
+
+
+def test_page_parse_failure_is_not_reported_as_a_configuration_error() -> None:
+    sites = FakeSites(
+        {
+            BASE: httpx.Response(
+                200,
+                content=page([("1", "2026-09-10")]),
+                headers={"content-type": "text/html; charset=unknown-charset"},
+            )
+        }
+    )
+    with pytest.raises(StepError) as caught:
+        sites.run(lambda f: list_items(f, source()))
+    assert caught.value.detail == "列表页无法解析"
+
+
+def test_repeated_links_can_be_the_list_rows() -> None:
+    body = (
+        '<meta charset="utf-8"><div>'
+        '<a href="/1"><span>2026-09-10</span>通知甲</a>'
+        '<a href="/2"><span>2026-09-09</span>通知乙</a></div>'
+    )
+    result = parse_listing(body.encode(), BASE)
+    assert [(item.title, item.published_on) for item in result.items] == [
+        ("通知甲", date(2026, 9, 10)),
+        ("通知乙", date(2026, 9, 9)),
+    ]

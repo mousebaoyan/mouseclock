@@ -177,27 +177,72 @@ def parse_listing(
     return ListPage(_generic_items(root, url), _next(root, url))
 
 
-def _row_date(row: HtmlElement) -> tuple[bool, date | None]:
-    for node in row.iter():
-        value = " ".join(node.itertext())
-        if any(
-            pattern.fullmatch(value.strip())
-            for pattern in (_DATE, _SPLIT_DATE, _YEAR_LAST_DATE, _YEAR_FIRST_DATE)
-        ):
-            return True, _date(value)
-    text = " ".join(row.itertext())
-    if _DATE.search(text) or _SPLIT_DATE.search(text):
-        return True, _date(text)
+@dataclass(frozen=True)
+class Publication:
+    value: date | None
+    start: int
+    end: int
+    node: HtmlElement | None = None
+
+
+def _row_text(row: HtmlElement) -> tuple[str, dict[HtmlElement, tuple[int, int]]]:
+    parts: list[str] = []
+    ranges: dict[HtmlElement, tuple[int, int]] = {}
+    length = 0
+
+    def append(value: str | None) -> None:
+        nonlocal length
+        if value is not None:
+            parts.append(value + " ")
+            length += len(value) + 1
+
+    def visit(node: HtmlElement) -> None:
+        start = length
+        append(node.text)
+        for child in node:
+            visit(child)
+            append(child.tail)
+        ranges[node] = (start, length)
+
+    visit(row)
+    return "".join(parts), ranges
+
+
+def _row_date(
+    row: HtmlElement, text: str, ranges: dict[HtmlElement, tuple[int, int]]
+) -> Publication | None:
+    patterns = (_SPLIT_DATE, _YEAR_LAST_DATE, _YEAR_FIRST_DATE, _DATE)
+    nodes = sorted(
+        row.iter(),
+        key=lambda node: node.tag == "a" or next(node.iterancestors("a"), None) is not None,
+    )
+    for node in nodes:
+        start, end = ranges[node]
+        value = text[start:end]
+        for pattern in patterns:
+            if pattern.fullmatch(value.strip()) and (match := pattern.search(value)):
+                return Publication(
+                    _date(match[0]), start + match.start(), start + match.end(), node
+                )
+    for pattern in patterns:
+        if match := pattern.search(text):
+            return Publication(_date(match[0]), match.start(), match.end())
     for node in row.iter():
         value = node.get("datetime", "")
         if _DATE.search(value):
-            return True, _date(value)
-    return False, None
+            return Publication(_date(value), 0, 0, node)
+    return None
 
 
-def _title(anchor: HtmlElement) -> str:
+def _title(
+    anchor: HtmlElement,
+    row_text: str,
+    ranges: dict[HtmlElement, tuple[int, int]],
+    published: Publication | None,
+) -> str:
     text = anchor.get("title", "").strip()
     if not text:
+        title_node = anchor
         for expression in (
             ".//h1 | .//h2 | .//h3 | "
             ".//*[contains(concat(' ',normalize-space(@class),' '),' title ')]",
@@ -206,32 +251,57 @@ def _title(anchor: HtmlElement) -> str:
         ):
             candidates = _elements(anchor, expression)
             if candidates:
-                text = "".join(candidates[0].itertext())
+                title_node = candidates[0]
                 break
-        if not text:
-            text = " ".join(anchor.itertext())
-    return " ".join(_DATE.sub("", text).split()).strip(" []【】()\uff08\uff09")
+        start, end = ranges[title_node]
+        text = row_text[start:end]
+        if published and start <= published.start < published.end <= end:
+            first, last = published.start - start, published.end - start
+            left, right = text[:first].rstrip(), text[last:].lstrip()
+            if (
+                left
+                and right
+                and {"[": "]", "【": "】", "(": ")", "\uff08": "\uff09"}.get(left[-1]) == right[0]
+            ):
+                first, last = len(left) - 1, len(text) - len(right) + 1
+            text = text[:first] + text[last:]
+    return " ".join(text.split())
 
 
 def _generic_items(root: HtmlElement, url: str) -> list[ListedItem]:
     best: list[ListedItem] = []
-    best_count = 0
+    best_score = (0, 0)
     for parent in root.iter():
         items: dict[str, ListedItem] = {}
         dated = 0
+        separate_dates = 0
         for row in parent:
+            text, ranges = _row_text(row)
+            published = _row_date(row, text, ranges)
             links: dict[str, str] = {}
             for anchor in row.iter("a"):
                 target = _url(url, anchor.get("href", ""))
-                title = _title(anchor)
+                title = _title(anchor, text, ranges, published)
                 if target and title:
                     links.setdefault(target, title)
             if len(links) != 1:
                 continue
             target, title = next(iter(links.items()))
-            has_date, published = _row_date(row)
-            dated += has_date
-            items.setdefault(target, ListedItem(url=target, title=title, published_on=published))
-        if dated and dated >= best_count:
-            best_count, best = dated, list(items.values())
+            dated += published is not None
+            separate_dates += (
+                published is not None
+                and published.node is not None
+                and published.node.tag != "a"
+                and next(published.node.iterancestors("a"), None) is None
+            )
+            items.setdefault(
+                target,
+                ListedItem(
+                    url=target, title=title, published_on=published.value if published else None
+                ),
+            )
+        # A date outside the link identifies publication better than a date inside a title.
+        score = (dated, separate_dates)
+        if dated and score >= best_score:
+            best_score, best = score, list(items.values())
     return best
