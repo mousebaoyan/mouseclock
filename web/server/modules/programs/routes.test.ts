@@ -201,3 +201,35 @@ test("a cohort is required", async () => {
     expect(await res.json()).toMatchObject({ error: { code: "invalid_request" } });
   }
 });
+
+test("a member's browser keeps the table until a version or an admin changes something", async () => {
+  const seeded = await college();
+  await program(seeded, { apply: until("2026-06-01") });
+  const url = "/api/v1/programs?cohort=2027";
+  const ask = (etag: string) =>
+    app.request(url, { headers: { ...member.headers, "if-none-match": etag } });
+  const first = await app.request(url, member);
+  const etag = first.headers.get("etag") ?? "";
+  expect(etag).toMatch(/^".+"$/);
+  expect(first.headers.get("cache-control")).toBe("private, no-cache");
+  const unchanged = await ask(etag);
+  expect(unchanged.status).toBe(304);
+  expect(await unchanged.text()).toBe("");
+
+  await program(seeded, { apply: until("2026-06-02") });
+  const versioned = await ask(etag);
+  expect(versioned.status).toBe(200);
+  const next = versioned.headers.get("etag") ?? "";
+  expect(next).not.toBe(etag);
+
+  const { id } = await db.selectFrom("users").select("id").executeTakeFirstOrThrow();
+  await db
+    .insertInto("audit_log")
+    .values({ user_id: id, action: "update_school", target_type: "school", target_id: 1 })
+    .execute();
+  expect((await ask(next)).status).toBe(200);
+
+  const preview = await app.request(url, { headers: { "if-none-match": etag } });
+  expect(preview.status).toBe(200);
+  expect(preview.headers.get("etag")).toBeNull();
+});

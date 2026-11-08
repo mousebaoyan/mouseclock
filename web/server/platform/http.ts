@@ -4,6 +4,7 @@ import { HTTPException } from "hono/http-exception";
 import { checkPermission, type Capability, type Viewer } from "./access.ts";
 import { AppError } from "./errors.ts";
 import { log } from "./log.ts";
+import { PER_PAGE } from "./paging.ts";
 
 // Validation messages reach people, in Chinese like every `message` (api.md §1).
 z.config(z.locales.zhCN());
@@ -66,3 +67,8 @@ export const Int = z.number().int().min(INT.min).max(INT.max);
 export const IntParam = z.coerce.number().int().min(INT.min).max(INT.max);
 export const IdParam = z.object({ id: IntParam });
 export const UnixSeconds = z.number().int().min(0).max(LAST_SECOND);
+
+export const PageParams = z.object({
+  page: IntParam.min(1).max(100_000).default(1),
+  per_page: z.coerce.number().pipe(z.literal(PER_PAGE)).default(PER_PAGE[0]),
+});

@@ -1,29 +1,16 @@
 import { cloneElement, useId, type ReactElement, type ReactNode } from "react";
-import { Link, NavLink, useSearchParams } from "react-router";
+import { NavLink } from "react-router";
 import { buttonVariants } from "~/components/ui/button";
-import type { Kind } from "../../server/modules/programs/schemas.ts";
 
 export const inputClass =
   "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25";
 export const panelClass = "rounded-xl border border-border bg-card p-4 sm:p-5";
 export const linkClass = "text-link underline-offset-4 hover:underline";
-export const TIERS = [
-  { value: "c9", label: "C9" },
-  { value: "985", label: "985" },
-  { value: "211", label: "211" },
-  { value: "double_first_class", label: "双一流" },
-];
 export const KINDS = [
   { value: "college", label: "学院" },
   { value: "institute", label: "研究所" },
   { value: "graduate_school", label: "研究生院" },
 ];
-export const PROGRAM_KINDS: Record<Kind, string> = {
-  winter_camp: "冬令营",
-  summer_camp: "夏令营",
-  pre_recommendation: "预推免",
-  september_round: "九推",
-};
 
 export function AdminPage({
   title,
@@ -108,40 +95,6 @@ export function FormMessage({ error, saved }: { error?: string; saved: boolean }
       </output>
     );
   return null;
-}
-
-export function Pagination({
-  page,
-  nextPage,
-  name = "page",
-}: {
-  page: number;
-  nextPage: number | null;
-  name?: string;
-}) {
-  const [search] = useSearchParams();
-  function href(value: number) {
-    const params = new URLSearchParams(search);
-    params.set(name, String(value));
-    params.delete("saved");
-    return `?${params}`;
-  }
-  if (page === 1 && nextPage === null) return null;
-  return (
-    <nav aria-label="分页" className="mt-4 flex items-center justify-end gap-3 text-sm">
-      {page > 1 && (
-        <Link className={buttonVariants({ variant: "outline", size: "sm" })} to={href(page - 1)}>
-          上一页
-        </Link>
-      )}
-      <span className="text-muted-foreground">第 {page} 页</span>
-      {nextPage !== null && (
-        <Link className={buttonVariants({ variant: "outline", size: "sm" })} to={href(nextPage)}>
-          下一页
-        </Link>
-      )}
-    </nav>
-  );
 }
 
 export function CrawlTime({ value }: { value: number }) {

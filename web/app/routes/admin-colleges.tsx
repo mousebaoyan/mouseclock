@@ -16,9 +16,9 @@ import {
   KINDS,
   linkClass,
   panelClass,
-  Pagination,
-  TIERS,
 } from "~/components/admin";
+import { Pagination } from "~/components/pagination";
+import { TierTags, TIERS } from "~/components/tags";
 import { Button, buttonVariants } from "~/components/ui/button";
 import type { Route } from "./+types/admin-colleges.ts";
 
@@ -37,7 +37,13 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   const schoolId = params.get("school_id");
   const editCollege = params.get("edit_college");
   const schools = await readApi<SchoolsPage>(
-    await api.schools.$get({ query: { q, page: params.get("school_page") ?? "1" } }),
+    await api.schools.$get({
+      query: {
+        q,
+        page: params.get("school_page") ?? undefined,
+        per_page: params.get("school_per_page") ?? undefined,
+      },
+    }),
   );
   const [school, colleges, college] = await Promise.all([
     schoolId
@@ -47,7 +53,13 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
       : null,
     schoolId
       ? api.colleges
-          .$get({ query: { school_id: schoolId, page: params.get("page") ?? "1" } })
+          .$get({
+            query: {
+              school_id: schoolId,
+              page: params.get("page") ?? undefined,
+              per_page: params.get("per_page") ?? undefined,
+            },
+          })
           .then((res) => readApi<CollegesPage>(res))
       : null,
     editCollege
@@ -169,9 +181,8 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                       {s.short_name}
                     </span>
                   </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {s.tiers.map((t) => TIERS.find((v) => v.value === t)?.label ?? t).join(" · ") ||
-                      "未标注层次"}
+                  <p className="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                    {s.tiers.length > 0 ? <TierTags tiers={s.tiers} /> : "未标注层次"}
                   </p>
                 </div>
                 <div className="flex gap-3 text-sm">
@@ -192,7 +203,12 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
           {schools.items.length === 0 && (
             <p className="py-6 text-sm text-muted-foreground">没有找到学校，可以在右侧新增。</p>
           )}
-          <Pagination page={schools.page} nextPage={schools.next_page} name="school_page" />
+          <Pagination
+            total={schools.total}
+            page={schools.page}
+            perPage={schools.per_page}
+            prefix="school_"
+          />
         </section>
         <section className={panelClass}>
           <h2 className="mb-4 text-lg font-semibold">
@@ -280,7 +296,9 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
             {colleges?.items.length === 0 && (
               <p className="py-6 text-sm text-muted-foreground">还没有学院，在右侧添加第一个。</p>
             )}
-            {colleges && <Pagination page={colleges.page} nextPage={colleges.next_page} />}
+            {colleges && (
+              <Pagination total={colleges.total} page={colleges.page} perPage={colleges.per_page} />
+            )}
           </section>
           <section className={panelClass}>
             <h2 className="mb-4 text-lg font-semibold">

@@ -1,4 +1,4 @@
-import { sql, type Transaction } from "kysely";
+import { sql, type SelectQueryBuilder, type Transaction } from "kysely";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
@@ -9,7 +9,6 @@ import { recordAudit } from "../review/service.ts";
 import type { Kind } from "../programs/schemas.ts";
 import { applyOf } from "../programs/service.ts";
 import {
-  PAGE_SIZE,
   type SchoolInput,
   type SchoolPatch,
   type CollegeInput,
@@ -40,28 +39,32 @@ async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
   }
 }
 
-function pageOf<T>(rows: T[], page: number) {
-  return {
-    items: rows.slice(0, PAGE_SIZE),
-    page,
-    next_page: rows.length > PAGE_SIZE ? page + 1 : null,
-  };
+// A page of an admin list, and how many rows the whole list has.
+async function pageOf<TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  { page, per_page }: { page: number; per_page: number },
+) {
+  const [items, { total }] = await Promise.all([
+    query
+      .limit(per_page)
+      .offset((page - 1) * per_page)
+      .execute(),
+    query
+      .clearSelect()
+      .clearOrderBy()
+      .select((eb) => eb.fn.countAll<number>().as("total"))
+      .executeTakeFirstOrThrow(),
+  ]);
+  return { items, total, page, per_page };
 }
 
-export async function listSchools({ q, page }: z.infer<typeof PageQuery>) {
+export async function listSchools({ q, ...paging }: z.infer<typeof PageQuery>) {
   let query = db.selectFrom("schools").select(["id", "name", "short_name", "tiers"]);
   if (q)
     query = query.where((eb) =>
       eb.or([eb("name", "ilike", `%${q}%`), eb("short_name", "ilike", `%${q}%`)]),
     );
-  return pageOf(
-    await query
-      .orderBy("id")
-      .limit(PAGE_SIZE + 1)
-      .offset((page - 1) * PAGE_SIZE)
-      .execute(),
-    page,
-  );
+  return pageOf(query.orderBy("id"), paging);
 }
 
 export async function getSchool(id: number) {
@@ -118,7 +121,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
   });
 }
 
-export async function listColleges({ q, page, school_id }: z.infer<typeof CollegeQuery>) {
+export async function listColleges({ q, school_id, ...paging }: z.infer<typeof CollegeQuery>) {
   let query = db
     .selectFrom("colleges")
     .innerJoin("schools", "schools.id", "colleges.school_id")
@@ -140,14 +143,7 @@ export async function listColleges({ q, page, school_id }: z.infer<typeof Colleg
         eb("schools.short_name", "ilike", `%${q}%`),
       ]),
     );
-  return pageOf(
-    await query
-      .orderBy("colleges.id")
-      .limit(PAGE_SIZE + 1)
-      .offset((page - 1) * PAGE_SIZE)
-      .execute(),
-    page,
-  );
+  return pageOf(query.orderBy("colleges.id"), paging);
 }
 
 export async function getCollege(id: number) {
@@ -327,9 +323,9 @@ export async function updateCollege(
 
 export async function listSources({
   q,
-  page,
   college_id,
   availability,
+  ...paging
 }: z.infer<typeof SourceQuery>) {
   let query = db
     .selectFrom("sources")
@@ -358,14 +354,7 @@ export async function listSources({
         eb("schools.name", "ilike", `%${q}%`),
       ]),
     );
-  return pageOf(
-    await query
-      .orderBy("sources.id")
-      .limit(PAGE_SIZE + 1)
-      .offset((page - 1) * PAGE_SIZE)
-      .execute(),
-    page,
-  );
+  return pageOf(query.orderBy("sources.id"), paging);
 }
 
 export async function latestRuns(sourceIds: number[]) {

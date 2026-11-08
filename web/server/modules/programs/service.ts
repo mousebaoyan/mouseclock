@@ -85,6 +85,20 @@ export async function listPrograms(cohort: number, preview: boolean) {
   };
 }
 
+// What the table's data is as of. It changes only with a new version, an edit or revert, or what
+// admins do (reviews, deleting programs, editing schools and colleges), and each of those adds a
+// row to one of these tables.
+export async function tableVersion() {
+  const { rows } = await sql<{ version: string }>`
+    select concat(
+      (select coalesce(max(id), 0) from program_versions), '-',
+      (select coalesce(max(id), 0) from edits), '-',
+      (select coalesce(max(id), 0) from audit_log)
+    ) as version
+  `.execute(db);
+  return rows[0].version;
+}
+
 // A field as program_fields keeps it. The fields made of parts are kept a row per part, keyed by
 // the field and the part: `apply:end`, `event:mode`, and `dates:` with the label of each other
 // date. Each part then carries the evidence of the version it came from, and a later notice that

@@ -7,6 +7,7 @@ import {
   Scripts,
   ScrollRestoration,
   useNavigation,
+  type ShouldRevalidateFunctionArgs,
   useRouteLoaderData,
 } from "react-router";
 import type { Route } from "./+types/root.ts";
@@ -22,6 +23,15 @@ const themeScript = `try{document.documentElement.dataset.theme=localStorage.get
 export async function loader({ context }: Route.LoaderArgs) {
   const res = await context.get(apiContext).me.$get();
   return { me: res.status === 200 ? await res.json() : null };
+}
+
+// Who is signed in changes only with a full page load (logging in and out) or after an action,
+// so following links, such as the table's filters, doesn't ask for /me again.
+export function shouldRevalidate({
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  return formMethod !== undefined && formMethod !== "GET" && defaultShouldRevalidate;
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {

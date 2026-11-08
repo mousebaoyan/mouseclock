@@ -1,12 +1,8 @@
 import { z } from "@hono/zod-openapi";
-import { Int, IntParam, UnixSeconds } from "../../platform/http.ts";
+import { Int, IntParam, PageParams, UnixSeconds } from "../../platform/http.ts";
 import { ApplyValue, Kind } from "../programs/schemas.ts";
 
-export const PAGE_SIZE = 20;
-export const PageQuery = z.object({
-  page: IntParam.min(1).max(100_000).default(1),
-  q: z.string().trim().max(200).default(""),
-});
+export const PageQuery = PageParams.extend({ q: z.string().trim().max(200).default("") });
 export const CollegeQuery = PageQuery.extend({ school_id: IntParam.positive().optional() });
 export const SourceQuery = PageQuery.extend({
   college_id: IntParam.positive().optional(),
@@ -79,7 +75,7 @@ export const RunSummary = z.object({
   notice_failure_count: Int,
 });
 export function Page<T extends z.ZodType>(item: T) {
-  return z.object({ items: z.array(item), page: Int, next_page: Int.nullable() });
+  return z.object({ items: z.array(item), total: Int, page: Int, per_page: Int });
 }
 
 // Public college pages keep the school grouping and the original application window visible.

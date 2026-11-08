@@ -64,7 +64,9 @@ export function SiteHeader({ me }: { me: Me | null }) {
               <UserAvatar user={me} className="size-8" />
               <span className="hidden text-sm sm:inline">{me.display_name}</span>
               {me.frozen && <span className="text-meta text-muted-foreground">已冻结</span>}
-              <Form method="post" action="/logout">
+              {/* A full load leaves nothing of the member's in the page, such as the table the
+                  browser keeps for filtering. */}
+              <Form method="post" action="/logout" reloadDocument>
                 <button
                   type="submit"
                   aria-label="退出"

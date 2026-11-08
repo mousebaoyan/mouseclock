@@ -1,8 +1,9 @@
 import type { InferResponseType } from "hono/client";
 import { Link } from "react-router";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { beijingYear, formatApply, STATUS_LABELS, statusOf, useNow } from "../time.ts";
-import { KINDS, PROGRAM_KINDS } from "../components/admin.tsx";
+import { beijingYear, formatApply, statusOf, useNow } from "../time.ts";
+import { KINDS } from "../components/admin.tsx";
+import { KindTag, StatusTag } from "../components/tags.tsx";
 import type { Route } from "./+types/college-detail.ts";
 
 type CollegeDetail = InferResponseType<
@@ -95,19 +96,16 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
               <h3 className="text-base font-semibold">{group.cohort} 届</h3>
               <ul className="mt-3 divide-y divide-border">
                 {group.programs.map((program) => {
-                  const status = statusOf(program, now);
                   return (
                     <li key={program.id} className="py-4 first:pt-3 last:pb-1">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <p className="font-medium">{program.name}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {PROGRAM_KINDS[program.kind]}
+                          <p className="mt-1.5">
+                            <KindTag kind={program.kind} />
                           </p>
                         </div>
-                        <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">
-                          {status ? STATUS_LABELS[status] : "未说明"}
-                        </span>
+                        <StatusTag status={statusOf(program, now)} />
                       </div>
                       <p className="mt-3 text-sm">
                         <span className="text-muted-foreground">报名时间：</span>
