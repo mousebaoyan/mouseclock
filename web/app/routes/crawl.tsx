@@ -160,11 +160,11 @@ function tokens(input: number, output: number) {
 
 function DayNav({ date, today }: { date: string; today: string }) {
   const step =
-    "inline-flex size-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground";
+    "inline-flex size-9 items-center justify-center text-muted-foreground hover:bg-accent hover:text-foreground pointer-coarse:size-11";
   return (
     <nav
       aria-label="日期"
-      className="flex h-9 items-stretch overflow-hidden rounded-md border bg-card"
+      className="flex h-9 items-stretch overflow-hidden rounded-md border bg-card pointer-coarse:h-11"
     >
       <Link to={`?date=${shift(date, -1)}`} aria-label="前一天" className={step}>
         <ChevronLeft />
@@ -216,7 +216,7 @@ function CrawlerSeen({ seenAt, now }: { seenAt: number | null; now: number }) {
 function SourceName({ source }: { source: Source }) {
   return (
     <>
-      <span className="font-medium">
+      <span className="font-medium break-keep wrap-anywhere">
         {source.school} {source.college}
       </span>
       {source.failing && (

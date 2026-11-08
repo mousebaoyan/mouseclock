@@ -163,6 +163,32 @@
   }
 }
 
+/* On touch screens buttons and fields grow to a fingertip, and so does a small control marked
+   touch-target, whose look stays as it is. */
+@utility touch-target {
+  position: relative;
+  @media (pointer: coarse) {
+    &::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      translate: -50% -50%;
+    }
+  }
+}
+
+/* iOS zooms the page in on a field whose text is under 16px when it is tapped. Outside the
+   layers, so it holds against a field's own smaller text. */
+@media (pointer: coarse) {
+  input,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
 /* Buttons and fields as classes rather than utilities spelled out on each: a long table has
    many. Utilities a caller adds still win, being in a later layer. */
 @layer components {
@@ -185,22 +211,22 @@
     @apply h-auto! border-0 px-0! text-primary underline-offset-4 hover:underline;
   }
   .btn-md {
-    @apply h-9 px-3.5;
+    @apply h-9 px-3.5 pointer-coarse:h-11;
   }
   .btn-sm {
-    @apply h-8 px-3 text-[13px];
+    @apply h-8 px-3 text-[13px] pointer-coarse:h-10;
   }
   .btn-xs {
-    @apply h-7 gap-1 px-2 text-xs;
+    @apply h-7 gap-1 px-2 text-xs pointer-coarse:h-9;
   }
   .btn-icon {
-    @apply size-9;
+    @apply size-9 pointer-coarse:size-11;
   }
   .btn-icon-sm {
-    @apply size-8;
+    @apply size-8 pointer-coarse:size-10;
   }
   .field {
-    @apply h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm outline-none placeholder:text-subtle-foreground hover:border-[color-mix(in_oklab,var(--input),var(--foreground)_15%)] focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-ring/15 disabled:opacity-50 aria-invalid:border-destructive;
+    @apply h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm outline-none placeholder:text-subtle-foreground hover:border-[color-mix(in_oklab,var(--input),var(--foreground)_15%)] focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-ring/15 disabled:opacity-50 aria-invalid:border-destructive pointer-coarse:h-11;
   }
   .link {
     @apply text-primary underline-offset-4 hover:underline;

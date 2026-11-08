@@ -105,7 +105,7 @@ export function ProgramCard({
             rel="nofollow noopener"
             aria-label={`${program.name}的通知原文`}
             title="通知原文"
-            className="relative z-1 -my-1 -mr-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-primary"
+            className="touch-target z-1 -my-1 -mr-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-primary"
           >
             <ExternalLink />
           </a>

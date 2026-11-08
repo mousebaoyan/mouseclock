@@ -80,7 +80,7 @@ export function Chip({
       replace
       preventScrollReset
       className={cn(
-        "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-[13px] whitespace-nowrap",
+        "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-[13px] whitespace-nowrap pointer-coarse:h-9",
         on
           ? cn("font-medium", COLORS[color].on)
           : "border-border bg-card text-foreground/80 hover:border-input hover:text-foreground",

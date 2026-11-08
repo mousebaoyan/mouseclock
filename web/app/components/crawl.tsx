@@ -24,8 +24,12 @@ export function RunResult({ run, className }: { run: Run; className?: string }) 
       ? ["text-warning", `${run.notice_failure_count} 条通知抓取失败`]
       : ["text-success", "抓取成功"];
   return (
-    <span className={cn("inline-flex items-center gap-1.5", tone, className)}>
-      <span aria-hidden="true" className="size-1.5 shrink-0 rounded-full bg-current" />
+    <span className={cn("inline-flex items-start gap-1.5", tone, className)}>
+      {/* On the first line's middle, should the text wrap. */}
+      <span
+        aria-hidden="true"
+        className="mt-[calc((1lh-0.375rem)/2)] size-1.5 shrink-0 rounded-full bg-current"
+      />
       {text}
     </span>
   );

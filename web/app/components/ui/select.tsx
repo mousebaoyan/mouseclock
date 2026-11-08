@@ -265,7 +265,10 @@ function SearchPopup({
             <label className="relative block">
               <span className="sr-only">搜索{label}</span>
               <Search className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-subtle-foreground" />
-              <Combobox.Input placeholder={`搜索${label}`} className="field h-8 pl-8" />
+              <Combobox.Input
+                placeholder={`搜索${label}`}
+                className="field h-8 pl-8 pointer-coarse:h-10"
+              />
             </label>
           </div>
           {tools}
@@ -321,7 +324,7 @@ function Tool({ onClick, children }: { onClick: () => void; children: ReactNode 
     <button
       type="button"
       onClick={onClick}
-      className="rounded-md px-2 py-1 text-xs text-primary hover:bg-primary-soft"
+      className="rounded-md px-2 py-1 text-xs text-primary hover:bg-primary-soft pointer-coarse:px-2.5 pointer-coarse:py-2"
     >
       {children}
     </button>
@@ -343,4 +346,4 @@ const POPUP =
   "flex max-h-[min(22rem,var(--available-height))] min-w-(--anchor-width) origin-(--transform-origin) flex-col overflow-hidden rounded-lg border bg-popover text-sm shadow-pop transition-[opacity,scale] duration-100 outline-none data-ending-style:scale-98 data-ending-style:opacity-0 data-starting-style:scale-98 data-starting-style:opacity-0";
 const LIST = "min-h-0 flex-1 overflow-y-auto overscroll-contain p-1 scroll-py-1";
 const ITEM =
-  "flex items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 whitespace-nowrap outline-none select-none data-highlighted:bg-accent data-selected:font-medium data-selected:text-primary";
+  "flex items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 whitespace-nowrap outline-none select-none pointer-coarse:py-2.5 data-highlighted:bg-accent data-selected:font-medium data-selected:text-primary";

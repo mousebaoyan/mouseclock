@@ -40,7 +40,7 @@ function pagesFor(me: Me | null) {
 const popup =
   "min-w-40 origin-(--transform-origin) rounded-lg border bg-popover p-1 text-sm shadow-pop transition-[opacity,scale] duration-100 outline-none data-ending-style:scale-98 data-ending-style:opacity-0 data-starting-style:scale-98 data-starting-style:opacity-0";
 const menuItem =
-  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left outline-none select-none data-highlighted:bg-accent";
+  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left outline-none select-none data-highlighted:bg-accent pointer-coarse:py-2.5";
 
 // Wide screens: the site's name on the left, the pages in the middle and the account on the
 // right. Phones keep the name and the account, and open the pages from a menu button.
@@ -55,7 +55,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
         <Link
           to="/"
-          className="flex items-center gap-2 justify-self-start text-lg leading-none font-semibold tracking-tight"
+          className="touch-target flex items-center gap-2 justify-self-start text-lg leading-none font-semibold tracking-tight"
         >
           <LogoMark className="size-6" />
           {SITE_NAME}
@@ -128,7 +128,7 @@ function Account({ me }: { me: Me }) {
     <Menu.Root>
       <Menu.Trigger
         aria-label="账号"
-        className={buttonVariants({ variant: "ghost", className: "h-9 gap-2 px-1.5 sm:pr-2.5" })}
+        className={buttonVariants({ variant: "ghost", className: "gap-2 px-1.5 sm:pr-2.5" })}
       >
         <UserAvatar user={me} className="size-7" />
         <span className="text-foreground max-sm:hidden">{me.display_name}</span>

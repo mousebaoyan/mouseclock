@@ -125,7 +125,10 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
       logo={<SchoolLogo school={school} size="lg" />}
       meta={
         <>
-          <Link to={`/colleges/${college.id}`} className="text-foreground hover:text-primary">
+          <Link
+            to={`/colleges/${college.id}`}
+            className="touch-target break-keep wrap-anywhere text-foreground hover:text-primary"
+          >
             {school.name} {college.name}
           </Link>
           <TierTag tier={school.tier} />
@@ -142,7 +145,8 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
               to="?edit=program"
               replace
               preventScrollReset
-              className={buttonVariants({ variant: "ghost" })}
+              // Phones keep the row for the notice and the apply page, and put this after them.
+              className={buttonVariants({ variant: "ghost", className: "max-sm:order-last" })}
             >
               修改基本信息
             </Link>
@@ -151,13 +155,21 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
             href={notice.url}
             target="_blank"
             rel="nofollow noopener"
-            className={buttonVariants({ variant: applyUrl ? "outline" : "default" })}
+            className={buttonVariants({
+              variant: applyUrl ? "outline" : "default",
+              className: "max-sm:flex-1",
+            })}
           >
             查看通知原文
             <ExternalLink />
           </a>
           {applyUrl && (
-            <a href={applyUrl} target="_blank" rel="nofollow noopener" className={buttonVariants()}>
+            <a
+              href={applyUrl}
+              target="_blank"
+              rel="nofollow noopener"
+              className={buttonVariants({ className: "max-sm:flex-1" })}
+            >
               报名入口
               <ExternalLink />
             </a>

@@ -1,4 +1,4 @@
-import { data, Form, Link, redirect, useNavigation } from "react-router";
+import { data, Form, Link, redirect, useLocation, useNavigation } from "react-router";
 import {
   CollegeInput,
   LOGO_MAX_BYTES,
@@ -14,7 +14,8 @@ import {
   type CollegeDetail,
 } from "../admin.server.ts";
 import { Field, FormMessage } from "~/components/form";
-import { Search } from "~/components/icons";
+import { keepOnly } from "~/components/filters";
+import { ChevronLeft, Search } from "~/components/icons";
 import { Page, Panel } from "~/components/page";
 import { SchoolLogo } from "~/components/school-logo";
 import { Pagination } from "~/components/pagination";
@@ -90,6 +91,7 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
 
 export async function action({ request, context }: Route.ActionArgs) {
   const api = context.get(apiContext);
+  const { search } = new URL(request.url);
   const form = await request.formData();
   const intent = formText(form, "intent");
   const id = formText(form, "id");
@@ -114,13 +116,13 @@ export async function action({ request, context }: Route.ActionArgs) {
     );
     if (res.status !== 204)
       return data({ error: (await res.json()).error.message, draft }, { status: res.status });
-    return redirect(`/admin/colleges?school_id=${id}&edit_school=1&saved=1`);
+    return redirect(`/admin/colleges${here(search, `school_id=${id}&edit_school=1&saved=1`)}`);
   }
   if (intent === "remove_logo") {
     const res = await api.admin.schools[":id"].logo.$delete({ param: { id } });
     if (res.status !== 204)
       return data({ error: (await res.json()).error.message, draft }, { status: res.status });
-    return redirect(`/admin/colleges?school_id=${id}&edit_school=1&saved=1`);
+    return redirect(`/admin/colleges${here(search, `school_id=${id}&edit_school=1&saved=1`)}`);
   }
   if (intent === "school") {
     const school = SchoolInput.safeParse({
@@ -136,7 +138,9 @@ export async function action({ request, context }: Route.ActionArgs) {
     if (res.status !== 200 && res.status !== 201)
       return data({ error: (await res.json()).error.message, draft }, { status: res.status });
     const result = await res.json();
-    return redirect(`/admin/colleges?school_id=${result.id}&edit_school=1&saved=1`);
+    return redirect(
+      `/admin/colleges${here(search, `school_id=${result.id}&edit_school=1&saved=1`)}`,
+    );
   }
   if (intent === "college") {
     const college = CollegeInput.safeParse({
@@ -155,7 +159,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       return data({ error: (await res.json()).error.message, draft }, { status: res.status });
     const result = await res.json();
     return redirect(
-      `/admin/colleges?school_id=${result.school_id}&edit_college=${result.id}&saved=1`,
+      `/admin/colleges${here(search, `school_id=${result.school_id}&edit_college=${result.id}&saved=1`)}`,
     );
   }
   throw data("不支持的操作", { status: 400 });
@@ -172,6 +176,7 @@ function listed(text: string) {
 export default function Colleges({ loaderData, actionData }: Route.ComponentProps) {
   const { schools, school, colleges, college, q, editSchool, saved } = loaderData;
   const busy = useNavigation().state !== "idle";
+  const { search } = useLocation();
   const schoolDraft = actionData?.draft.intent === "school" ? actionData.draft : null;
   const collegeDraft = actionData?.draft.intent === "college" ? actionData.draft : null;
   const schoolValues =
@@ -185,7 +190,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
       ? [school, ...schools.items]
       : schools.items;
   const schoolForm = (
-    <Panel title={editSchool && school ? `编辑学校：${school.name}` : "新增学校"}>
+    <Panel id="school-form" title={editSchool && school ? `编辑学校：${school.name}` : "新增学校"}>
       <Form method="post" className="space-y-4" key={`school-${editSchool ? school?.id : "new"}`}>
         <input type="hidden" name="intent" value="school" />
         {editSchool && school && <input type="hidden" name="id" value={school.id} />}
@@ -225,7 +230,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
           <Button disabled={busy}>{busy ? "正在保存…" : "保存学校"}</Button>
           {editSchool && (
             <Link
-              to={school ? `?school_id=${school.id}` : "?"}
+              to={here(search, school ? `school_id=${school.id}` : "")}
               className={buttonVariants({ variant: "outline" })}
             >
               取消
@@ -239,10 +244,15 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
     <Page title="院校管理" hideTitle>
       <FormMessage error={actionData?.error} saved={saved && "已保存"} />
       <div className="grid items-start gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
+        {/* Wide screens show the schools beside the one picked; phones show one or the other. */}
         <Panel
           title="学校"
+          className={school ? "max-lg:hidden" : undefined}
           actions={
-            <Link to="?" className={buttonVariants({ variant: "outline", size: "sm" })}>
+            <Link
+              to={`${here(search, "")}#school-form`}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
               新增学校
             </Link>
           }
@@ -271,7 +281,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
               {schools.items.map((s) => (
                 <li key={s.id}>
                   <Link
-                    to={`?school_id=${s.id}`}
+                    to={here(search, `school_id=${s.id}`)}
                     preventScrollReset
                     aria-current={school?.id === s.id ? "true" : undefined}
                     className="flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-2.5 hover:bg-muted/50 aria-[current]:border-primary aria-[current]:bg-primary-soft"
@@ -301,6 +311,15 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
           </div>
         </Panel>
         <div className="min-w-0 space-y-5">
+          {school && (
+            <Link
+              to={here(search, "")}
+              className="touch-target inline-flex items-center gap-1 text-[13px] text-muted-foreground hover:text-primary lg:hidden"
+            >
+              <ChevronLeft className="size-3.5" />
+              学校列表
+            </Link>
+          )}
           {!school || editSchool ? (
             <>
               {schoolForm}
@@ -321,7 +340,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                 }
                 actions={
                   <Link
-                    to={`?school_id=${school.id}&edit_school=1`}
+                    to={here(search, `school_id=${school.id}&edit_school=1`)}
                     preventScrollReset
                     className={buttonVariants({ variant: "outline", size: "sm" })}
                   >
@@ -452,7 +471,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                     <Button disabled={busy}>{busy ? "正在保存…" : "保存学院"}</Button>
                     {college && (
                       <Link
-                        to={`?school_id=${school.id}`}
+                        to={here(search, `school_id=${school.id}`)}
                         className={buttonVariants({ variant: "outline" })}
                       >
                         取消
@@ -470,10 +489,11 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
 }
 
 function CollegeActions({ school, college }: { school: number; college: number }) {
+  const { search } = useLocation();
   return (
     <span className="inline-flex gap-1">
       <Link
-        to={`?school_id=${school}&edit_college=${college}`}
+        to={here(search, `school_id=${school}&edit_college=${college}`)}
         className={buttonVariants({ variant: "outline", size: "xs" })}
       >
         编辑
@@ -536,4 +556,11 @@ function LogoPanel({ school, busy }: { school: SchoolDetail; busy: boolean }) {
       </div>
     </Panel>
   );
+}
+
+// An address of this page, keeping the search and page of the schools from `search`, so the list
+// stays as it was while one is picked, edited and saved.
+function here(search: string, params: string) {
+  const list = keepOnly(search, ["q", "school_page", "school_per_page"]).slice(1);
+  return `?${[list, params].filter(Boolean).join("&")}`;
 }

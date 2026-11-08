@@ -72,7 +72,7 @@ export function EditForm({
             name="reason"
             required
             maxLength={500}
-            placeholder="例如：补充通知将截止时间调整为 6 月 20 日"
+            placeholder="例如：补充通知调整了截止时间"
             className="field"
           />
         </Field>

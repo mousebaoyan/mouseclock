@@ -32,7 +32,7 @@ export function Pagination({
     return `?${params}`;
   }
   const step =
-    "inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[13px] tabular-nums";
+    "inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[13px] tabular-nums pointer-coarse:h-10 pointer-coarse:min-w-10";
   return (
     <nav
       aria-label="分页"
@@ -75,7 +75,7 @@ export function Pagination({
         value={String(perPage)}
         onValueChange={(value) => void navigate(href({ page: 1, perPage: Number(value) }))}
         options={PER_PAGE.map((n) => ({ value: String(n), label: `每页 ${n} 条` }))}
-        className="h-8 w-auto text-[13px]"
+        className="h-8 w-auto text-[13px] pointer-coarse:h-10"
       />
     </nav>
   );
@@ -91,7 +91,7 @@ function PageStep({
   children: ReactNode;
 }) {
   const className =
-    "inline-flex size-8 items-center justify-center rounded-md text-foreground hover:bg-accent";
+    "inline-flex size-8 items-center justify-center rounded-md text-foreground hover:bg-accent pointer-coarse:size-10";
   return to ? (
     <Link to={to} aria-label={label} className={className}>
       {children}

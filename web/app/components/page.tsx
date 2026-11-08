@@ -37,7 +37,10 @@ export function Page({
             <nav aria-label="位置" className="flex flex-wrap items-center gap-1 text-[13px]">
               {crumbs.map((crumb) => (
                 <span key={crumb.to} className="flex items-center gap-1">
-                  <Link to={crumb.to} className="text-muted-foreground hover:text-primary">
+                  <Link
+                    to={crumb.to}
+                    className="touch-target text-muted-foreground hover:text-primary"
+                  >
                     {crumb.label}
                   </Link>
                   <ChevronRight className="size-3.5 text-subtle-foreground" />
@@ -59,7 +62,9 @@ export function Page({
                 )}
               </div>
             </div>
-            {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+            {actions && (
+              <div className="flex flex-wrap items-center gap-2 max-sm:w-full">{actions}</div>
+            )}
           </div>
         </header>
       )}

@@ -176,7 +176,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
           college ? (
             <>
               已接入来源
-              <span className="ml-2 font-normal text-muted-foreground">
+              <span className="ml-2 font-normal break-keep wrap-anywhere text-muted-foreground">
                 {college.school_name} {college.name}
               </span>
             </>
@@ -326,7 +326,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                 type="search"
                 name="college_q"
                 defaultValue={collegeQ}
-                placeholder="学校名称、简称或学院名称"
+                placeholder="学校、学院名称或简称"
                 className="field pl-9"
               />
             </label>
@@ -344,7 +344,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                     className="flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-2.5 text-sm hover:bg-muted/50 aria-[current]:border-primary aria-[current]:bg-primary-soft"
                   >
                     <span className="min-w-0">
-                      <span className="block font-medium">
+                      <span className="block font-medium break-keep wrap-anywhere">
                         {c.school_name} {c.name}
                       </span>
                       <span className="block text-[13px] text-muted-foreground">{c.region}</span>
@@ -460,7 +460,7 @@ type ListedSource = SourcesPage["items"][number];
 function SourceName({ source }: { source: ListedSource }) {
   return (
     <>
-      <span className="font-medium">
+      <span className="font-medium break-keep wrap-anywhere">
         {source.school_name} {source.college_name}
       </span>
       {source.unavailable_reason && (

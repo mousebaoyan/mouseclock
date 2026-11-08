@@ -276,7 +276,10 @@ function ItemHeader({ item }: { item: Item }) {
     <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
       <div className="min-w-0">
         {item.program && (
-          <Link to={`/programs/${item.program.id}`} className="link font-medium">
+          <Link
+            to={`/programs/${item.program.id}`}
+            className="link font-medium break-keep wrap-anywhere"
+          >
             {item.program.school} {item.program.college} {item.program.name}
           </Link>
         )}

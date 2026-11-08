@@ -136,7 +136,7 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
   ];
   return (
     <FilterBar
-      search={<SearchBox value={filters.q} placeholder="搜索学校、学院或项目名称" />}
+      search={<SearchBox value={filters.q} placeholder="搜索学校、学院或项目" />}
       selects={
         <>
           <Select
@@ -241,7 +241,7 @@ function Place({ program, published, thisYear }: PlaceProps) {
       <div className="min-w-0">
         <Link
           to={`/colleges/${program.college.id}`}
-          className="relative z-1 font-medium text-pretty hover:text-primary"
+          className="relative z-1 block font-medium break-keep wrap-anywhere hover:text-primary"
         >
           {program.school.name} {program.college.name}
         </Link>

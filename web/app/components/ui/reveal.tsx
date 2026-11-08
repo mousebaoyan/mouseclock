@@ -18,7 +18,7 @@ export function Reveal({
 }) {
   return (
     <Collapsible.Root className={className}>
-      <Collapsible.Trigger className="group inline-flex h-6 items-center gap-1 rounded-md px-1.5 -mx-1.5 text-xs text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/25 data-panel-open:text-foreground">
+      <Collapsible.Trigger className="group touch-target inline-flex h-6 items-center gap-1 rounded-md px-1.5 -mx-1.5 text-xs text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-3 focus-visible:ring-ring/25 data-panel-open:text-foreground">
         {icon}
         {label}
         <ChevronDown className="size-3.5 transition-transform duration-150 group-data-panel-open:rotate-180" />

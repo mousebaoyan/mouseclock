@@ -24,7 +24,9 @@ export function List({ className, children }: { className?: string; children: Re
 }
 
 // One item: what it is on the first line and about it on the second, with its state on the
-// right; anything more goes beneath.
+// right; anything more goes beneath. The state takes at most half the width and wraps past it,
+// so a long one, such as why a crawl failed, leaves the name its room on a phone. A link in the
+// title can cover the whole item, as a card's does.
 export function Row({
   title,
   meta,
@@ -41,9 +43,9 @@ export function Row({
   children?: ReactNode;
 }) {
   return (
-    <li className={cn("px-4 py-3.5 sm:px-5", selected && "bg-primary-soft")}>
+    <li className={cn("relative px-4 py-3.5 sm:px-5", selected && "bg-primary-soft")}>
       <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">{title}</div>
           {meta && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
@@ -52,7 +54,7 @@ export function Row({
           )}
         </div>
         {(side || sideMeta) && (
-          <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+          <div className="flex max-w-1/2 shrink-0 flex-col items-end gap-1 text-right">
             {side}
             {sideMeta && <div className="text-[13px] text-muted-foreground">{sideMeta}</div>}
           </div>
