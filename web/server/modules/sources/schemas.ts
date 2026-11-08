@@ -31,12 +31,6 @@ export const ListedItem = z
   })
   .openapi("ListedItem");
 export const Config = z.record(z.string(), z.unknown(), { error: "抓取配置要是 JSON 对象" });
-// Schools' emblems (design §9.1). Pages show them at a few dozen pixels, so a page of cards
-// stays light (design §14).
-export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"] as const;
-export type LogoType = (typeof LOGO_TYPES)[number];
-export const LOGO_MAX_BYTES = 64 * 1024;
-
 // Lists count each item once: the filters count a college once for each of its directions.
 const unique = (items: string[]) => new Set(items).size === items.length;
 // What admins fill in, named for validation messages (named in platform/http.ts).

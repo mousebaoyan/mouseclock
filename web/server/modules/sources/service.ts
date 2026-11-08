@@ -22,8 +22,8 @@ import {
   type Failure,
   type PublicSchool,
   type PublicProgramCohort,
-  type LogoType,
 } from "./schemas.ts";
+import type { LogoType } from "./logo-files.ts";
 
 export type Actor = { user_id: number; via: "web" | "seed" };
 

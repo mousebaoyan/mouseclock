@@ -29,9 +29,8 @@ import {
   SourceQuery,
   PublicCollegeDetail,
   PublicCollegeList,
-  LOGO_MAX_BYTES,
-  LOGO_TYPES,
 } from "./schemas.ts";
+import { LOGO_MAX_BYTES, LOGO_TYPES } from "./logo-files.ts";
 import {
   createCollege,
   createSchool,

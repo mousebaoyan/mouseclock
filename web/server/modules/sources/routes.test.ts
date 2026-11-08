@@ -7,6 +7,7 @@ import { env } from "../../platform/env.ts";
 import { login, resolveSession } from "../accounts/service.ts";
 import { createCrawlerToken, recordRun, takeWork } from "../ingest/service.ts";
 import { createCollege, createSchool, createSource, updateSchool, type Actor } from "./service.ts";
+import { LOGO_MAX_BYTES } from "./logo-files.ts";
 
 const api = testClient(app).api.v1;
 let admin = { headers: { cookie: "", origin: env.PUBLIC_URL } };
@@ -527,7 +528,7 @@ test("admins put up and take down a school's emblem, which anyone loads from its
       body,
     });
   expect((await put("text/html", new Uint8Array([1]))).status).toBe(400);
-  expect((await put("image/png", new Uint8Array(64 * 1024 + 1))).status).toBe(413);
+  expect((await put("image/png", new Uint8Array(LOGO_MAX_BYTES + 1))).status).toBe(413);
   expect((await put("image/png", new Uint8Array([1, 2, 3]))).status).toBe(204);
   const res = await api.admin.schools[":id"].$get({ param: { id: String(school.id) } }, admin);
   if (res.status !== 200) throw new Error("School failed");

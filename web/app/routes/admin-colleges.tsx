@@ -1,10 +1,6 @@
 import { data, Form, Link, redirect, useLocation, useNavigation } from "react-router";
-import {
-  CollegeInput,
-  LOGO_MAX_BYTES,
-  LOGO_TYPES,
-  SchoolInput,
-} from "../../server/modules/sources/schemas.ts";
+import { LOGO_MAX_BYTES, LOGO_TYPES } from "../../server/modules/sources/logo-files.ts";
+import { CollegeInput, SchoolInput } from "../../server/modules/sources/schemas.ts";
 import { apiContext, readApi } from "../api.server.ts";
 import {
   formText,
@@ -516,8 +512,8 @@ function LogoPanel({ school, busy }: { school: SchoolDetail; busy: boolean }) {
         <SchoolLogo school={school} size="lg" />
         <div className="min-w-0 space-y-2.5">
           <p className="text-[13px] text-muted-foreground">
-            PNG、JPEG、WebP 或 SVG 图片，不超过 {LOGO_MAX_BYTES / 1024}{" "}
-            KB；方形、背景透明或白色的显示效果最好
+            PNG、JPEG、WebP 或 SVG 图片，不超过 {LOGO_MAX_BYTES / 1024} KB；方形、宽高约 128
+            像素、背景透明或白色的显示效果最好
           </p>
           <div className="flex flex-wrap gap-2">
             <Form method="post" encType="multipart/form-data">
