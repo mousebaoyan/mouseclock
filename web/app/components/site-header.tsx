@@ -1,9 +1,7 @@
-import { Dialog } from "@base-ui/react/dialog";
-import { Menu } from "@base-ui/react/menu";
-import { useState } from "react";
 import { isRouteErrorResponse, Link, NavLink, useLocation, useRouteError } from "react-router";
 import { cn } from "~/cn";
-import { ChevronDown, LogOut, Menu as MenuIcon, X } from "~/components/icons";
+import { Drawer, Dropdown, menuItem } from "~/components/disclosure";
+import { ChevronDown, LogOut, Menu as MenuIcon } from "~/components/icons";
 import { LogoMark } from "~/components/logo";
 import { buttonVariants } from "~/components/ui/button";
 import { UserAvatar } from "~/components/user-avatar";
@@ -37,15 +35,11 @@ function pagesFor(me: Me | null) {
   return { main, admin };
 }
 
-const popup =
-  "min-w-40 origin-(--transform-origin) rounded-lg border bg-popover p-1 text-sm shadow-pop transition-[opacity,scale] duration-100 outline-none data-ending-style:scale-98 data-ending-style:opacity-0 data-starting-style:scale-98 data-starting-style:opacity-0";
-const menuItem =
-  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left outline-none select-none data-highlighted:bg-accent pointer-coarse:py-2.5";
-
 // Wide screens: the site's name on the left, the pages in the middle and the account on the
-// right. Phones keep the name and the account, and open the pages from a menu button.
+// right. Phones keep the name and the account, and open the pages from a menu button. The menus
+// are keyed by where the page is, so following a link closes them.
 export function SiteHeader({ me }: { me: Me | null }) {
-  const { pathname, search } = useLocation();
+  const { pathname, search, key } = useLocation();
   const error = useRouteError();
   const loginNext = isRouteErrorResponse(error) && error.status === 404 ? "/" : pathname + search;
   const pages = pagesFor(me);
@@ -67,38 +61,39 @@ export function SiteHeader({ me }: { me: Me | null }) {
             </NavLink>
           ))}
           {pages.admin.length > 0 && (
-            <Menu.Root>
-              <Menu.Trigger
-                className={cn(
+            <div className="flex items-stretch">
+              <Dropdown
+                key={pathname}
+                label="管理"
+                align="start"
+                className="min-w-40"
+                triggerClassName={cn(
                   navLink({ isActive: inAdmin }),
-                  "gap-1 outline-none data-popup-open:text-foreground",
+                  "gap-1 outline-none aria-expanded:text-foreground",
                 )}
+                trigger={
+                  <>
+                    管理
+                    <ChevronDown className="size-3.5" />
+                  </>
+                }
               >
-                管理
-                <ChevronDown className="size-3.5" />
-              </Menu.Trigger>
-              <Menu.Portal>
-                <Menu.Positioner sideOffset={2} className="z-50 outline-none">
-                  <Menu.Popup className={popup}>
-                    {pages.admin.map((page) => (
-                      <Menu.LinkItem
-                        key={page.to}
-                        closeOnClick
-                        render={<Link to={page.to} />}
-                        className={cn(menuItem, pathname.startsWith(page.to) && "text-primary")}
-                      >
-                        {page.label}
-                      </Menu.LinkItem>
-                    ))}
-                  </Menu.Popup>
-                </Menu.Positioner>
-              </Menu.Portal>
-            </Menu.Root>
+                {pages.admin.map((page) => (
+                  <Link
+                    key={page.to}
+                    to={page.to}
+                    className={cn(menuItem, pathname.startsWith(page.to) && "text-primary")}
+                  >
+                    {page.label}
+                  </Link>
+                ))}
+              </Dropdown>
+            </div>
           )}
         </nav>
         <div className="flex items-center gap-1 justify-self-end">
           {me ? (
-            <Account me={me} />
+            <Account key={pathname} me={me} />
           ) : (
             // A page of the server, not of the router: it goes on to mousehole.
             <a
@@ -108,7 +103,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
               登录
             </a>
           )}
-          <MobileNav pages={pages} />
+          <MobileNav key={key} pages={pages} />
         </div>
       </div>
     </header>
@@ -125,40 +120,35 @@ function navLink({ isActive }: { isActive: boolean }) {
 
 function Account({ me }: { me: Me }) {
   return (
-    <Menu.Root>
-      <Menu.Trigger
-        aria-label="账号"
-        className={buttonVariants({ variant: "ghost", className: "gap-2 px-1.5 sm:pr-2.5" })}
-      >
-        <UserAvatar user={me} className="size-7" />
-        <span className="text-foreground max-sm:hidden">{me.display_name}</span>
-        <ChevronDown className="size-3.5 max-sm:hidden" />
-      </Menu.Trigger>
-      <Menu.Portal>
-        <Menu.Positioner align="end" sideOffset={4} className="z-50 outline-none">
-          <Menu.Popup className={cn(popup, "w-52")}>
-            <div className="px-2.5 pt-1.5 pb-2">
-              <p className="font-medium">{me.display_name}</p>
-              <p className="mt-0.5 text-xs text-muted-foreground">
-                {me.frozen ? "账号已冻结，仅可浏览部分内容" : "鼠洞账号"}
-              </p>
-            </div>
-            <Menu.Separator className="mx-1 my-1 h-px bg-border" />
-            {/* A full load leaves nothing of the member's in the page, such as the table the
-                browser keeps for filtering. */}
-            <Menu.Item
-              nativeButton
-              render={<button type="submit" form="logout" aria-label="退出登录" />}
-              className={menuItem}
-            >
-              <LogOut className="text-muted-foreground" />
-              退出登录
-            </Menu.Item>
-          </Menu.Popup>
-        </Menu.Positioner>
-      </Menu.Portal>
-      <form id="logout" method="post" action="/logout" hidden />
-    </Menu.Root>
+    <Dropdown
+      label="账号"
+      align="end"
+      className="w-52"
+      triggerClassName={buttonVariants({ variant: "ghost", className: "gap-2 px-1.5 sm:pr-2.5" })}
+      trigger={
+        <>
+          <UserAvatar user={me} className="size-7" />
+          <span className="text-foreground max-sm:hidden">{me.display_name}</span>
+          <ChevronDown className="size-3.5 max-sm:hidden" />
+        </>
+      }
+    >
+      <div className="px-2.5 pt-1.5 pb-2">
+        <p className="font-medium">{me.display_name}</p>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          {me.frozen ? "账号已冻结，仅可浏览部分内容" : "鼠洞账号"}
+        </p>
+      </div>
+      <div className="mx-1 my-1 h-px bg-border" />
+      {/* A full load leaves nothing of the member's in the page, such as the table the
+              browser keeps for filtering. */}
+      <form method="post" action="/logout">
+        <button type="submit" className={menuItem}>
+          <LogOut className="text-muted-foreground" />
+          退出登录
+        </button>
+      </form>
+    </Dropdown>
   );
 }
 
@@ -170,57 +160,29 @@ function mobileLink({ isActive }: { isActive: boolean }) {
 }
 
 function MobileNav({ pages }: { pages: ReturnType<typeof pagesFor> }) {
-  const [open, setOpen] = useState(false);
   return (
-    <Dialog.Root open={open} onOpenChange={setOpen}>
-      <Dialog.Trigger
-        aria-label="打开导航"
-        className={buttonVariants({ variant: "ghost", size: "icon", className: "md:hidden" })}
-      >
-        <MenuIcon className="size-5" />
-      </Dialog.Trigger>
-      <Dialog.Portal>
-        <Dialog.Backdrop className="fixed inset-0 z-50 bg-black/30 transition-opacity duration-150 data-ending-style:opacity-0 data-starting-style:opacity-0" />
-        <Dialog.Popup className="fixed inset-y-0 right-0 z-50 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl transition-transform duration-200 outline-none data-ending-style:translate-x-full data-starting-style:translate-x-full">
-          <div className="flex h-14 items-center justify-between border-b px-4">
-            <Dialog.Title className="font-semibold">导航</Dialog.Title>
-            <Dialog.Close
-              aria-label="关闭"
-              className={buttonVariants({ variant: "ghost", size: "icon-sm" })}
-            >
-              <X className="size-5" />
-            </Dialog.Close>
-          </div>
-          <nav aria-label="主导航" className="flex-1 space-y-1 overflow-y-auto p-3">
-            {pages.main.map((page) => (
-              <NavLink
-                key={page.to}
-                to={page.to}
-                end={page.to === "/"}
-                onClick={() => setOpen(false)}
-                className={mobileLink}
-              >
+    <Drawer
+      label="导航"
+      triggerClassName={buttonVariants({ variant: "ghost", size: "icon", className: "md:hidden" })}
+      trigger={<MenuIcon className="size-5" />}
+    >
+      <nav aria-label="主导航" className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
+        {pages.main.map((page) => (
+          <NavLink key={page.to} to={page.to} end={page.to === "/"} className={mobileLink}>
+            {page.label}
+          </NavLink>
+        ))}
+        {pages.admin.length > 0 && (
+          <>
+            <p className="px-3 pt-4 pb-1 text-xs text-muted-foreground">管理</p>
+            {pages.admin.map((page) => (
+              <NavLink key={page.to} to={page.to} className={mobileLink}>
                 {page.label}
               </NavLink>
             ))}
-            {pages.admin.length > 0 && (
-              <>
-                <p className="px-3 pt-4 pb-1 text-xs text-muted-foreground">管理</p>
-                {pages.admin.map((page) => (
-                  <NavLink
-                    key={page.to}
-                    to={page.to}
-                    onClick={() => setOpen(false)}
-                    className={mobileLink}
-                  >
-                    {page.label}
-                  </NavLink>
-                ))}
-              </>
-            )}
-          </nav>
-        </Dialog.Popup>
-      </Dialog.Portal>
-    </Dialog.Root>
+          </>
+        )}
+      </nav>
+    </Drawer>
   );
 }

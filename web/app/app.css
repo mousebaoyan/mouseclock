@@ -139,17 +139,18 @@
       transition-duration: 1ms !important;
     }
   }
-  /* Tailwind 4 resets buttons to the default cursor; Base UI's options, menu items and boxes
-     are spans and divs. Everything that can be clicked shows the hand. */
+  /* Tailwind 4 resets buttons to the default cursor. Everything that can be clicked shows the
+     hand. */
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
-  [role="combobox"]:not([data-disabled]),
-  [role="option"]:not([data-disabled]),
-  [role="menuitem"]:not([data-disabled]),
-  [role="checkbox"]:not([data-disabled]),
-  label:has([role="checkbox"]),
+  input[type="checkbox"]:not(:disabled),
+  label:has(input[type="checkbox"]),
   summary {
     cursor: pointer;
+  }
+  /* The page behind the phones' drawer keeps still. */
+  html:has(dialog[open]) {
+    overflow: hidden;
   }
   /* Lucide's look for the icons of components/icons.tsx; size-* and stroke-* classes win. */
   .lucide {
@@ -252,6 +253,38 @@
     transform: scaleX(0.9);
   }
 }
+
+/* Motion, short and light, as mousehole's: only opacity and transform move, so none of it costs
+   layout, and prefers-reduced-motion turns it all off. */
+
+/* A dropdown or menu grows from the edge by its button (components/disclosure.tsx); the phones'
+   drawer slides in over a fading backdrop. */
+.pop-in {
+  animation: pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.fade-in {
+  animation: fade-in 200ms ease-out;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+.slide-in {
+  animation: slide-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
 
 /* A snapshot's HTML, which keeps only text-level tags (programs/sanitize.ts); the reset took their
    spacing away. */

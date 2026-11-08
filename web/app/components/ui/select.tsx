@@ -1,26 +1,100 @@
-import { Combobox } from "@base-ui/react/combobox";
-import { Select as Base } from "@base-ui/react/select";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { cn } from "~/cn";
-import { Check, ChevronDown, Search } from "~/components/icons";
+import { Check, ChevronDown } from "~/components/icons";
+import { matching, moveFocus, Popup, PopupSearch, useDismiss } from "~/components/disclosure";
 
-// Dropdowns in the site's own panel rather than the system's. A long list gets a search box
-// above it, so the option wanted is a few keys away rather than a long scroll; Base UI's
-// Combobox is the listbox with one, its Select the one without. An option's `count`, such as how
-// many programs a region has, shows on its right.
+// Dropdowns in the site's own panel rather than the system's, working like the menus of
+// disclosure.tsx. A long list gets a search box above it, so the option wanted is a few keys away
+// rather than a long scroll. An option's `count`, such as how many programs a region has, shows
+// on its right.
 
 export type SelectOption = { value: string; label: string; count?: number };
 
 // From this many options on, a dropdown can be searched.
 const SEARCH_FROM = 9;
 
-function matching(options: readonly SelectOption[], query: string) {
-  const q = query.trim().toLowerCase();
-  return options.filter((option) => option.label.toLowerCase().includes(q));
+// The open list's parts shared by both dropdowns: the button, the panel and the search.
+function useList(optionCount: number) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const button = useRef<HTMLButtonElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const search = useRef<HTMLInputElement>(null);
+  const searchable = optionCount >= SEARCH_FROM;
+  const close = () => {
+    setOpen(false);
+    button.current?.focus();
+  };
+  useDismiss(
+    open,
+    (escaped) => {
+      setOpen(false);
+      if (escaped) button.current?.focus();
+    },
+    [button, panel],
+  );
+  // Without a search box, the focus goes to the option picked, or the first.
+  useEffect(() => {
+    if (!open || searchable) return;
+    const list = panel.current;
+    (
+      list?.querySelector<HTMLElement>("[aria-current], [aria-pressed=true]") ??
+      list?.querySelector<HTMLElement>("[data-item]")
+    )?.focus();
+  }, [open, searchable]);
+  function show() {
+    setQuery("");
+    setOpen(true);
+  }
+  // Keys on an option. Tab closes the list and gives the focus back to its button: the list is
+  // at the end of the page, so Tab would otherwise leave for its end.
+  function onItemKey(e: KeyboardEvent) {
+    if (moveFocus(e, panel.current, search.current)) return;
+    if (e.key === "Tab") {
+      e.preventDefault();
+      close();
+    }
+  }
+  // Keys in the search box: down to the options, back to the button with Shift+Tab.
+  function onSearchKey(e: KeyboardEvent) {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      panel.current?.querySelector<HTMLElement>("[data-item]")?.focus();
+    } else if (e.key === "Tab" && e.shiftKey) {
+      e.preventDefault();
+      close();
+    }
+  }
+  const triggerProps = {
+    ref: button,
+    type: "button" as const,
+    "aria-expanded": open,
+    onClick: () => (open ? setOpen(false) : show()),
+    onKeyDown: (e: KeyboardEvent) => {
+      if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        show();
+      }
+    },
+  };
+  return {
+    open,
+    query,
+    setQuery,
+    button,
+    panel,
+    search,
+    searchable,
+    close,
+    onItemKey,
+    onSearchKey,
+    triggerProps,
+  };
 }
 
-// For one value. Forms get it through Base UI's hidden input when `name` is given; pages that
-// act on a pick at once pass `onValueChange`. The empty value stands for "any", such as 全部地区.
+// For one value. Forms get it through a hidden input when `name` is given; pages that act on a
+// pick at once pass `onValueChange`. The empty value stands for "any", such as 全部地区.
 export function Select({
   options,
   value,
@@ -42,80 +116,103 @@ export function Select({
   className?: string;
   "aria-label": string;
 }) {
-  const [query, setQuery] = useState("");
-  const shown = matching(options, query);
-  const initial = defaultValue ?? (value === undefined ? options[0]?.value : undefined);
-  const labelOf = (picked: string | null) =>
-    options.find((option) => option.value === picked)?.label ?? "";
-  if (options.length < SEARCH_FROM) {
-    return (
-      <Base.Root
-        items={options}
-        value={value}
-        defaultValue={initial}
-        onValueChange={(next) => onValueChange?.(next ?? "")}
-        name={name}
-        required={required}
-        disabled={disabled}
-        modal={false}
-      >
-        <Base.Trigger aria-label={label} className={cn(TRIGGER, className)}>
-          <Base.Value className="truncate" />
-          <TriggerIcon />
-        </Base.Trigger>
-        <Base.Portal>
-          <Base.Positioner alignItemWithTrigger={false} sideOffset={4} className={POSITIONER}>
-            <Base.Popup className={POPUP}>
-              <Base.List className={LIST}>
-                {options.map((option) => (
-                  <Base.Item key={option.value} value={option.value} className={ITEM}>
-                    <Base.ItemText className="flex-1">{option.label}</Base.ItemText>
-                    <Count option={option} />
-                    <Base.ItemIndicator className="flex">
-                      <Check />
-                    </Base.ItemIndicator>
-                  </Base.Item>
-                ))}
-              </Base.List>
-            </Base.Popup>
-          </Base.Positioner>
-        </Base.Portal>
-      </Base.Root>
-    );
+  // Like a native <select>, the first option unless said otherwise.
+  const start = defaultValue ?? options.at(0)?.value ?? "";
+  const [own, setOwn] = useState(start);
+  const current = value ?? own;
+  const list = useList(options.length);
+  const input = useRef<HTMLInputElement>(null);
+  const chosen = options.find((option) => option.value === current);
+  const shown = matching(options, list.query);
+
+  // Like a native field, it goes back to where it started when its form is reset.
+  useEffect(() => {
+    const form = input.current?.form;
+    if (!form) return undefined;
+    const reset = () => setOwn(start);
+    form.addEventListener("reset", reset);
+    return () => form.removeEventListener("reset", reset);
+  }, [start]);
+
+  function pick(next: string) {
+    list.close();
+    if (next === current) return;
+    // The hidden input has to hold the new value before anything reads the form.
+    flushSync(() => setOwn(next));
+    input.current?.dispatchEvent(new Event("input", { bubbles: true }));
+    onValueChange?.(next);
   }
+
   return (
-    <Combobox.Root
-      items={options.map((option) => option.value)}
-      filteredItems={shown.map((option) => option.value)}
-      value={value}
-      defaultValue={initial}
-      onValueChange={(next: string | null) => onValueChange?.(next ?? "")}
-      itemToStringLabel={labelOf}
-      inputValue={query}
-      onInputValueChange={setQuery}
-      onOpenChange={(open) => {
-        if (!open) setQuery("");
-      }}
-      name={name}
-      required={required}
-      disabled={disabled}
-    >
-      <Combobox.Trigger aria-label={label} className={cn(TRIGGER, className)}>
-        <Combobox.Value>
-          {(picked: string | null) => <span className="truncate">{labelOf(picked)}</span>}
-        </Combobox.Value>
+    <div className="relative min-w-0">
+      <button
+        {...list.triggerProps}
+        aria-label={label}
+        disabled={disabled}
+        className={cn(TRIGGER, className)}
+      >
+        <span className="truncate">{chosen?.label}</span>
         <TriggerIcon />
-      </Combobox.Trigger>
-      <SearchPopup label={label}>
-        {shown.map((option) => (
-          <OptionRow key={option.value} option={option} indicator={<Check />} />
+      </button>
+      {name &&
+        (required ? (
+          // A text field takes part in the form's checks, which a hidden one doesn't, and the
+          // browser's message then points at the button.
+          <input
+            ref={input}
+            name={name}
+            value={current}
+            required
+            onChange={() => {}}
+            onFocus={() => list.button.current?.focus()}
+            tabIndex={-1}
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-x-0 bottom-0 h-px opacity-0"
+          />
+        ) : (
+          <input ref={input} type="hidden" name={name} value={current} />
         ))}
-      </SearchPopup>
-    </Combobox.Root>
+      {list.open && (
+        <Popup anchor={list.button} panel={list.panel} className={cn(list.searchable && "w-64")}>
+          {list.searchable && (
+            <PopupSearch
+              label={label}
+              value={list.query}
+              onChange={list.setQuery}
+              input={list.search}
+              onKeyDown={(e) => {
+                // Not the form's submit: the first match is what was meant.
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  if (shown.length > 0) pick(shown[0].value);
+                } else list.onSearchKey(e);
+              }}
+            />
+          )}
+          <Options label={label} empty={shown.length === 0}>
+            {shown.map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                data-item
+                aria-current={option === chosen || undefined}
+                onClick={() => pick(option.value)}
+                onKeyDown={list.onItemKey}
+                className={cn(ITEM, "aria-[current]:font-medium aria-[current]:text-primary")}
+              >
+                <span className="flex-1 truncate">{option.label}</span>
+                <Count option={option} />
+                {option === chosen && <Check />}
+              </button>
+            ))}
+          </Options>
+        </Popup>
+      )}
+    </div>
   );
 }
 
-// For any number of values; none picked means all, which the trigger says as `all`, such as
+// For any number of values; none picked means all, which the button says as `all`, such as
 // 全部地区. A long list can also pick or drop all it shows at once, or swap them over, which acts
 // on the matches while searching.
 export function MultiSelect({
@@ -133,7 +230,7 @@ export function MultiSelect({
   className?: string;
   "aria-label": string;
 }) {
-  const [query, setQuery] = useState("");
+  const list = useList(options.length);
   // In the order of the options, so the address doesn't change with the order of the clicks.
   const change = (values: string[]) =>
     onPickedChange(
@@ -142,165 +239,108 @@ export function MultiSelect({
   const labels = picked.map(
     (value) => options.find((option) => option.value === value)?.label ?? value,
   );
-  const trigger = (
-    <>
-      <span className="truncate">
-        {labels.length === 0
-          ? all
-          : labels.length <= 2
-            ? labels.join("、")
-            : `${labels[0]}等 ${labels.length} 个`}
-      </span>
-      <TriggerIcon />
-    </>
-  );
-  const triggerClass = cn(
-    TRIGGER,
-    picked.length > 0 && "border-primary/50 text-primary",
-    className,
-  );
-  const box = (
-    <span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input bg-card text-primary-foreground group-data-selected:border-primary group-data-selected:bg-primary">
-      <Check className="size-3 stroke-3 opacity-0 group-data-selected:opacity-100" />
-    </span>
-  );
-  if (options.length < SEARCH_FROM) {
-    return (
-      <Base.Root multiple value={picked} onValueChange={change} modal={false}>
-        <Base.Trigger aria-label={label} className={triggerClass}>
-          {trigger}
-        </Base.Trigger>
-        <Base.Portal>
-          <Base.Positioner alignItemWithTrigger={false} sideOffset={4} className={POSITIONER}>
-            <Base.Popup className={POPUP}>
-              <Base.List className={LIST}>
-                {options.map((option) => (
-                  <Base.Item
-                    key={option.value}
-                    value={option.value}
-                    className={cn(ITEM, "group data-selected:font-normal")}
-                  >
-                    {box}
-                    <Base.ItemText className="flex-1">{option.label}</Base.ItemText>
-                    <Count option={option} />
-                  </Base.Item>
-                ))}
-              </Base.List>
-            </Base.Popup>
-          </Base.Positioner>
-        </Base.Portal>
-      </Base.Root>
-    );
-  }
-  const shownOptions = matching(options, query);
+  const shownOptions = matching(options, list.query);
   const shown = shownOptions.map((option) => option.value);
   return (
-    <Combobox.Root
-      multiple
-      items={options.map((option) => option.value)}
-      filteredItems={shown}
-      value={picked}
-      onValueChange={change}
-      inputValue={query}
-      onInputValueChange={setQuery}
-      onOpenChange={(open) => {
-        if (!open) setQuery("");
-      }}
-    >
-      <Combobox.Trigger aria-label={label} className={triggerClass}>
-        {trigger}
-      </Combobox.Trigger>
-      <SearchPopup
-        label={label}
-        tools={
-          <div className="flex items-center gap-0.5 border-b px-1.5 py-1">
-            <Tool onClick={() => change([...picked, ...shown])}>全选</Tool>
-            <Tool
-              onClick={() =>
-                change([
-                  ...picked.filter((value) => !shown.includes(value)),
-                  ...shown.filter((value) => !picked.includes(value)),
-                ])
-              }
-            >
-              反选
-            </Tool>
-            <Tool onClick={() => change(picked.filter((value) => !shown.includes(value)))}>
-              清空
-            </Tool>
-            <span className="ml-auto pr-1 text-xs text-subtle-foreground">
-              已选 {picked.length} 项
-            </span>
-          </div>
-        }
+    <div className="relative min-w-0">
+      <button
+        {...list.triggerProps}
+        aria-label={label}
+        className={cn(TRIGGER, picked.length > 0 && "border-primary/50 text-primary", className)}
       >
-        {shownOptions.map((option) => (
-          <OptionRow
-            key={option.value}
-            option={option}
-            box={box}
-            className="group data-selected:font-normal"
-          />
-        ))}
-      </SearchPopup>
-    </Combobox.Root>
+        <span className="truncate">
+          {labels.length === 0
+            ? all
+            : labels.length <= 2
+              ? labels.join("、")
+              : `${labels[0]}等 ${labels.length} 个`}
+        </span>
+        <TriggerIcon />
+      </button>
+      {list.open && (
+        <Popup anchor={list.button} panel={list.panel} className={cn(list.searchable && "w-64")}>
+          {list.searchable && (
+            <>
+              <PopupSearch
+                label={label}
+                value={list.query}
+                onChange={list.setQuery}
+                input={list.search}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.preventDefault();
+                  else list.onSearchKey(e);
+                }}
+              />
+              <div className="flex items-center gap-0.5 border-b px-1.5 py-1">
+                <Tool onClick={() => change([...picked, ...shown])}>全选</Tool>
+                <Tool
+                  onClick={() =>
+                    change([
+                      ...picked.filter((value) => !shown.includes(value)),
+                      ...shown.filter((value) => !picked.includes(value)),
+                    ])
+                  }
+                >
+                  反选
+                </Tool>
+                <Tool onClick={() => change(picked.filter((value) => !shown.includes(value)))}>
+                  清空
+                </Tool>
+                <span className="ml-auto pr-1 text-xs text-subtle-foreground">
+                  已选 {picked.length} 项
+                </span>
+              </div>
+            </>
+          )}
+          <Options label={label} empty={shown.length === 0}>
+            {shownOptions.map((option) => {
+              const on = picked.includes(option.value);
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  data-item
+                  aria-pressed={on}
+                  onKeyDown={list.onItemKey}
+                  onClick={() =>
+                    change(
+                      on
+                        ? picked.filter((value) => value !== option.value)
+                        : [...picked, option.value],
+                    )
+                  }
+                  className={cn(ITEM, "group")}
+                >
+                  <span className="flex size-4 shrink-0 items-center justify-center rounded-[4px] border border-input bg-card text-primary-foreground transition-colors group-aria-pressed:border-primary group-aria-pressed:bg-primary">
+                    <Check className="size-3 stroke-3 opacity-0 transition-opacity group-aria-pressed:opacity-100" />
+                  </span>
+                  <span className="flex-1 truncate">{option.label}</span>
+                  <Count option={option} />
+                </button>
+              );
+            })}
+          </Options>
+        </Popup>
+      )}
+    </div>
   );
 }
 
-// The popup of a searchable dropdown: the search on top, any tools under it, then the list.
-function SearchPopup({
+function Options({
   label,
-  tools,
+  empty,
   children,
 }: {
   label: string;
-  tools?: ReactNode;
+  empty: boolean;
   children: ReactNode;
 }) {
-  return (
-    <Combobox.Portal>
-      <Combobox.Positioner align="start" sideOffset={4} className={POSITIONER}>
-        <Combobox.Popup aria-label={label} className={cn(POPUP, "w-64")}>
-          <div className="border-b p-1.5">
-            <label className="relative block">
-              <span className="sr-only">搜索{label}</span>
-              <Search className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-subtle-foreground" />
-              <Combobox.Input
-                placeholder={`搜索${label}`}
-                className="field h-8 pl-8 pointer-coarse:h-10"
-              />
-            </label>
-          </div>
-          {tools}
-          <Combobox.Empty className="px-3 py-4 text-center text-[13px] text-muted-foreground empty:hidden">
-            没有匹配的{label}
-          </Combobox.Empty>
-          <Combobox.List className={cn(LIST, "empty:hidden")}>{children}</Combobox.List>
-        </Combobox.Popup>
-      </Combobox.Positioner>
-    </Combobox.Portal>
-  );
-}
-
-// An option of a searchable list, ticked by a box before it or a check after it.
-function OptionRow({
-  option,
-  box,
-  indicator,
-  className,
-}: {
-  option: SelectOption;
-  box?: ReactNode;
-  indicator?: ReactNode;
-  className?: string;
-}) {
-  return (
-    <Combobox.Item value={option.value} className={cn(ITEM, className)}>
-      {box}
-      <span className="flex-1 truncate">{option.label}</span>
-      <Count option={option} />
-      {indicator && <Combobox.ItemIndicator className="flex">{indicator}</Combobox.ItemIndicator>}
-    </Combobox.Item>
+  return empty ? (
+    <p className="px-3 py-4 text-center text-[13px] text-muted-foreground">没有匹配的{label}</p>
+  ) : (
+    <div className="flex min-h-0 flex-col gap-px overflow-y-auto overscroll-contain p-1">
+      {children}
+    </div>
   );
 }
 
@@ -331,19 +371,16 @@ function Tool({ onClick, children }: { onClick: () => void; children: ReactNode 
   );
 }
 
+// Turns over while the list is open.
 function TriggerIcon() {
   return (
-    <span className="flex text-subtle-foreground">
+    <span className="flex text-subtle-foreground transition-transform duration-200 group-aria-expanded/trigger:rotate-180">
       <ChevronDown />
     </span>
   );
 }
 
 const TRIGGER =
-  "field flex items-center justify-between gap-2 pr-2 text-left data-popup-open:border-primary data-popup-open:ring-3 data-popup-open:ring-ring/15";
-const POSITIONER = "z-50 outline-none";
-const POPUP =
-  "flex max-h-[min(22rem,var(--available-height))] min-w-(--anchor-width) origin-(--transform-origin) flex-col overflow-hidden rounded-lg border bg-popover text-sm shadow-pop transition-[opacity,scale] duration-100 outline-none data-ending-style:scale-98 data-ending-style:opacity-0 data-starting-style:scale-98 data-starting-style:opacity-0";
-const LIST = "min-h-0 flex-1 overflow-y-auto overscroll-contain p-1 scroll-py-1";
+  "group/trigger field flex items-center justify-between gap-2 pr-2 text-left aria-expanded:border-primary aria-expanded:ring-3 aria-expanded:ring-ring/15";
 const ITEM =
-  "flex items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 whitespace-nowrap outline-none select-none pointer-coarse:py-2.5 data-highlighted:bg-accent data-selected:font-medium data-selected:text-primary";
+  "flex w-full items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 text-left whitespace-nowrap outline-none select-none hover:bg-accent focus-visible:bg-accent pointer-coarse:py-2.5";
