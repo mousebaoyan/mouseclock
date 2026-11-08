@@ -12,7 +12,8 @@ import {
   updateProgram,
   type FieldSource,
 } from "../programs/service.ts";
-import { ProgramColumns, type EditValue, type ProgramEdit } from "./schemas.ts";
+import type { StoredValue } from "../programs/schemas.ts";
+import { ProgramColumns, type ProgramEdit } from "./schemas.ts";
 
 type Actor = { user_id: number; via: "web" };
 
@@ -21,7 +22,7 @@ export async function recordAudit(
   entry: {
     user_id: number;
     action: string;
-    target_type: "school" | "college" | "source" | "user";
+    target_type: "school" | "college" | "source" | "user" | "review_item";
     target_id: number;
     detail: Record<string, unknown>;
   },
@@ -279,8 +280,8 @@ function editsQuery() {
     .select((eb) => [
       "edits.id",
       "edits.field",
-      sql<EditValue | null>`edits.old_value`.as("old_value"),
-      sql<EditValue | null>`edits.new_value`.as("new_value"),
+      sql<StoredValue | null>`edits.old_value`.as("old_value"),
+      sql<StoredValue | null>`edits.new_value`.as("new_value"),
       "edits.reason",
       "edits.basis",
       "edits.user_id",

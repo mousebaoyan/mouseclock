@@ -18,7 +18,7 @@ type Me = {
   display_name: string;
   avatar_url: string | null;
   frozen: boolean;
-  can: { admin: boolean };
+  can: { edit: boolean; admin: boolean };
 };
 
 function navLink({ isActive }: { isActive: boolean }) {
@@ -47,6 +47,11 @@ export function SiteHeader({ me }: { me: Me | null }) {
           <NavLink to="/colleges" className={navLink}>
             院校清单
           </NavLink>
+          {me?.can.edit && (
+            <NavLink to="/review" className={navLink}>
+              审核
+            </NavLink>
+          )}
           {me?.can.admin && (
             <NavLink to="/admin/colleges" className={navLink}>
               管理院校

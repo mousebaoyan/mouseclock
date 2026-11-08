@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { sql } from "kysely";
 import { accountsRoutes, authenticate, autoLogin, loginRoutes } from "./modules/accounts/routes.ts";
+import { reviewItemsRoutes } from "./modules/ingest/review-routes.ts";
 import { ingestRoutes } from "./modules/ingest/routes.ts";
 import { programsRoutes } from "./modules/programs/routes.ts";
 import { reviewRoutes } from "./modules/review/routes.ts";
@@ -14,6 +15,7 @@ import { SITE_NAME } from "./platform/site.ts";
 const api = createRouter()
   .route("/", accountsRoutes)
   .route("/", ingestRoutes)
+  .route("/", reviewItemsRoutes)
   .route("/", programsRoutes)
   .route("/", reviewRoutes)
   .route("/", sourcesRoutes);

@@ -79,7 +79,7 @@ const ListedItem = z
   .openapi("ListedItem");
 
 // One program a notice is about, as design §8.2 lays out.
-const ExtractedProgram = z
+export const ExtractedProgram = z
   .strictObject({
     program_id: Int.optional().openapi({ description: "对照里的哪个项目；新项目不写" }),
     college_id: Int,
@@ -138,7 +138,7 @@ const ListingResult = z
   })
   .openapi("ListingResult");
 
-const ExtractionContext = z
+export const ExtractionContext = z
   .object({
     published_on: IsoDate.nullable(),
     colleges: z.array(z.object({ id: Int, name: z.string() }).openapi("CollegeRef")),

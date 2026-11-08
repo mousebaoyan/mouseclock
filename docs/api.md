@@ -54,7 +54,8 @@
 | | `PATCH /programs/{id}` | 直接修改，L3 以上，只认网页会话：改字段，或者项目的名称、届、类型，写明理由和依据；值为 `null` 是清空。分部分的字段只记改了的部分，每个改了的字段或部分记一条（[总体设计 §12.4](design.md#124-记录和撤销)）；值和现在一样返回 `400 no_change` |
 | | `POST /edits/{id}/revert` | 撤销一次修改，L3 以上，只认网页会话：字段连同来源回到修改前；这一项之后又改过或撤销过的返回 `409 edit_superseded`，先撤销后来的那次 |
 | | `GET /edits` | 全站最近的修改，审核页用，分页 |
-| 审核 | `GET /review` | 审核页的各类待办；最近修改用 `GET /edits` |
+| 审核 | `GET /review-items?reason=` | 抽取拿不准的字段和归并，一次列一种，带各种的条数；L3 以上，只认网页会话。最近修改用 `GET /edits` |
+| | `POST /review-items/{id}/accept`、`POST /review-items/{id}/reject` | 通过或驳回，效果见[总体设计 §12.2](design.md#122-审核)；通过时，对不上的项目要从这所学校里选好放到哪，可能重复的选出原来的那个；用不上的选择返回 400 |
 | | `POST /feedback/{id}/approve`、`POST /feedback/{id}/reject` | 审核修改申请 |
 | | `POST /programs/{id}/verify` | 标记已核对，L3 以上，只认网页会话 |
 | | `POST /programs/{id}/resolve-dispute` | 复核争议，管理员 |

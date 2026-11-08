@@ -542,6 +542,11 @@ async function applyTimes(trx: Transaction<DB>, programId: number) {
   };
 }
 
+// A program merged into another on the review page (design §12.2); it stays for the record.
+export async function deleteProgram(trx: Transaction<DB>, id: number) {
+  await trx.updateTable("programs").set({ deleted_at: new Date() }).where("id", "=", id).execute();
+}
+
 // Someone checked all of a program's fields against the original (design §9.2).
 export async function verifyProgram(id: number, userId: number) {
   const row = await db

@@ -1,16 +1,28 @@
 import { testClient } from "hono/testing";
 import { beforeAll, expect, test } from "vitest";
+import { fakeUsers, type FakeUser } from "../../../test/fake-mousehole.ts";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
+import { env } from "../../platform/env.ts";
+import { login } from "../accounts/service.ts";
 import type { ExtractedFields } from "../programs/schemas.ts";
 import { createCrawlerToken } from "./service.ts";
 
-const api = testClient(app).api.v1.crawler;
+const v1 = testClient(app).api.v1;
+const api = v1.crawler;
 
 let crawler = { headers: {} };
+let member = { headers: { cookie: "", origin: env.PUBLIC_URL } };
+let editor = member;
+
+async function session(profile: FakeUser) {
+  const token = await login(profile, "fake", { ip: null, userAgent: "test" });
+  return { headers: { cookie: `mouseclock_session=${token}`, origin: env.PUBLIC_URL } };
+}
 
 beforeAll(async () => {
   crawler = { headers: { authorization: `Bearer ${await createCrawlerToken("test")}` } };
+  [member, editor] = await Promise.all([session(fakeUsers[0]), session(fakeUsers[1])]);
 });
 
 const BODY = [
@@ -230,7 +242,8 @@ test("a later notice changes the parts it states, adds dates by label, and keeps
   const user = await db
     .insertInto("users")
     .values({
-      mousehole_id: 1,
+      // Not one of the fake users the review tests log in as.
+      mousehole_id: 100,
       display_name: "鼠鼠",
       level: 3,
       role: "user",
@@ -350,4 +363,232 @@ test("a new program like one already there is flagged as a possible duplicate", 
   expect(await reviewOf(second)).toEqual([
     { reason: "possible_duplicate", key: null, program_id: batch2.id },
   ]);
+});
+
+// The review page (design §12.2).
+
+async function pendingOf(snapshotId: number) {
+  return db
+    .selectFrom("review_items")
+    .select(["id", "reason", "key", "program_id"])
+    .where("snapshot_id", "=", snapshotId)
+    .where("status", "=", "pending")
+    .orderBy("id")
+    .execute();
+}
+
+async function accept(id: number, decision: object = {}, as = editor) {
+  return v1["review-items"][":id"].accept.$post({ param: { id: String(id) }, json: decision }, as);
+}
+
+test("an accepted field goes on the table from its version, a rejected one doesn't", async () => {
+  const { cs, snapshot: snap } = await setUp("r1.edu.cn");
+  await extract(snap, [
+    {
+      college_id: cs,
+      fields: {
+        apply: APPLY,
+        quota: { value: "100 人", ...sure("拟招收100人") },
+        majors: { value: ["计算机科学与技术"], evidence: APPLY.evidence, confidence: 0.3 },
+      },
+    },
+  ]);
+  const [program] = await programsOf(cs);
+  const [majors, quota] = await pendingOf(snap);
+
+  const list = await v1["review-items"].$get({ query: { reason: "low_confidence" } }, editor);
+  if (list.status !== 200) throw new Error("List failed");
+  const listed = await list.json();
+  expect(listed.reason).toBe("low_confidence");
+  expect(listed.counts.evidence_not_found).toBeGreaterThan(0);
+  expect(listed.items.find((item) => item.id === majors.id)).toEqual(
+    expect.objectContaining({
+      id: majors.id,
+      program: {
+        id: program.id,
+        name: "2026 年夏令营",
+        college: "计算机学院",
+        school: "r1.edu.cn",
+      },
+      field: {
+        key: "majors",
+        version: 1,
+        value: ["计算机科学与技术"],
+        evidence: APPLY.evidence,
+        confidence: 0.3,
+        current: null,
+      },
+      extracted: null,
+    }),
+  );
+
+  expect((await accept(majors.id, { program_id: program.id })).status).toBe(400);
+  expect((await accept(majors.id)).status).toBe(204);
+  const reject = v1["review-items"][":id"].reject;
+  expect((await reject.$post({ param: { id: String(quota.id) } }, editor)).status).toBe(204);
+  expect((await accept(quota.id)).status).toBe(409);
+  expect(await fieldsOf(program.id)).toMatchObject({ majors: ["计算机科学与技术"] });
+  expect((await fieldsOf(program.id)).quota).toBeUndefined();
+  const version = await db
+    .selectFrom("program_versions")
+    .select("changes")
+    .where("program_id", "=", program.id)
+    .executeTakeFirstOrThrow();
+  expect(version.changes).toContain("majors");
+  const decided = await db
+    .selectFrom("review_items")
+    .select(["status", "resolved_by"])
+    .where("id", "in", [majors.id, quota.id])
+    .orderBy("id")
+    .execute();
+  expect(decided.map((row) => row.status)).toEqual(["accepted", "rejected"]);
+  expect(decided[0].resolved_by).not.toBeNull();
+  const audit = await db
+    .selectFrom("audit_log")
+    .select(["action", "target_id"])
+    .where("target_type", "=", "review_item")
+    .where("target_id", "in", [majors.id, quota.id])
+    .orderBy("target_id")
+    .execute();
+  expect(audit).toEqual([
+    { action: "accept", target_id: majors.id },
+    { action: "reject", target_id: quota.id },
+  ]);
+});
+
+test("accepting a conflict puts the version's value over a person's", async () => {
+  const { cs, notice, snapshot: snap } = await setUp("r2.edu.cn");
+  await extract(snap, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [program] = await programsOf(cs);
+  const edit = await v1.programs[":id"].$patch(
+    {
+      param: { id: String(program.id) },
+      json: { quota: "20 人", reason: "原文写的", basis: "https://r2.edu.cn/1.htm" },
+    },
+    editor,
+  );
+  expect(edit.status).toBe(200);
+  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n拟招收30人`);
+  await extract(second, [
+    {
+      program_id: program.id,
+      college_id: cs,
+      fields: { quota: { value: "30 人", ...sure("拟招收30人") } },
+    },
+  ]);
+  const [conflict] = await pendingOf(second);
+  expect(conflict.reason).toBe("conflicts_edit");
+
+  expect((await accept(conflict.id)).status).toBe(204);
+  const field = await db
+    .selectFrom("program_fields")
+    .select(["value", "version_id", "edit_id"])
+    .where("program_id", "=", program.id)
+    .where("key", "=", "quota")
+    .executeTakeFirstOrThrow();
+  expect(field).toMatchObject({ value: "30 人", edit_id: null });
+  expect(field.version_id).not.toBeNull();
+});
+
+test("a program that couldn't be placed is merged where the reviewer says", async () => {
+  const { cs, se, notice, snapshot: snap } = await setUp("r3.edu.cn");
+  await extract(snap, [{ college_id: se, fields: { apply: APPLY } }]);
+  const [existing] = await programsOf(se);
+  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n第二轮`);
+  await extract(second, [
+    { college_id: cs, cohort: 2030, fields: { apply: APPLY } },
+    {
+      college_id: cs,
+      program_id: 999_999,
+      fields: { quota: { value: "10 人", ...sure("报名时间") } },
+    },
+  ]);
+  const [cohort, unknown] = await pendingOf(second);
+
+  const other = await setUp("r3x.edu.cn");
+  expect((await accept(cohort.id)).status).toBe(400);
+  expect((await accept(cohort.id, { college_id: other.cs, cohort: 2027 })).status).toBe(404);
+  expect(
+    (await accept(cohort.id, { program_id: existing.id, college_id: cs, cohort: 2027 })).status,
+  ).toBe(400);
+  expect((await accept(cohort.id, { college_id: cs, cohort: 2027 })).status).toBe(204);
+  const [created] = await programsOf(cs);
+  expect(created).toMatchObject({ cohort: 2027, kind: "summer_camp" });
+  expect(await fieldsOf(created.id)).toHaveProperty("apply:end");
+
+  expect((await accept(unknown.id, { program_id: existing.id })).status).toBe(204);
+  expect(await fieldsOf(existing.id)).toMatchObject({ quota: "10 人" });
+  const versions = await db
+    .selectFrom("program_versions")
+    .select("snapshot_id")
+    .where("program_id", "=", existing.id)
+    .orderBy("number")
+    .execute();
+  expect(versions.map((v) => v.snapshot_id)).toEqual([snap, second]);
+});
+
+test("a duplicate is merged into the original and deleted", async () => {
+  const { cs, notice, snapshot: snap } = await setUp("r4.edu.cn");
+  await extract(snap, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n第二批`);
+  await extract(second, [
+    {
+      college_id: cs,
+      fields: {
+        apply: APPLY,
+        majors: { value: ["软件工程"], evidence: APPLY.evidence, confidence: 0.3 },
+      },
+    },
+  ]);
+  const [original, duplicate] = await programsOf(cs);
+  const [flagged, unsure] = await pendingOf(second);
+  expect([flagged.reason, unsure.reason]).toEqual(["possible_duplicate", "low_confidence"]);
+
+  expect((await accept(flagged.id, { program_id: duplicate.id })).status).toBe(400);
+  // A person's edit would go with the duplicate, so it is undone first.
+  const edited = await v1.programs[":id"].$patch(
+    {
+      param: { id: String(duplicate.id) },
+      json: { quota: "20 人", reason: "原文写的", basis: "https://r4.edu.cn/1.htm" },
+    },
+    editor,
+  );
+  expect(edited.status).toBe(200);
+  expect((await accept(flagged.id, { program_id: original.id })).status).toBe(409);
+  const edit = await db
+    .selectFrom("edits")
+    .select("id")
+    .where("program_id", "=", duplicate.id)
+    .executeTakeFirstOrThrow();
+  const revert = v1.edits[":id"].revert.$post({ param: { id: String(edit.id) } }, editor);
+  expect((await revert).status).toBe(200);
+  expect((await accept(flagged.id, { program_id: original.id })).status).toBe(204);
+  expect(await programsOf(cs)).toHaveLength(2);
+  const gone = await db
+    .selectFrom("programs")
+    .select("deleted_at")
+    .where("id", "=", duplicate.id)
+    .executeTakeFirstOrThrow();
+  expect(gone.deleted_at).not.toBeNull();
+  const versions = await db
+    .selectFrom("program_versions")
+    .select("snapshot_id")
+    .where("program_id", "=", original.id)
+    .orderBy("number")
+    .execute();
+  expect(versions.map((v) => v.snapshot_id)).toEqual([snap, second]);
+  // The duplicate's unsure field waits again, on the original.
+  expect((await pendingOf(second)).map((item) => [item.reason, item.program_id])).toEqual([
+    ["low_confidence", original.id],
+  ]);
+});
+
+test("only L3 and up see and decide the items", async () => {
+  const { cs, snapshot: snap } = await setUp("r5.edu.cn");
+  await extract(snap, [{ college_id: cs, fields: {} }]);
+  const [item] = await pendingOf(snap);
+  expect((await v1["review-items"].$get({ query: {} }, member)).status).toBe(403);
+  expect((await accept(item.id, {}, member)).status).toBe(403);
+  const reject = v1["review-items"][":id"].reject;
+  expect((await reject.$post({ param: { id: String(item.id) } }, member)).status).toBe(403);
 });
