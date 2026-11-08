@@ -337,7 +337,12 @@ function Options({
   return empty ? (
     <p className="px-3 py-4 text-center text-[13px] text-muted-foreground">没有匹配的{label}</p>
   ) : (
-    <div className="flex min-h-0 flex-col gap-px overflow-y-auto overscroll-contain p-1">
+    // Out of the Tab order: Chrome would put a scrolling box whose items are all out of it there
+    // in their stead, a stop without a name between an option and the search box.
+    <div
+      tabIndex={-1}
+      className="flex min-h-0 flex-col gap-px overflow-y-auto overscroll-contain p-1"
+    >
       {children}
     </div>
   );
