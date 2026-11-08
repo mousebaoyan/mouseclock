@@ -17,8 +17,10 @@ export function useFilters() {
     for (const value of values) params.append(name, value);
     return params.size > 0 ? `?${params}` : "?";
   }
-  function set(name: string, value: string, typed = false) {
-    void navigate(hrefWith(name, value ? [value] : []), {
+  // A list of values for a filter that takes any number; the empty value drops a filter.
+  function set(name: string, value: string | string[], typed = false) {
+    const values = typeof value === "string" ? [value].filter(Boolean) : value;
+    void navigate(hrefWith(name, values), {
       replace: true,
       preventScrollReset: true,
       state: typed ? { typed } : undefined,
@@ -52,17 +54,20 @@ export function SearchBox({ value, placeholder }: { value: string; placeholder: 
   );
 }
 
-// Choices any number of which can be picked; none picked means all.
+// Choices any number of which can be picked; none picked means all. `counts` says how many each
+// would show.
 export function ChipGroup({
   name,
   label,
   choices,
   picked,
+  counts,
 }: {
   name: string;
   label: string;
   choices: readonly { value: string; label: string; color: TagColor }[];
   picked: string[];
+  counts?: Partial<Record<string, number>>;
 }) {
   const { hrefWith } = useFilters();
   return (
@@ -79,6 +84,7 @@ export function ChipGroup({
           )}
           on={picked.includes(choice.value)}
           color={choice.color}
+          count={counts && (counts[choice.value] ?? 0)}
         >
           {choice.label}
         </Chip>

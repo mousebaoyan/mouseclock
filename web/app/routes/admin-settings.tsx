@@ -6,7 +6,7 @@ import { Field, FormMessage } from "../components/form.tsx";
 import { Page, Panel } from "../components/page.tsx";
 import { DateTime } from "../components/time.tsx";
 import { List, Row } from "../components/list.tsx";
-import { Table, Td, Th, Tr } from "../components/ui/table.tsx";
+import { Table, Td, Tr } from "../components/ui/table.tsx";
 import { Tag } from "../components/tags.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import type { Route } from "./+types/admin-settings.ts";
@@ -104,41 +104,33 @@ export default function Settings({ loaderData, actionData }: Route.ComponentProp
           <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">暂无令牌</p>
         ) : (
           <>
-            <Table bare className="max-lg:hidden">
-              <thead>
-                <tr>
-                  <Th>名称</Th>
-                  <Th>状态</Th>
-                  <Th>生成时间</Th>
-                  <Th>最近领取任务</Th>
-                  <Th>
-                    <span className="sr-only">操作</span>
-                  </Th>
-                </tr>
-              </thead>
-              <tbody>
-                {tokens.map((token) => (
-                  <Tr key={token.id}>
-                    <Td className="font-medium">{token.name}</Td>
-                    <Td center>
-                      <TokenState token={token} />
-                    </Td>
-                    <Td center>
-                      <DateTime value={token.created_at} />
-                    </Td>
-                    <Td center>
-                      {token.last_seen_at === null ? (
-                        <span className="text-subtle-foreground">尚未领取</span>
-                      ) : (
-                        <DateTime value={token.last_seen_at} />
-                      )}
-                    </Td>
-                    <Td center>
-                      <Revoke token={token} revoking={revoking} busy={busy} />
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
+            <Table
+              bare
+              className="max-lg:hidden"
+              head={["名称", "状态", "生成时间", "最近领取任务"]}
+              actions="操作"
+            >
+              {tokens.map((token) => (
+                <Tr key={token.id}>
+                  <Td className="font-medium">{token.name}</Td>
+                  <Td nowrap>
+                    <TokenState token={token} />
+                  </Td>
+                  <Td nowrap>
+                    <DateTime value={token.created_at} />
+                  </Td>
+                  <Td nowrap>
+                    {token.last_seen_at === null ? (
+                      <span className="text-subtle-foreground">尚未领取</span>
+                    ) : (
+                      <DateTime value={token.last_seen_at} />
+                    )}
+                  </Td>
+                  <Td nowrap>
+                    <Revoke token={token} revoking={revoking} busy={busy} />
+                  </Td>
+                </Tr>
+              ))}
             </Table>
             <List className="rounded-none border-0 shadow-none lg:hidden">
               {tokens.map((token) => (

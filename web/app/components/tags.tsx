@@ -60,16 +60,18 @@ export function Tag({ color, children }: { color: TagColor; children: ReactNode 
 }
 
 // One of a filter's choices, any number of which can be picked, as a link that picks or unpicks
-// it: the address holds the filters, so a link shares them.
+// it: the address holds the filters, so a link shares them. `count` says how many it would show.
 export function Chip({
   to,
   on,
   color,
+  count,
   children,
 }: {
   to: string;
   on: boolean;
   color: TagColor;
+  count?: number;
   children: ReactNode;
 }) {
   return (
@@ -87,6 +89,9 @@ export function Chip({
     >
       {on && <Check className="-ml-0.5 size-3.5" />}
       {children}
+      {count !== undefined && (
+        <span className="ml-0.5 text-xs font-normal tabular-nums opacity-60">{count}</span>
+      )}
     </Link>
   );
 }

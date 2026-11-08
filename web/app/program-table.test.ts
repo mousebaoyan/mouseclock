@@ -68,6 +68,7 @@ test("filters narrow down together; tiers and kinds take any of those ticked", (
   expect(ids("tier=985&region=上海&direction=软件", programs)).toEqual([1]);
   expect(ids("kind=pre_recommendation", programs)).toEqual([2]);
   expect(ids("kind=summer_camp&kind=pre_recommendation&region=北京", programs)).toEqual([2]);
+  expect(ids("region=北京&region=上海&direction=计算机&direction=人工智能", programs)).toEqual([1]);
 });
 
 test("the tier 其他 picks the schools with no tier, alongside any others ticked", () => {
@@ -85,9 +86,29 @@ test("each status choice counts what it would show under the other filters", () 
     program(5, { kind: "pre_recommendation" }),
   ];
   const view = (params: string) =>
-    tableView(programs, readFilters(new URLSearchParams(params)), NOW).counts;
+    tableView(programs, readFilters(new URLSearchParams(params)), NOW).counts.status;
   expect(view("status=closed")).toEqual({ "": 4, open: 2, upcoming: 1, closed: 1, all: 5 });
   expect(view("kind=summer_camp")).toEqual({ "": 3, open: 1, upcoming: 1, closed: 1, all: 4 });
+});
+
+test("each choice of the other filters counts what it would show under the rest", () => {
+  const programs = [
+    program(1, { region: "上海", directions: ["计算机", "软件"], tier: "985" }),
+    program(2, { region: "上海", directions: ["计算机"], kind: "pre_recommendation" }),
+    program(3, { directions: ["软件"], tier: "985" }),
+    program(4, { deadline: 500, tier: "985" }),
+  ];
+  const { counts } = tableView(
+    programs,
+    readFilters(new URLSearchParams("region=上海&tier=985")),
+    NOW,
+  );
+  // A filter's own choices leave it out, so picking one more region shows what it would add.
+  expect(counts.region).toEqual({ 上海: 1, 北京: 1 });
+  expect(counts.tier).toEqual({ 985: 1, other: 1 });
+  // A program counts once for each of its directions; what has closed is left out by default.
+  expect(counts.direction).toEqual({ 计算机: 1, 软件: 1 });
+  expect(counts.kind).toEqual({ summer_camp: 1 });
 });
 
 test("search looks through the school, any of its short names, the college and the program", () => {

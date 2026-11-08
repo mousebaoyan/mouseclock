@@ -18,8 +18,7 @@ import { Button, buttonVariants } from "~/components/ui/button";
 import { Select } from "~/components/ui/select";
 import { List, Row } from "~/components/list";
 import { Missing } from "~/components/program";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
-import { cn } from "~/cn";
+import { Table, Td, Tr } from "~/components/ui/table";
 import type { Route } from "./+types/admin-colleges.ts";
 
 export function meta() {
@@ -307,33 +306,25 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                   </p>
                 ) : (
                   <>
-                    <Table bare className="max-xl:hidden">
-                      <thead>
-                        <tr>
-                          <Th>学院</Th>
-                          <Th>类型</Th>
-                          <Th>所在地</Th>
-                          <Th>招生方向</Th>
-                          <Th>
-                            <span className="sr-only">操作</span>
-                          </Th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {colleges?.items.map((c) => (
-                          <Tr key={c.id} className={cn(college?.id === c.id && "bg-primary-soft")}>
-                            <Td className="font-medium">{c.name}</Td>
-                            <Td center>{COLLEGE_KINDS[c.kind] ?? c.kind}</Td>
-                            <Td center>{c.region}</Td>
-                            <Td className="text-muted-foreground">
-                              {c.directions.join("、") || <Missing />}
-                            </Td>
-                            <Td center>
-                              <CollegeActions school={school.id} college={c.id} />
-                            </Td>
-                          </Tr>
-                        ))}
-                      </tbody>
+                    <Table
+                      bare
+                      className="max-xl:hidden"
+                      head={["学院", "类型", "所在地", "招生方向"]}
+                      actions="操作"
+                    >
+                      {colleges?.items.map((c) => (
+                        <Tr key={c.id} selected={college?.id === c.id}>
+                          <Td className="font-medium">{c.name}</Td>
+                          <Td nowrap>{COLLEGE_KINDS[c.kind] ?? c.kind}</Td>
+                          <Td nowrap>{c.region}</Td>
+                          <Td className="text-muted-foreground">
+                            {c.directions.join("、") || <Missing />}
+                          </Td>
+                          <Td nowrap>
+                            <CollegeActions school={school.id} college={c.id} />
+                          </Td>
+                        </Tr>
+                      ))}
                     </Table>
                     <List className="rounded-none border-0 shadow-none xl:hidden">
                       {colleges?.items.map((c) => (

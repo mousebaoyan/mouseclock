@@ -11,7 +11,7 @@ import { Tag } from "~/components/tags";
 import { ClockTime } from "~/components/time";
 import { buttonVariants } from "~/components/ui/button";
 import { Reveal } from "~/components/ui/reveal";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
+import { Table, Td, Tr } from "~/components/ui/table";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { beijingDate } from "../time.ts";
 import type { Route } from "./+types/crawl.ts";
@@ -94,25 +94,14 @@ export default function Crawl({ loaderData }: Route.ComponentProps) {
           <Empty>当天没有抓取记录</Empty>
         ) : (
           <>
-            <Table className="max-lg:hidden">
-              <thead>
-                <tr>
-                  <Th>来源</Th>
-                  <Th>通知栏目</Th>
-                  <Th>最近抓取</Th>
-                  <Th>结果</Th>
-                  <Th>新通知</Th>
-                  <Th>相关通知</Th>
-                  <Th>
-                    <span className="sr-only">详情</span>
-                  </Th>
-                </tr>
-              </thead>
-              <tbody>
-                {day.items.map((source) => (
-                  <SourceRows key={source.id} source={source} />
-                ))}
-              </tbody>
+            <Table
+              className="max-lg:hidden"
+              head={["来源", "通知栏目", "最近抓取", "结果", "新通知", "相关通知"]}
+              actions="详情"
+            >
+              {day.items.map((source) => (
+                <SourceRows key={source.id} source={source} />
+              ))}
             </Table>
             <List className="lg:hidden">
               {day.items.map((source) => (
@@ -129,27 +118,19 @@ export default function Crawl({ loaderData }: Route.ComponentProps) {
           <Empty className="py-8">当天没有调用模型</Empty>
         ) : (
           <>
-            <Table className="max-lg:hidden">
-              <thead>
-                <tr>
-                  <Th>用途</Th>
-                  <Th>模型</Th>
-                  <Th>调用次数</Th>
-                  <Th>输入 token</Th>
-                  <Th>输出 token</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {day.usage.map((row) => (
-                  <Tr key={`${row.purpose} ${row.model}`}>
-                    <Td className="font-medium">{PURPOSES[row.purpose]}</Td>
-                    <Td>{row.model}</Td>
-                    <Td center>{number.format(row.calls)}</Td>
-                    <Td center>{number.format(row.input_tokens)}</Td>
-                    <Td center>{number.format(row.output_tokens)}</Td>
-                  </Tr>
-                ))}
-              </tbody>
+            <Table
+              className="max-lg:hidden"
+              head={["用途", "模型", "调用次数", "输入 token", "输出 token"]}
+            >
+              {day.usage.map((row) => (
+                <Tr key={`${row.purpose} ${row.model}`}>
+                  <Td className="font-medium">{PURPOSES[row.purpose]}</Td>
+                  <Td>{row.model}</Td>
+                  <Td nowrap>{number.format(row.calls)}</Td>
+                  <Td nowrap>{number.format(row.input_tokens)}</Td>
+                  <Td nowrap>{number.format(row.output_tokens)}</Td>
+                </Tr>
+              ))}
             </Table>
             <List className="lg:hidden">
               {day.usage.map((row) => (
@@ -296,20 +277,20 @@ function SourceRows({ source }: { source: Source }) {
   const latest = source.runs.at(-1);
   return (
     <>
-      <Tr className={cn(open && "border-b-0")}>
+      <Tr>
         <Td>
-          <span className="flex items-center gap-2">
+          <span className="inline-flex items-center gap-2">
             <SourceName source={source} />
           </span>
         </Td>
         <Td className="text-muted-foreground">
           <Section source={source} />
         </Td>
-        <Td center>{latest && <ClockTime value={latest.started_at} />}</Td>
-        <Td center>{latest && <RunResult run={latest} />}</Td>
-        <Td center>{total(source, "new_count")}</Td>
-        <Td center>{total(source, "useful_count")}</Td>
-        <Td center>
+        <Td nowrap>{latest && <ClockTime value={latest.started_at} />}</Td>
+        <Td nowrap>{latest && <RunResult run={latest} />}</Td>
+        <Td nowrap>{total(source, "new_count")}</Td>
+        <Td nowrap>{total(source, "useful_count")}</Td>
+        <Td nowrap>
           <button
             type="button"
             aria-expanded={open}
@@ -321,11 +302,11 @@ function SourceRows({ source }: { source: Source }) {
         </Td>
       </Tr>
       {open && (
-        <tr className="border-b last:border-b-0">
-          <td colSpan={7} className="px-4 pb-3">
+        <Tr>
+          <Td colSpan={7} className="border-t-0 pt-0 text-left">
             <Rounds source={source} />
-          </td>
-        </tr>
+          </Td>
+        </Tr>
       )}
     </>
   );

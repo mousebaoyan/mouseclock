@@ -21,7 +21,7 @@ import { Button, buttonVariants } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Select } from "~/components/ui/select";
 import { List, Row } from "~/components/list";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
+import { Table, Td, Tr } from "~/components/ui/table";
 import { cn } from "~/cn";
 import { beijingDate } from "~/time";
 import type { Route } from "./+types/admin-sources.ts";
@@ -233,47 +233,39 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
           </p>
         ) : (
           <>
-            <Table bare className="max-lg:hidden">
-              <thead>
-                <tr>
-                  <Th>学院</Th>
-                  <Th>通知栏目</Th>
-                  <Th>最近抓取</Th>
-                  <Th>结果</Th>
-                  <Th>
-                    <span className="sr-only">操作</span>
-                  </Th>
-                </tr>
-              </thead>
-              <tbody>
-                {sources.items.map((s) => (
-                  <Tr key={s.id} className={cn(source?.id === s.id && "bg-primary-soft")}>
-                    <Td>
-                      <span className="flex items-center gap-2">
-                        <SourceName source={s} />
-                      </span>
-                    </Td>
-                    <Td className="max-w-80">
-                      <a
-                        href={s.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={s.url}
-                        className="block truncate text-muted-foreground hover:text-primary"
-                      >
-                        {s.section || s.url}
-                      </a>
-                    </Td>
-                    <Td center>{s.last_run && <DateTime value={s.last_run.finished_at} />}</Td>
-                    <Td center>
-                      <LastRun source={s} />
-                    </Td>
-                    <Td center>
-                      <EditLink source={s} />
-                    </Td>
-                  </Tr>
-                ))}
-              </tbody>
+            <Table
+              bare
+              className="max-lg:hidden"
+              head={["学院", "通知栏目", "最近抓取", "结果"]}
+              actions="操作"
+            >
+              {sources.items.map((s) => (
+                <Tr key={s.id} selected={source?.id === s.id}>
+                  <Td>
+                    <span className="inline-flex items-center gap-2">
+                      <SourceName source={s} />
+                    </span>
+                  </Td>
+                  <Td className="max-w-80">
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={s.url}
+                      className="block truncate text-muted-foreground hover:text-primary"
+                    >
+                      {s.section || s.url}
+                    </a>
+                  </Td>
+                  <Td nowrap>{s.last_run && <DateTime value={s.last_run.finished_at} />}</Td>
+                  <Td nowrap>
+                    <LastRun source={s} />
+                  </Td>
+                  <Td nowrap>
+                    <EditLink source={s} />
+                  </Td>
+                </Tr>
+              ))}
             </Table>
             <List className="rounded-none border-0 shadow-none lg:hidden">
               {sources.items.map((s) => (

@@ -8,7 +8,7 @@ import { PROGRAM_KINDS, TierTag } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
 import { Segmented } from "~/components/ui/segmented";
-import { Select } from "~/components/ui/select";
+import { MultiSelect, Select } from "~/components/ui/select";
 import type { ApiType } from "../../server/app.ts";
 import { SITE_DESCRIPTION, SITE_NAME } from "../../server/platform/site.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
@@ -119,12 +119,13 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
   const current = currentCohort(new Date(now * 1000));
   const cohorts = [current + 1, current, current - 1, current - 2];
   // What 清除筛选 clears besides the search; the cohort and the order stay.
-  const narrowed = Boolean(
-    filters.status ||
-    filters.kinds.length + filters.tiers.length > 0 ||
-    filters.region ||
-    filters.direction,
-  );
+  const narrowed =
+    filters.status !== null ||
+    filters.kinds.length +
+      filters.tiers.length +
+      filters.regions.length +
+      filters.directions.length >
+      0;
   const statusChoices = [
     { value: "", label: "未截止" },
     { value: "open", label: STATUS_LABELS.open },
@@ -147,25 +148,25 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
             }))}
             className="sm:w-28"
           />
-          <Select
+          <MultiSelect
             aria-label="地区"
-            value={filters.region ?? ""}
-            onValueChange={(value) => set("region", value)}
-            options={[
-              { value: "", label: "全部地区" },
-              ...regions.map((r) => ({ value: r, label: r })),
-            ]}
-            className="sm:w-32"
+            all="全部地区"
+            picked={filters.regions}
+            onPickedChange={(values) => set("region", values)}
+            options={regions.map((r) => ({ value: r, label: r, count: counts.region[r] ?? 0 }))}
+            className="sm:w-36"
           />
-          <Select
+          <MultiSelect
             aria-label="方向"
-            value={filters.direction ?? ""}
-            onValueChange={(value) => set("direction", value)}
-            options={[
-              { value: "", label: "全部方向" },
-              ...directions.map((d) => ({ value: d, label: d })),
-            ]}
-            className="sm:w-32"
+            all="全部方向"
+            picked={filters.directions}
+            onPickedChange={(values) => set("direction", values)}
+            options={directions.map((d) => ({
+              value: d,
+              label: d,
+              count: counts.direction[d] ?? 0,
+            }))}
+            className="sm:w-36"
           />
           <Select
             aria-label="排序"
@@ -188,7 +189,7 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
               items={statusChoices.map((choice) => ({
                 to: hrefWith("status", choice.value ? [choice.value] : []),
                 label: choice.label,
-                count: counts[choice.value],
+                count: counts.status[choice.value],
                 on: (filters.status ?? "") === choice.value,
               }))}
             />
@@ -201,6 +202,7 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
               name="kind"
               label="类型"
               picked={filters.kinds}
+              counts={counts.kind}
               choices={Object.entries(PROGRAM_KINDS).map(([value, { label, color }]) => ({
                 value,
                 label,
@@ -212,7 +214,13 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
         {
           label: "层次",
           content: (
-            <ChipGroup name="tier" label="层次" picked={filters.tiers} choices={TIER_FILTERS} />
+            <ChipGroup
+              name="tier"
+              label="层次"
+              picked={filters.tiers}
+              choices={TIER_FILTERS}
+              counts={counts.tier}
+            />
           ),
         },
       ]}

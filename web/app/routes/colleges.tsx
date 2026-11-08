@@ -7,10 +7,11 @@ import { Pagination } from "~/components/pagination";
 import { Missing } from "~/components/program";
 import { COLLEGE_KINDS, TierTag } from "~/components/tags";
 import { TIER_FILTERS, TIERS } from "~/tiers";
-import { Select } from "~/components/ui/select";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
+import { MultiSelect, Select } from "~/components/ui/select";
+import { Table, Td, Tr } from "~/components/ui/table";
 import { PER_PAGE } from "../../server/platform/paging.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
+import { anyOf, choices, tally } from "../facets.ts";
 import type { Route } from "./+types/colleges.ts";
 
 type CollegeList = InferResponseType<ReturnType<typeof createApi>["colleges"]["$get"], 200>;
@@ -47,25 +48,28 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const params = new URL(request.url).searchParams;
   const q = params.get("q")?.trim().toLowerCase() ?? "";
   const tiers = params.getAll("tier");
-  const region = params.get("region") ?? "";
+  const regions = params.getAll("region");
+  const directions = params.getAll("direction");
   const sort = SORTS.find((item) => item.value === params.get("sort"))?.value ?? "";
   const perPage = PER_PAGE.find((n) => String(n) === params.get("per_page")) ?? PER_PAGE[0];
-  const matched = schools
-    .map(({ short_names, ...school }) => {
-      const named = [school.name, ...short_names].some((text) => text.toLowerCase().includes(q));
-      // A search for a school keeps all its colleges; one for a college keeps those it names.
-      const colleges = school.colleges.filter(
-        (college) =>
-          (!region || college.region === region) &&
-          (named || college.name.toLowerCase().includes(q)),
-      );
-      return { ...school, colleges };
-    })
-    .filter(
-      (school) =>
-        school.colleges.length > 0 &&
-        (tiers.length === 0 || tiers.includes(school.tier ?? "other")),
-    );
+  // The schools, each with the colleges, that every filter but `skip` lets through. The short
+  // names are only for search, and stay here.
+  const narrowed = (skip?: "tier" | "region" | "direction") =>
+    schools
+      .filter((school) => skip === "tier" || anyOf(tiers, [school.tier ?? "other"]))
+      .map(({ short_names, ...school }) => {
+        const named = [school.name, ...short_names].some((text) => text.toLowerCase().includes(q));
+        // A search for a school keeps all its colleges; one for a college keeps those it names.
+        const colleges = school.colleges.filter(
+          (college) =>
+            (skip === "region" || anyOf(regions, [college.region])) &&
+            (skip === "direction" || anyOf(directions, college.directions)) &&
+            (named || college.name.toLowerCase().includes(q)),
+        );
+        return { ...school, colleges };
+      })
+      .filter((school) => school.colleges.length > 0);
+  const matched = narrowed();
   matched.sort(
     (a, b) =>
       (sort === "tier" ? rank(a) - rank(b) : 0) ||
@@ -74,24 +78,33 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   );
   const pages = Math.max(1, Math.ceil(matched.length / perPage));
   const page = Math.min(Math.max(1, Number(params.get("page")) || 1), pages);
+  const all = schools.flatMap((school) => school.colleges);
   return {
     schools: matched.slice((page - 1) * perPage, page * perPage),
     total: matched.length,
     colleges: matched.reduce((sum, school) => sum + school.colleges.length, 0),
     page,
     perPage,
-    filters: { q: params.get("q") ?? "", tiers, region, sort },
-    regions: [...new Set(schools.flatMap((s) => s.colleges.map((c) => c.region)))].sort(
-      collator.compare,
-    ),
+    filters: { q: params.get("q") ?? "", tiers, regions, directions, sort },
+    // A tier counts schools, a region or direction colleges: what each belongs to.
+    counts: {
+      tier: tally(narrowed("tier").map((school) => school.tier ?? "other")),
+      region: tally(narrowed("region").flatMap((school) => school.colleges.map((c) => c.region))),
+      direction: tally(
+        narrowed("direction").flatMap((school) => school.colleges.flatMap((c) => c.directions)),
+      ),
+    },
+    regions: choices(all.map((college) => college.region)),
+    directions: choices(all.flatMap((college) => college.directions)),
   };
 }
 
 export default function Colleges({ loaderData }: Route.ComponentProps) {
-  const { schools, total, colleges, page, perPage, filters, regions } = loaderData;
+  const { schools, total, colleges, page, perPage, filters, counts, regions, directions } =
+    loaderData;
   const { search } = useLocation();
   const { set } = useFilters();
-  const active = filters.tiers.length > 0 || Boolean(filters.region);
+  const active = filters.tiers.length + filters.regions.length + filters.directions.length > 0;
   const filtered = active || Boolean(filters.q);
   return (
     <Page title="院校清单" hideTitle>
@@ -99,15 +112,25 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
         search={<SearchBox value={filters.q} placeholder="搜索学校或学院名称" />}
         selects={
           <>
-            <Select
+            <MultiSelect
               aria-label="地区"
-              value={filters.region}
-              onValueChange={(value) => set("region", value)}
-              options={[
-                { value: "", label: "全部地区" },
-                ...regions.map((r) => ({ value: r, label: r })),
-              ]}
-              className="sm:w-32"
+              all="全部地区"
+              picked={filters.regions}
+              onPickedChange={(values) => set("region", values)}
+              options={regions.map((r) => ({ value: r, label: r, count: counts.region[r] ?? 0 }))}
+              className="sm:w-36"
+            />
+            <MultiSelect
+              aria-label="方向"
+              all="全部方向"
+              picked={filters.directions}
+              onPickedChange={(values) => set("direction", values)}
+              options={directions.map((d) => ({
+                value: d,
+                label: d,
+                count: counts.direction[d] ?? 0,
+              }))}
+              className="sm:w-36"
             />
             <Select
               aria-label="排序"
@@ -122,7 +145,13 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
           {
             label: "层次",
             content: (
-              <ChipGroup name="tier" label="层次" picked={filters.tiers} choices={TIER_FILTERS} />
+              <ChipGroup
+                name="tier"
+                label="层次"
+                picked={filters.tiers}
+                choices={TIER_FILTERS}
+                counts={counts.tier}
+              />
             ),
           },
         ]}
@@ -159,48 +188,34 @@ function SchoolLabel({ school }: { school: School }) {
   );
 }
 
-// Wide screens: each school once, beside the rows of its colleges.
+// Wide screens: each school once, with its tier, beside the rows of its colleges.
 function SchoolTable({ schools }: { schools: School[] }) {
   return (
-    <Table className="max-lg:hidden">
-      <thead>
-        <tr>
-          <Th className="w-px">学校</Th>
-          <Th className="w-px">层次</Th>
-          <Th>学院</Th>
-          <Th className="w-px">类型</Th>
-          <Th className="w-px">所在地</Th>
-          <Th>招生方向</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {schools.map((school) =>
-          school.colleges.map((college, i) => (
-            <Tr key={college.id}>
-              {i === 0 && (
-                <>
-                  <Td rowSpan={school.colleges.length} className="font-medium whitespace-nowrap">
-                    {school.name}
-                  </Td>
-                  <Td center rowSpan={school.colleges.length} className="border-r">
-                    <TierTag tier={school.tier} />
-                  </Td>
-                </>
-              )}
-              <Td>
-                <Link to={`/colleges/${college.id}`} className="hover:text-primary">
-                  {college.name}
-                </Link>
+    <Table className="max-lg:hidden" head={["学校", "学院", "类型", "所在地", "招生方向"]}>
+      {schools.map((school) =>
+        school.colleges.map((college, i) => (
+          <Tr key={college.id}>
+            {i === 0 && (
+              <Td rowSpan={school.colleges.length} className="border-r">
+                <span className="inline-flex items-center gap-2 font-medium whitespace-nowrap">
+                  {school.name}
+                  <TierTag tier={school.tier} />
+                </span>
               </Td>
-              <Td center>{COLLEGE_KINDS[college.kind] ?? college.kind}</Td>
-              <Td center>{college.region}</Td>
-              <Td className="text-muted-foreground">
-                {college.directions.join("、") || <Missing />}
-              </Td>
-            </Tr>
-          )),
-        )}
-      </tbody>
+            )}
+            <Td>
+              <Link to={`/colleges/${college.id}`} className="hover:text-primary">
+                {college.name}
+              </Link>
+            </Td>
+            <Td nowrap>{COLLEGE_KINDS[college.kind] ?? college.kind}</Td>
+            <Td nowrap>{college.region}</Td>
+            <Td className="text-muted-foreground">
+              {college.directions.join("、") || <Missing />}
+            </Td>
+          </Tr>
+        )),
+      )}
     </Table>
   );
 }
