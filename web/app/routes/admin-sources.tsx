@@ -1,5 +1,6 @@
-import { data, Form, Link, redirect, useNavigation } from "react-router";
-import { SourceInput } from "../../server/modules/sources/schemas.ts";
+import { useEffect } from "react";
+import { data, Form, Link, redirect, useNavigation, useRevalidator } from "react-router";
+import { ProbeInput, SourceInput } from "../../server/modules/sources/schemas.ts";
 import { apiContext, readApi } from "../api.server.ts";
 import {
   formText,
@@ -7,6 +8,7 @@ import {
   type CollegesPage,
   type CollegeDetail,
   type SourceDetail,
+  type SourceProbe,
 } from "../admin.server.ts";
 import {
   AdminPage,
@@ -17,7 +19,7 @@ import {
   linkClass,
   panelClass,
 } from "~/components/admin";
-import { RunResult } from "~/components/crawl";
+import { failureText, RunResult } from "~/components/crawl";
 import { Pagination } from "~/components/pagination";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { beijingDate } from "~/time";
@@ -28,6 +30,8 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   colleges: CollegesPage;
   source: SourceDetail | null;
   college: CollegeDetail | null;
+  probe: SourceProbe | null;
+  adopt: boolean;
   q: string;
   collegeQ: string;
   availability: string;
@@ -39,10 +43,11 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   const collegeQ = params.get("college_q") ?? "";
   const collegeId = params.get("college_id") ?? undefined;
   const editId = params.get("edit");
+  const probeId = params.get("probe");
   const availability = params.get("availability");
   const sourceQuery = new URLSearchParams(params);
   if (!availability) sourceQuery.delete("availability");
-  const [sources, colleges, source] = await Promise.all([
+  const [sources, colleges, source, probe] = await Promise.all([
     api.sources
       .$get({
         query: Object.fromEntries(sourceQuery),
@@ -60,6 +65,11 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
     editId
       ? api.sources[":id"].$get({ param: { id: editId } }).then((res) => readApi<SourceDetail>(res))
       : null,
+    probeId
+      ? api["source-probes"][":id"]
+          .$get({ param: { id: probeId } })
+          .then((res) => readApi<SourceProbe>(res))
+      : null,
   ]);
   const selectedId = collegeId ?? (source ? String(source.college_id) : null);
   const college = selectedId
@@ -70,6 +80,8 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
     colleges,
     source,
     college,
+    probe,
+    adopt: params.has("adopt"),
     q,
     collegeQ,
     availability: availability ?? "",
@@ -98,6 +110,21 @@ export async function action({ request, context }: Route.ActionArgs) {
       return data({ error: "抓取配置不是合法 JSON，请检查引号和逗号", draft }, { status: 400 });
     }
   }
+  // Trying the page before saving it (design §7.2): the result shows under the form.
+  if (formText(form, "intent") === "probe") {
+    const probe = ProbeInput.safeParse({ url: draft.url, browser: draft.browser, config });
+    if (!probe.success)
+      return data({ error: probe.error.issues[0].message, draft }, { status: 400 });
+    const res = await api.admin["source-probes"].$post({ json: probe.data });
+    if (res.status !== 201)
+      return data({ error: (await res.json()).error.message, draft }, { status: res.status });
+    const params = new URLSearchParams({
+      college_id: draft.college_id,
+      probe: String((await res.json()).id),
+    });
+    if (id) params.set("edit", id);
+    return redirect(`/admin/sources?${params}#probe`);
+  }
   const parsed = SourceInput.safeParse({
     ...draft,
     college_id: Number(draft.college_id),
@@ -116,11 +143,24 @@ export async function action({ request, context }: Route.ActionArgs) {
 }
 
 export default function Sources({ loaderData, actionData }: Route.ComponentProps) {
-  const { sources, colleges, source, college, q, collegeQ, availability, saved } = loaderData;
+  const { sources, colleges, source, college, probe, adopt, q, collegeQ, availability, saved } =
+    loaderData;
   const busy = useNavigation().state !== "idle";
   const draft = actionData?.draft;
-  const fields = draft ?? source;
-  const formKey = `source-${source?.id ?? "new"}`;
+  // The page tried fills the form, and the config the crawler suggests once it is adopted.
+  const tried = draft ? null : probe;
+  const fields =
+    draft ??
+    (tried
+      ? {
+          url: tried.url,
+          browser: tried.browser,
+          section: source?.section ?? "",
+          unavailable_reason: source?.unavailable_reason ?? null,
+        }
+      : source);
+  const config = tried ? (adopt ? tried.suggested_config : tried.config) : source?.config;
+  const formKey = `source-${source?.id ?? "new"}-${tried?.id ?? ""}-${adopt}`;
   return (
     <AdminPage
       title="来源管理"
@@ -338,10 +378,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                     name="config"
                     rows={7}
                     spellCheck={false}
-                    defaultValue={
-                      draft?.config ??
-                      (source?.config ? JSON.stringify(source.config, null, 2) : "")
-                    }
+                    defaultValue={draft?.config ?? (config ? JSON.stringify(config, null, 2) : "")}
                     placeholder="{}"
                     className={`${inputClass} font-mono`}
                   />
@@ -359,8 +396,11 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                     className={inputClass}
                   />
                 </Field>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <Button disabled={busy}>{busy ? "保存中…" : "保存来源"}</Button>
+                  <Button variant="outline" name="intent" value="probe" disabled={busy}>
+                    试抓
+                  </Button>
                   {source && (
                     <Link
                       to={`?college_id=${college.id}#source-form`}
@@ -371,6 +411,12 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                   )}
                 </div>
               </Form>
+              {probe && (
+                <ProbeResult
+                  probe={probe}
+                  adoptTo={`?college_id=${college.id}${source ? `&edit=${source.id}` : ""}&probe=${probe.id}&adopt=1#source-form`}
+                />
+              )}
             </>
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">先在左侧选择一个学院。</p>
@@ -378,5 +424,66 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
         </section>
       </div>
     </AdminPage>
+  );
+}
+
+// The crawler takes a probe the next time it asks for work, within a minute or so; until it
+// reports, the page looks again every few seconds.
+const PROBE_POLL_MS = 5000;
+
+function WaitingForCrawler() {
+  const { revalidate } = useRevalidator();
+  useEffect(() => {
+    const timer = setInterval(() => void revalidate(), PROBE_POLL_MS);
+    return () => clearInterval(timer);
+  }, [revalidate]);
+  return (
+    <p className="text-muted-foreground">
+      等抓取节点来领……它每分钟来一次，结果出来这里会自己刷新。
+    </p>
+  );
+}
+
+function ProbeResult({ probe, adoptTo }: { probe: SourceProbe; adoptTo: string }) {
+  return (
+    <section id="probe" className="mt-5 space-y-3 border-t border-border pt-4 text-sm">
+      <h3 className="font-semibold">
+        试抓 <span className="font-normal break-all text-muted-foreground">{probe.url}</span>
+      </h3>
+      {probe.finished_at === null ? (
+        <WaitingForCrawler />
+      ) : probe.failure ? (
+        <p className="text-destructive">没抓成，{failureText(probe.failure, probe.detail)}</p>
+      ) : (
+        <>
+          <p>抓到 {probe.items.length} 条：</p>
+          <ul className="max-h-72 space-y-1 overflow-y-auto">
+            {probe.items.map((item) => (
+              <li key={item.url} className="flex gap-2">
+                <span className="shrink-0 text-muted-foreground tabular-nums">
+                  {item.published_on ?? "没有日期"}
+                </span>
+                <a href={item.url} target="_blank" rel="nofollow noopener" className={linkClass}>
+                  {item.title}
+                </a>
+              </li>
+            ))}
+          </ul>
+          {probe.suggested_config ? (
+            <>
+              <p className="text-muted-foreground">生成的配置：</p>
+              <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-xs">
+                {JSON.stringify(probe.suggested_config, null, 2)}
+              </pre>
+            </>
+          ) : (
+            <p className="text-muted-foreground">不用配置，通用抓取就行。</p>
+          )}
+          <Link to={adoptTo} className={buttonVariants({ size: "sm" })}>
+            采用，填进上面的表单
+          </Link>
+        </>
+      )}
+    </section>
   );
 }

@@ -1,7 +1,8 @@
 import { sql } from "kysely";
 import { db, pageOf } from "../../platform/db.ts";
 import { unix } from "../../platform/http.ts";
-import { BUSY_MONTHS, type Failure, type Purpose } from "./service.ts";
+import type { Failure } from "../sources/schemas.ts";
+import { BUSY_MONTHS, type Purpose } from "./service.ts";
 
 // The crawl dashboard (design §7.5): how each source's rounds went on a day, Beijing time.
 
@@ -171,34 +172,4 @@ export async function crawlDay(query: {
       },
     })),
   };
-}
-
-// Each source's latest round, for the sources page.
-export async function latestRuns(sourceIds: number[]) {
-  if (sourceIds.length === 0) return [];
-  const rows = await db
-    .selectFrom("crawl_runs")
-    .select([
-      "id",
-      "source_id",
-      "started_at",
-      "finished_at",
-      sql<Failure | null>`failure`.as("failure"),
-      "detail",
-      "listed",
-      "new_count",
-      "useful_count",
-    ])
-    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"))
-    .where("source_id", "in", sourceIds)
-    .distinctOn("source_id")
-    .orderBy("source_id")
-    .orderBy("finished_at", "desc")
-    .orderBy("id", "desc")
-    .execute();
-  return rows.map(({ started_at, finished_at, ...run }) => ({
-    ...run,
-    started_at: unix(started_at),
-    finished_at: unix(finished_at),
-  }));
 }

@@ -4,6 +4,7 @@ import {
   createRouter,
   errorResponse,
   IdParam,
+  Int,
   Page,
   unix,
 } from "../../platform/http.ts";
@@ -13,26 +14,30 @@ import {
   CollegePatch,
   CollegeQuery,
   PageQuery,
+  ProbeInput,
+  RunSummary,
   School,
   SchoolInput,
   SchoolPatch,
   Source,
   SourceDetail,
   SourceInput,
+  SourceProbe,
   SourcePatch,
   SourceQuery,
   PublicCollegeDetail,
   PublicCollegeList,
 } from "./schemas.ts";
-import { latestRuns } from "../ingest/dashboard.ts";
-import { RunSummary } from "../ingest/dashboard-routes.ts";
 import {
   createCollege,
   createSchool,
+  createProbe,
   createSource,
   getCollege,
+  getProbe,
   getSchool,
   getSource,
+  latestRuns,
   listColleges,
   listSchools,
   listSources,
@@ -297,5 +302,46 @@ export const sourcesRoutes = createRouter()
         { ...source, crawled_at: source.crawled_at ? unix(source.crawled_at) : null },
         200,
       );
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "post",
+      path: "/admin/source-probes",
+      summary: "发起试抓",
+      description: "抓取节点下一次领活时领到它，交回抓到的条目和生成的配置（总体设计 §7.2）。",
+      request: { body: { required: true, content: json(ProbeInput) } },
+      responses: {
+        201: { description: "已发起", content: json(z.object({ id: Int })) },
+        400: errors[400],
+        401: errors[401],
+        403: errors[403],
+      },
+    }),
+    async (c) => {
+      const id = await createProbe(
+        { user_id: authorize(c, "admin").id, via: "web" },
+        c.req.valid("json"),
+      );
+      return c.json({ id }, 201);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/admin/source-probes/{id}",
+      summary: "试抓的结果",
+      request: { params: IdParam },
+      responses: {
+        200: { description: "试抓", content: json(SourceProbe) },
+        400: errors[400],
+        401: errors[401],
+        403: errors[403],
+        404: errorResponse("试抓不存在"),
+      },
+    }),
+    async (c) => {
+      authorize(c, "admin");
+      return c.json(await getProbe(c.req.valid("param").id), 200);
     },
   );

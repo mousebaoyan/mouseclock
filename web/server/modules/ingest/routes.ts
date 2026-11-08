@@ -10,6 +10,7 @@ import {
   Int,
   IntParam,
   UnixSeconds,
+  Url,
 } from "../../platform/http.ts";
 import {
   ApplyValue,
@@ -20,6 +21,7 @@ import {
   ProgramName,
   Role,
 } from "../programs/schemas.ts";
+import { Failure, ListedItem } from "../sources/schemas.ts";
 import {
   crawlerTokenId,
   markRemoved,
@@ -52,16 +54,9 @@ const security = [{ crawlerToken: [] }];
 const unauthorized = errorResponse("抓取节点令牌无效或已作废");
 const noContent = { description: "已记下" };
 
-const Url = z.url({ protocol: /^https?$/ }).max(2000);
 const Config = z
   .record(z.string(), z.unknown())
   .openapi("Config", { description: "抓取节点自己的配置，格式由抓取节点定" });
-export const Failure = z
-  .enum(["timeout", "unreachable", "too_many_redirects", "http_status", "no_items", "error"])
-  .openapi("Failure", {
-    description:
-      "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误",
-  });
 const Detail = z.string().max(1000).openapi({ description: "具体原因，比如 HTTP 403" });
 export const NoticeFailure = z
   .strictObject({ url: Url, failure: Failure, detail: Detail.optional() })
@@ -73,13 +68,6 @@ const Usage = z
     output_tokens: Int.min(0),
   })
   .openapi("Usage");
-const ListedItem = z
-  .strictObject({
-    url: Url,
-    title: z.string().trim().min(1).max(500),
-    published_on: IsoDate.optional(),
-  })
-  .openapi("ListedItem");
 
 // One program a notice is about, as design §8.2 lays out.
 export const ExtractedProgram = z

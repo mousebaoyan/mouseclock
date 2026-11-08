@@ -108,6 +108,8 @@ export const Int = z.number().int().min(INT.min).max(INT.max);
 export const IntParam = z.coerce.number().int().min(INT.min).max(INT.max);
 export const IdParam = z.object({ id: IntParam });
 export const UnixSeconds = z.number().int().min(0).max(LAST_SECOND);
+// A page's address as the crawler reports it.
+export const Url = z.url({ protocol: /^https?$/ }).max(2000);
 
 export const PageParams = z.object({
   page: IntParam.min(1).max(100_000).default(1),

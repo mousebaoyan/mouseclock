@@ -1,4 +1,4 @@
-import type { Failure } from "../../server/modules/ingest/service.ts";
+import type { Failure } from "../../server/modules/sources/schemas.ts";
 
 export const FAILURES: Record<Failure, string> = {
   timeout: "超时",

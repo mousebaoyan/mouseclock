@@ -13,6 +13,7 @@ import {
   type StoredField,
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
+import type { Failure } from "../sources/schemas.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
 import { recordAudit } from "../review/service.ts";
 
@@ -31,8 +32,6 @@ const MAX_PROBES = 5;
 
 type Owner = { user_id: number; via: "web" };
 
-export type Failure =
-  "timeout" | "unreachable" | "too_many_redirects" | "http_status" | "no_items" | "error";
 export type Usage = { model: string; input_tokens: number; output_tokens: number };
 export const PURPOSES = ["screening", "extraction", "probe"] as const;
 export type Purpose = (typeof PURPOSES)[number];
