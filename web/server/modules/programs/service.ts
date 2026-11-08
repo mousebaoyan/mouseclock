@@ -1,4 +1,3 @@
-import { logoOf } from "../sources/logos.ts";
 import { isDeepStrictEqual } from "node:util";
 import { sql, type ExpressionBuilder, type Insertable, type Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
@@ -28,6 +27,16 @@ export function applyOf(program: string) {
     where field.program_id = ${sql.ref(program)} and field.key like 'apply:%'
       and field.value <> 'null'
   )`;
+}
+
+// The address of the emblem of the school `school` refers to, or null without one. The emblems
+// are the sources module's, but the programs show them too, and sources already builds on this
+// module, so the address is put together here. When the emblem last changed is in the address,
+// so browsers keep it until it changes.
+export function logoOf(school: string) {
+  return sql<
+    string | null
+  >`(SELECT '/api/v1/schools/' || school_id || '/logo?v=' || floor(extract(epoch FROM updated_at) * 1000)::bigint FROM school_logos WHERE school_id = ${sql.ref(school)})`;
 }
 
 // Guests and frozen accounts see a preview of the table (design §6.2).

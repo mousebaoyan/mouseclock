@@ -7,8 +7,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
 import type { Kind } from "../programs/schemas.ts";
-import { applyOf } from "../programs/service.ts";
-import { logoOf } from "./logos.ts";
+import { applyOf, logoOf } from "../programs/service.ts";
 import {
   type SchoolInput,
   type SchoolPatch,

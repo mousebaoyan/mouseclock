@@ -56,6 +56,17 @@ test("by region, a school sorts by the first of its regions in pinyin order", ()
 });
 
 test("a page that is not a whole number goes to the first", () => {
-  expect(view("page=1.5").page).toBe(1);
-  expect(view("page=9").page).toBe(1);
+  const schools = Array.from({ length: 21 }, (_, i) => ({
+    name: `学校${i}`,
+    short_names: [],
+    tier: null,
+    colleges: [college("计算机学院", "北京")],
+  }));
+  const shown = (params: string) => {
+    const { page, schools: listed } = collegeView(schools, new URLSearchParams(params));
+    return [page, listed.length];
+  };
+  expect(shown("page=1.5")).toEqual([1, 20]);
+  expect(shown("page=2")).toEqual([2, 1]);
+  expect(shown("page=9")).toEqual([2, 1]);
 });
