@@ -23,6 +23,7 @@ import {
   listPrograms,
   listVersions,
   tableVersion,
+  verifyProgram,
 } from "./service.ts";
 
 // Part of every ETag: a deploy can change what the table's JSON looks like, and a browser must
@@ -107,6 +108,27 @@ export const programsRoutes = createRouter()
     async (c) => {
       authorize(c, "read");
       return c.json(await listVersions(c.req.valid("param").id), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "post",
+      path: "/programs/{id}/verify",
+      summary: "标记已核对",
+      description:
+        "核对过全部字段后标记，记下是谁、什么时候；之后有新版本改了字段或有人修改，标记取消。",
+      request: { params: IdParam },
+      responses: {
+        204: { description: "已标记" },
+        ...errors,
+        403: errorResponse("账号已冻结、禁言中、L3 以下，或修改权限被收回"),
+        404: errorResponse("项目不存在"),
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "edit");
+      await verifyProgram(c.req.valid("param").id, id);
+      return c.body(null, 204);
     },
   )
   .openapi(

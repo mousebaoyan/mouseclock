@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { Int, UnixSeconds } from "../../platform/http.ts";
+import { Int, named, UnixSeconds } from "../../platform/http.ts";
 
 // The shapes of programs and their fields (design §8.2): what extraction submits, what the
 // database stores in program_fields and program_versions, and what pages show. Keys left out
@@ -58,8 +58,8 @@ export const TimeValue = z
   .openapi("TimeValue");
 export type TimeValue = z.infer<typeof TimeValue>;
 
-const Text = z.string().trim().min(1).max(500);
-const Texts = z.array(Text).min(1).max(100);
+export const Text = z.string().trim().min(1).max(500);
+export const Texts = z.array(Text).min(1).max(100);
 
 function hasTime(window: { start?: TimeValue; end?: TimeValue }) {
   return window.start !== undefined || window.end !== undefined;
@@ -91,6 +91,8 @@ export type ApplyValue = z.infer<typeof ApplyValue>;
 
 const Mode = z.enum(["online", "offline", "hybrid"]);
 const Degrees = z.array(z.enum(["master", "direct_phd"])).min(1);
+export const DegreeList = Degrees.refine((v) => new Set(v).size === v.length, "招收类型有重复");
+export const ApplyUrl = z.url({ protocol: /^(?:https?|mailto)$/ }).max(2000);
 
 export const EventValue = z
   .strictObject({
@@ -126,10 +128,10 @@ function entry<S extends z.ZodType>(value: S) {
 export const ExtractedFields = z
   .strictObject({
     apply: entry(ApplyValue),
-    apply_url: entry(z.url({ protocol: /^(?:https?|mailto)$/ }).max(2000)),
+    apply_url: entry(ApplyUrl),
     event: entry(EventValue),
     dates: entry(z.array(DateItem).min(1).max(30)),
-    degrees: entry(Degrees.refine((v) => new Set(v).size === v.length, "招收类型有重复")),
+    degrees: entry(DegreeList),
     majors: entry(Texts),
     requirements: entry(Texts),
     materials: entry(Texts),
@@ -143,10 +145,10 @@ export type ExtractedFields = z.infer<typeof ExtractedFields>;
 export type FieldKey = keyof ExtractedFields;
 export type FieldValue<K extends FieldKey> = NonNullable<ExtractedFields[K]>["value"];
 
-export const ProgramName = z.string().trim().min(1).max(200);
+export const ProgramName = z.string(named("项目名称")).trim().min(1).max(200);
 const COHORTS = { min: 2000, max: 2100 };
 export const Cohort = z
-  .number()
+  .number(named("届"))
   .int()
   .min(COHORTS.min)
   .max(COHORTS.max)
@@ -209,7 +211,7 @@ function part<S extends z.ZodType>(value: S) {
 }
 
 // One of the other dates, which has a start, an end or both (§8.2).
-const DateWindow = z.union([
+export const DateWindow = z.union([
   z.object({ start: TimeValue, end: TimeValue.optional() }),
   z.object({ end: TimeValue }),
 ]);

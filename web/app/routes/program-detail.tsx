@@ -1,10 +1,22 @@
 import type { InferResponseType } from "hono/client";
 import type { ReactNode } from "react";
-import { Link } from "react-router";
+import { data, Form, Link, redirect, useRouteLoaderData, useSearchParams } from "react-router";
 import { cn } from "~/cn";
+import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { CrawlTime, linkClass, panelClass } from "../components/admin.tsx";
+import {
+  EditForm,
+  EditHistory,
+  EditLink,
+  type Edit,
+  type EditField,
+} from "../components/program-edit.tsx";
 import { KindTag, RoleTag, StatusTag, Tag, TierTags } from "../components/tags.tsx";
+import { Button } from "../components/ui/button.tsx";
+import { DEGREES, fieldLabel, MODES } from "../fields.ts";
+import { editValues, FormError } from "../program-edit.server.ts";
+import type { loader as rootLoader } from "../root.tsx";
 import { beijingYear, countdown, formatApply, formatWindow, statusOf, useNow } from "../time.ts";
 import type { Route } from "./+types/program-detail.ts";
 
@@ -14,7 +26,17 @@ type Version = InferResponseType<ProgramApi["versions"]["$get"], 200>["versions"
 type Fields = Program["fields"];
 // What every field and part has besides its value.
 type Support = Pick<NonNullable<Fields["quota"]>, "evidence" | "version">;
-type FieldRow = { label: string; value: ReactNode; parts: [string | null, Support | undefined][] };
+type FieldRow = {
+  field: EditField;
+  label: string;
+  value: ReactNode;
+  parts: [string | null, Support | undefined][];
+};
+
+// Fields the notices didn't state show only to editors, to fill in.
+function stated(row: FieldRow) {
+  return row.parts.some(([, part]) => part !== undefined);
+}
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const { program } = loaderData;
@@ -24,24 +46,65 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const api = context.get(apiContext).programs[":id"];
   const param = { id: params.id };
-  const [program, { versions }] = await Promise.all([
+  const [program, { versions }, { edits }] = await Promise.all([
     api.$get({ param }).then((res) => readApi<Program>(res)),
     api.versions.$get({ param }).then((res) => readApi<{ versions: Version[] }>(res)),
+    api.edits.$get({ param }).then((res) => readApi<{ edits: Edit[] }>(res)),
   ]);
   return {
     program,
     versions,
+    edits,
     thisYear: beijingYear(new Date()),
     now: Math.floor(Date.now() / 1000),
   };
 }
 
-export default function ProgramDetail({ loaderData }: Route.ComponentProps) {
-  const { program, versions, thisYear } = loaderData;
+export async function action({ request, params, context }: Route.ActionArgs) {
+  const api = context.get(apiContext);
+  const form = await request.formData();
+  const intent = formText(form, "intent");
+  const param = { id: params.id };
+  if (intent === "edit") {
+    const field = formText(form, "field");
+    let values;
+    try {
+      values = editValues(field, form);
+    } catch (error) {
+      if (error instanceof FormError) return data({ intent, field, error: error.message }, 400);
+      throw error;
+    }
+    const json = { ...values, reason: formText(form, "reason"), basis: formText(form, "basis") };
+    const res = await api.programs[":id"].$patch({ param, json });
+    if (res.status !== 200) {
+      return data({ intent, field, error: (await res.json()).error.message }, res.status);
+    }
+    return redirect(`/programs/${params.id}`);
+  }
+  if (intent !== "verify" && intent !== "revert" && intent !== "revoke") {
+    throw data("未知操作", { status: 400 });
+  }
+  const res = await (intent === "verify"
+    ? api.programs[":id"].verify.$post({ param })
+    : intent === "revert"
+      ? api.edits[":id"].revert.$post({ param: { id: formText(form, "edit_id") } })
+      : api.admin.users[":id"]["revoke-edits"].$post({ param: { id: formText(form, "user_id") } }));
+  // Back to the page without the form or confirmation the address opened.
+  if (res.status === 200 || res.status === 204) return redirect(`/programs/${params.id}`);
+  return data({ intent, field: null, error: (await res.json()).error.message }, res.status);
+}
+
+export default function ProgramDetail({ loaderData, actionData }: Route.ComponentProps) {
+  const { program, versions, edits, thisYear } = loaderData;
   const { school, college, notice, verified } = program;
   const now = useNow(loaderData.now);
   const left = countdown(program, now);
-  const rows = rowsOf(program.fields, thisYear);
+  const can = useRouteLoaderData<typeof rootLoader>("root")?.me?.can;
+  const [search] = useSearchParams();
+  const editing = can?.edit ? search.get("edit") : null;
+  const rows = rowsOf(program.fields, thisYear, Boolean(can?.edit));
+  const formError = (field: string) =>
+    actionData?.intent === "edit" && actionData.field === field ? actionData.error : undefined;
   return (
     <main className="mx-auto max-w-4xl space-y-6 px-3 py-6 sm:px-5">
       <p className="text-sm">
@@ -67,10 +130,30 @@ export default function ProgramDetail({ loaderData }: Route.ComponentProps) {
           <span className="text-muted-foreground">
             {program.cohort} 届{left && ` · ${left}`}
           </span>
+          {can?.edit && editing !== "program" && <EditLink field="program" />}
         </p>
         {verified && (
           <p className="mt-1.5 text-xs text-muted-foreground">
             {verified.by} 核对于 <CrawlTime value={verified.at} />
+          </p>
+        )}
+        {editing === "program" && (
+          <EditForm field="program" program={program} error={formError("program")} />
+        )}
+        {can?.edit && !verified && (
+          <Form method="post" preventScrollReset className="mt-3 flex flex-wrap items-center gap-2">
+            <input type="hidden" name="intent" value="verify" />
+            <Button size="sm" variant="outline">
+              标记已核对
+            </Button>
+            <span className="text-xs text-muted-foreground">
+              对照原文核对过全部字段后再标记；之后有新版本或有人修改，标记会取消。
+            </span>
+          </Form>
+        )}
+        {actionData?.intent === "verify" && (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {actionData.error}
           </p>
         )}
       </header>
@@ -104,11 +187,26 @@ export default function ProgramDetail({ loaderData }: Route.ComponentProps) {
         ) : (
           <dl className="mt-2 divide-y divide-border">
             {rows.map((row) => (
-              <div key={row.label} className="py-3.5 sm:grid sm:grid-cols-[7rem_1fr] sm:gap-4">
+              <div key={row.field} className="py-3.5 sm:grid sm:grid-cols-[7rem_1fr] sm:gap-4">
                 <dt className="text-sm text-muted-foreground">{row.label}</dt>
                 <dd className="mt-1 min-w-0 text-sm sm:mt-0">
-                  {row.value}
-                  <Evidence parts={row.parts} versions={versions} />
+                  {editing === row.field ? (
+                    <EditForm field={row.field} program={program} error={formError(row.field)} />
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          {stated(row) ? (
+                            row.value
+                          ) : (
+                            <span className="text-muted-foreground">未说明</span>
+                          )}
+                        </div>
+                        {can?.edit && <EditLink field={row.field} />}
+                      </div>
+                      {stated(row) && <Evidence parts={row.parts} versions={versions} />}
+                    </>
+                  )}
                 </dd>
               </div>
             ))}
@@ -139,7 +237,7 @@ export default function ProgramDetail({ loaderData }: Route.ComponentProps) {
               </a>
               {version.changes.length > 0 && (
                 <p className="mt-1 text-muted-foreground">
-                  更新了：{version.changes.map(changeLabel).join("、")}
+                  更新了：{version.changes.map(fieldLabel).join("、")}
                 </p>
               )}
               <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
@@ -155,6 +253,24 @@ export default function ProgramDetail({ loaderData }: Route.ComponentProps) {
             </li>
           ))}
         </ol>
+      </section>
+
+      <section id="edits" className={panelClass}>
+        <h2 className="text-lg font-semibold">修改记录</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          人改过的字段，之后的通知不会覆盖；每次修改都能撤销，撤销后回到修改前的来源。
+        </p>
+        <EditHistory
+          edits={edits}
+          thisYear={thisYear}
+          canEdit={Boolean(can?.edit)}
+          canAdmin={Boolean(can?.admin)}
+          error={
+            actionData?.intent === "revert" || actionData?.intent === "revoke"
+              ? actionData.error
+              : undefined
+          }
+        />
       </section>
     </main>
   );
@@ -207,7 +323,12 @@ function Evidence({ parts, versions }: { parts: FieldRow["parts"]; versions: Ver
                     </Link>
                   </>
                 ) : (
-                  "人工修改"
+                  <>
+                    人工修改，见
+                    <a href="#edits" className={linkClass}>
+                      修改记录
+                    </a>
+                  </>
                 )}
               </p>
             </li>
@@ -216,33 +337,6 @@ function Evidence({ parts, versions }: { parts: FieldRow["parts"]; versions: Ver
       </ul>
     </details>
   );
-}
-
-const MODES = { online: "线上", offline: "线下", hybrid: "线上和线下" };
-const DEGREES = { master: "硕士", direct_phd: "直博" };
-
-// The keys a version changed (program_fields), as people say them.
-const CHANGES: Partial<Record<string, string>> = {
-  "apply:start": "报名开始",
-  "apply:end": "报名截止",
-  "apply:rolling": "额满即止",
-  apply_url: "报名入口",
-  "event:start": "活动开始",
-  "event:end": "活动结束",
-  "event:mode": "活动形式",
-  "event:place": "活动地点",
-  degrees: "招收类型",
-  majors: "招收专业",
-  requirements: "报名要求",
-  materials: "要交的材料",
-  assessment: "考核方式",
-  quota: "名额",
-  benefits: "待遇",
-  contacts: "联系方式",
-};
-
-function changeLabel(key: string) {
-  return key.startsWith("dates:") ? key.slice("dates:".length) : (CHANGES[key] ?? key);
 }
 
 function List({ items }: { items: string[] }) {
@@ -255,81 +349,101 @@ function List({ items }: { items: string[] }) {
   );
 }
 
-// The fields in the order of design §8.2; the other dates each get a row of their own.
-function rowsOf(fields: Fields, thisYear: number) {
+const LISTS = [
+  "majors",
+  "requirements",
+  "materials",
+  "assessment",
+  "benefits",
+  "contacts",
+] as const;
+
+// The fields in the order of design §8.2. Editors also get the ones not stated, to fill in.
+function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
   const rows: FieldRow[] = [];
-  const { apply, apply_url, event, dates = [], degrees, quota } = fields;
-  const list = (label: string, field: Fields["majors"]) => {
-    if (field) rows.push({ label, value: <List items={field.value} />, parts: [[null, field]] });
+  const add = (row: FieldRow) => {
+    if (editor || stated(row)) rows.push(row);
   };
-  if (apply) {
-    rows.push({
-      label: "报名时间",
-      value: formatApply(
+  const { apply, apply_url, event, dates, degrees, quota } = fields;
+  const list = (field: (typeof LISTS)[number], label: string) => {
+    const value = fields[field];
+    add({ field, label, value: value && <List items={value.value} />, parts: [[null, value]] });
+  };
+  add({
+    field: "apply",
+    label: "报名时间",
+    value:
+      apply &&
+      formatApply(
         { start: apply.start?.value, end: apply.end?.value, rolling: apply.rolling?.value },
         thisYear,
       ),
-      parts: [
-        ["开始", apply.start],
-        ["截止", apply.end],
-        ["额满即止", apply.rolling],
-      ],
-    });
-  }
-  if (apply_url) {
-    rows.push({
-      label: "报名入口",
-      value: (
-        <a
-          href={apply_url.value}
-          target="_blank"
-          rel="nofollow noopener"
-          className={cn(linkClass, "break-all")}
-        >
-          {apply_url.value.replace(/^mailto:/, "")}
-        </a>
-      ),
-      parts: [[null, apply_url]],
-    });
-  }
-  if (event) {
-    rows.push({
-      label: "活动时间",
-      value: [
+    parts: [
+      ["开始", apply?.start],
+      ["截止", apply?.end],
+      ["额满即止", apply?.rolling],
+    ],
+  });
+  add({
+    field: "apply_url",
+    label: "报名入口",
+    value: apply_url && (
+      <a
+        href={apply_url.value}
+        target="_blank"
+        rel="nofollow noopener"
+        className={cn(linkClass, "break-all")}
+      >
+        {apply_url.value.replace(/^mailto:/, "")}
+      </a>
+    ),
+    parts: [[null, apply_url]],
+  });
+  add({
+    field: "event",
+    label: "活动时间",
+    value:
+      event &&
+      [
         formatWindow({ start: event.start?.value, end: event.end?.value }, thisYear),
         event.mode && MODES[event.mode.value],
         event.place?.value,
       ]
         .filter(Boolean)
         .join(" · "),
-      parts: [
-        ["开始", event.start],
-        ["结束", event.end],
-        ["形式", event.mode],
-        ["地点", event.place],
-      ],
-    });
-  }
-  for (const date of dates) {
-    rows.push({
-      label: date.label,
-      value: formatWindow(date.value, thisYear),
-      parts: [[null, date]],
-    });
-  }
-  if (degrees) {
-    rows.push({
-      label: "招收类型",
-      value: degrees.value.map((degree) => DEGREES[degree]).join("、"),
-      parts: [[null, degrees]],
-    });
-  }
-  list("招收专业", fields.majors);
-  list("报名要求", fields.requirements);
-  list("要交的材料", fields.materials);
-  list("考核方式", fields.assessment);
-  if (quota) rows.push({ label: "名额", value: quota.value, parts: [[null, quota]] });
-  list("待遇", fields.benefits);
-  list("联系方式", fields.contacts);
+    parts: [
+      ["开始", event?.start],
+      ["结束", event?.end],
+      ["形式", event?.mode],
+      ["地点", event?.place],
+    ],
+  });
+  add({
+    field: "dates",
+    label: "其他时间",
+    value: dates && (
+      <ul className="space-y-0.5">
+        {dates.map((date) => (
+          <li key={date.label}>
+            {date.label}：{formatWindow(date.value, thisYear)}
+          </li>
+        ))}
+      </ul>
+    ),
+    parts: (dates ?? []).map((date) => [date.label, date]),
+  });
+  add({
+    field: "degrees",
+    label: "招收类型",
+    value: degrees && degrees.value.map((degree) => DEGREES[degree]).join("、"),
+    parts: [[null, degrees]],
+  });
+  list("majors", "招收专业");
+  list("requirements", "报名要求");
+  list("materials", "要交的材料");
+  list("assessment", "考核方式");
+  add({ field: "quota", label: "名额", value: quota?.value, parts: [[null, quota]] });
+  list("benefits", "待遇");
+  list("contacts", "联系方式");
   return rows;
 }

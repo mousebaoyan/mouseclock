@@ -43,7 +43,7 @@
 | | `GET /programs/{id}` | 详情：原文、字段和证据、已核对；分部分的字段（报名时间、活动时间、其他时间）每部分各带证据和来自哪一版。订阅人数二期加 |
 | | `GET /programs/{id}/versions` | 版本：各版的通知、作用、改了哪些字段、快照和附件，最新的在前 |
 | | `GET /snapshots/{id}`、`GET /snapshots/{id}/attachments/{position}` | 快照：净化过的正文和附件列表；下载附件 |
-| | `GET /programs/{id}/edits` | 修改记录 |
+| | `GET /programs/{id}/edits` | 修改记录：修改和撤销，最新的在前 |
 | 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页 |
 | 订阅和关注 | `PUT`、`DELETE /programs/{id}/subscription` | 订阅、取消；超过 10 个返回 `409 subscription_limit` |
 | | `PUT`、`DELETE /colleges/{id}/follow` | 关注、取消 |
@@ -51,11 +51,12 @@
 | | `GET /me/applications` | 自己的报名记录，可以按进度筛选 |
 | 学院标签 | `PUT`、`DELETE /colleges/{id}/tags/{tag}` | 贴标签、撤回 |
 | 反馈和修改 | `POST /programs/{id}/feedback` | 反馈或修改申请 |
-| | `PATCH /programs/{id}` | 直接修改，L3 以上，只认网页会话 |
-| | `POST /edits/{id}/revert` | 撤销一次修改 |
-| 审核 | `GET /review` | 审核页的各类待办和最近修改 |
+| | `PATCH /programs/{id}` | 直接修改，L3 以上，只认网页会话：改字段，或者项目的名称、届、类型，写明理由和依据；值为 `null` 是清空。分部分的字段只记改了的部分，每个改了的字段或部分记一条（[总体设计 §12.4](design.md#124-记录和撤销)）；值和现在一样返回 `400 no_change` |
+| | `POST /edits/{id}/revert` | 撤销一次修改，L3 以上，只认网页会话：字段连同来源回到修改前；这一项之后又改过或撤销过的返回 `409 edit_superseded`，先撤销后来的那次 |
+| | `GET /edits` | 全站最近的修改，审核页用，分页 |
+| 审核 | `GET /review` | 审核页的各类待办；最近修改用 `GET /edits` |
 | | `POST /feedback/{id}/approve`、`POST /feedback/{id}/reject` | 审核修改申请 |
-| | `POST /programs/{id}/verify` | 标记已核对 |
+| | `POST /programs/{id}/verify` | 标记已核对，L3 以上，只认网页会话 |
 | | `POST /programs/{id}/resolve-dispute` | 复核争议，管理员 |
 | 求收录 | `GET`、`POST /inclusion-requests` | 列表、提交 |
 | | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回 |
@@ -67,6 +68,7 @@
 | 管理 | `GET`、`POST /admin/schools`，`GET`、`PATCH /admin/schools/{id}` | 管理员查询、新增、修改学校 |
 | | `GET`、`POST /admin/colleges`，`GET`、`PATCH /admin/colleges/{id}` | 管理员查询、新增、修改学院 |
 | | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
+| | `POST /admin/users/{id}/revoke-edits` | 撤销某人的全部修改，收回这个人在鼠钟的修改权限 |
 | | `/admin/tags`、`/admin/users`、`/admin/settings` | 标签预设、修改权限、系统设置 |
 
 ## 4. MCP

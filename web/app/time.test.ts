@@ -6,7 +6,9 @@ import {
   formatApply,
   formatTime,
   formatWindow,
+  parseTime,
   statusOf,
+  timeText,
 } from "./time.ts";
 
 test("times read as the notice wrote them, with the year only when it isn't this one", () => {
@@ -17,6 +19,25 @@ test("times read as the notice wrote them, with the year only when it isn't this
   expect(formatTime({ month: "2026-07", part: "early" }, 2026)).toBe("7月上旬");
   expect(formatTime({ month: "2027-07" }, 2026)).toBe("2027年7月");
   expect(formatTime({ date: "2027-01-10" }, 2026)).toBe("2027年1月10日");
+});
+
+test("editors type a time as precise as the notice, which reads back as they typed it", () => {
+  for (const [text, value] of [
+    ["2026-06-30 17:00", { date: "2026-06-30", time: "17:00" }],
+    ["2026-06-30", { date: "2026-06-30" }],
+    ["2026-06-30 前", { date: "2026-06-30", mark: "before" }],
+    ["2026-06-30 前后", { date: "2026-06-30", mark: "about" }],
+    ["2026-06 下旬", { month: "2026-06", part: "late" }],
+    ["2026-06", { month: "2026-06" }],
+  ] as const) {
+    expect(parseTime(text)).toEqual(value);
+    expect(timeText(value)).toBe(text);
+  }
+  expect(parseTime(" 2026-06-30前 ")).toEqual({ date: "2026-06-30", mark: "before" });
+  expect(parseTime("2026-06-30 9:00")).toEqual({ date: "2026-06-30", time: "09:00" });
+  for (const text of ["6月30日", "2026-6-30", "2026-06 前", "2026-06-30 下旬", "2026-06-30 17"]) {
+    expect(parseTime(text)).toBeNull();
+  }
 });
 
 test("a window says what it has of its two ends", () => {

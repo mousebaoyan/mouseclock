@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { sql, type ExpressionBuilder, type Transaction } from "kysely";
+import { sql, type ExpressionBuilder, type Insertable, type Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
@@ -18,13 +18,14 @@ import type {
 } from "./schemas.ts";
 import { deadlineOf, startOf } from "./time.ts";
 
-// The apply field put back together from its parts, null when the notice gave none. `program`
-// is the column holding the program's id, such as "programs.id".
+// The apply field put back together from its parts, null when the notice gave none or people
+// cleared it. `program` is the column holding the program's id, such as "programs.id".
 export function applyOf(program: string) {
   return sql<ApplyValue | null>`(
     select jsonb_object_agg(split_part(field.key, ':', 2), field.value)
     from program_fields as field
     where field.program_id = ${sql.ref(program)} and field.key like 'apply:%'
+      and field.value <> 'null'
   )`;
 }
 
@@ -98,7 +99,7 @@ export async function listPrograms(cohort: number, preview: boolean) {
 }
 
 // A program's fields put back together (design §8.2), the parts of a field under it. Each part
-// keeps its own evidence and the version it came from.
+// keeps its own evidence and the version it came from. Fields people cleared are left out.
 function fieldsOf(program: string) {
   return sql<ProgramFields>`(
     select coalesce(jsonb_object_agg(field, value), '{}')
@@ -127,7 +128,7 @@ function fieldsOf(program: string) {
         left join program_versions as v on v.id = f.version_id
         left join snapshots as sn on sn.id = v.snapshot_id
         left join notices as n on n.id = sn.notice_id
-        where f.program_id = ${sql.ref(program)}
+        where f.program_id = ${sql.ref(program)} and f.value <> 'null'
       ) as part
       group by field
     ) as field
@@ -376,16 +377,7 @@ export async function applyStored(
   versionId: number,
   rows: StoredField[],
 ) {
-  const current = new Map(
-    (
-      await trx
-        .selectFrom("program_fields")
-        .select(["key", "value", "edit_id"])
-        .where("program_id", "=", programId)
-        .forUpdate()
-        .execute()
-    ).map((field) => [field.key, field]),
-  );
+  const current = await currentFields(trx, programId);
   const changed: string[] = [];
   const conflicts: StoredField[] = [];
   for (const row of rows) {
@@ -403,26 +395,140 @@ export async function applyStored(
       edit_id: null,
       updated_at: new Date(),
     };
-    await trx
-      .insertInto("program_fields")
-      .values({ program_id: programId, key: row.key, ...values })
-      .onConflict((oc) => oc.columns(["program_id", "key"]).doUpdateSet(values))
-      .execute();
+    await upsertField(trx, programId, row.key, values);
     changed.push(row.key);
   }
-  if (changed.some((key) => APPLY_TIMES.includes(key))) await refreshApplyTimes(trx, programId);
+  await afterChange(trx, programId, changed);
   return { changed, conflicts };
+}
+
+type FieldRow = Omit<Insertable<DB["program_fields"]>, "program_id" | "key">;
+
+async function upsertField(trx: Transaction<DB>, programId: number, key: string, row: FieldRow) {
+  await trx
+    .insertInto("program_fields")
+    .values({ program_id: programId, key, ...row })
+    .onConflict((oc) => oc.columns(["program_id", "key"]).doUpdateSet(row))
+    .execute();
+}
+
+// A program people are changing, locked until the change is in.
+export async function lockProgram(trx: Transaction<DB>, id: number) {
+  const row = await trx
+    .selectFrom("programs")
+    .select(["name", "cohort", sql<Kind>`kind`.as("kind")])
+    .where("id", "=", id)
+    .where("deleted_at", "is", null)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!row) notFound();
+  return row;
+}
+
+// A program's fields as they stand, locked, and where each value came from.
+export async function currentFields(trx: Transaction<DB>, programId: number) {
+  const rows = await trx
+    .selectFrom("program_fields")
+    .select(["key", "value", "version_id", "edit_id"])
+    .where("program_id", "=", programId)
+    .forUpdate()
+    .execute();
+  return new Map(rows.map((row) => [row.key, row]));
+}
+
+// Where a field's value is to come from (design §12.4): a person, whose null clears it and keeps
+// later notices from adding it back; a version, which later notices go on updating; or nowhere,
+// as before any notice stated it.
+export type FieldSource = { value: Json; edit_id: number } | { version_id: number } | null;
+
+export async function setFields(
+  trx: Transaction<DB>,
+  programId: number,
+  fields: [key: string, source: FieldSource][],
+) {
+  for (const [key, source] of fields) {
+    if (source === null) {
+      await trx
+        .deleteFrom("program_fields")
+        .where("program_id", "=", programId)
+        .where("key", "=", key)
+        .execute();
+    } else if ("edit_id" in source) {
+      await upsertField(trx, programId, key, {
+        value: JSON.stringify(source.value),
+        evidence: "[]",
+        confidence: null,
+        version_id: null,
+        edit_id: source.edit_id,
+        updated_at: new Date(),
+      });
+    } else {
+      await upsertField(trx, programId, key, {
+        ...(await versionField(trx, source.version_id, key)),
+        version_id: source.version_id,
+        edit_id: null,
+        updated_at: new Date(),
+      });
+    }
+  }
+  await afterChange(
+    trx,
+    programId,
+    fields.map(([key]) => key),
+  );
+}
+
+// A field as a version gave it, with its evidence.
+async function versionField(trx: Transaction<DB>, versionId: number, key: string) {
+  const { fields } = await trx
+    .selectFrom("program_versions")
+    .select(sql<ExtractedFields>`fields`.as("fields"))
+    .where("id", "=", versionId)
+    .executeTakeFirstOrThrow();
+  const field = toStoredFields(fields).find((row) => row.key === key);
+  // Only asked for the version a value came from, which has the field.
+  if (!field) throw new Error(`Version ${versionId} has no field ${key}`);
+  return {
+    value: JSON.stringify(field.value),
+    evidence: JSON.stringify(field.evidence),
+    confidence: field.confidence,
+  };
+}
+
+export async function updateProgram(
+  trx: Transaction<DB>,
+  id: number,
+  values: { name?: string; cohort?: number; kind?: Kind },
+) {
+  await trx
+    .updateTable("programs")
+    .set({ ...values, verified_by: null, verified_at: null })
+    .where("id", "=", id)
+    .execute();
 }
 
 const APPLY_TIMES = ["apply:start", "apply:end"];
 
-// The instants the table sorts and reminds by, worked out from the apply field (design §8.2).
-async function refreshApplyTimes(trx: Transaction<DB>, programId: number) {
+// After a version or a person changed some fields: the instants the table sorts and reminds by
+// follow the apply field (design §8.2), and the program waits to be verified again (§9.2).
+async function afterChange(trx: Transaction<DB>, programId: number, keys: string[]) {
+  if (keys.length === 0) return;
+  const times = keys.some((key) => APPLY_TIMES.includes(key))
+    ? await applyTimes(trx, programId)
+    : {};
+  await trx
+    .updateTable("programs")
+    .set({ ...times, verified_by: null, verified_at: null })
+    .where("id", "=", programId)
+    .execute();
+}
+
+async function applyTimes(trx: Transaction<DB>, programId: number) {
   const times = new Map(
     (
       await trx
         .selectFrom("program_fields")
-        .select(["key", sql<TimeValue>`value`.as("value")])
+        .select(["key", sql<TimeValue | null>`value`.as("value")])
         .where("program_id", "=", programId)
         .where("key", "in", APPLY_TIMES)
         .execute()
@@ -430,12 +536,20 @@ async function refreshApplyTimes(trx: Transaction<DB>, programId: number) {
   );
   const start = times.get("apply:start");
   const end = times.get("apply:end");
-  await trx
+  return {
+    apply_start: start ? startOf(start) : null,
+    apply_deadline: end ? deadlineOf(end) : null,
+  };
+}
+
+// Someone checked all of a program's fields against the original (design §9.2).
+export async function verifyProgram(id: number, userId: number) {
+  const row = await db
     .updateTable("programs")
-    .set({
-      apply_start: start ? startOf(start) : null,
-      apply_deadline: end ? deadlineOf(end) : null,
-    })
-    .where("id", "=", programId)
-    .execute();
+    .set({ verified_by: userId, verified_at: new Date() })
+    .where("id", "=", id)
+    .where("deleted_at", "is", null)
+    .returning("id")
+    .executeTakeFirst();
+  if (!row) notFound();
 }
