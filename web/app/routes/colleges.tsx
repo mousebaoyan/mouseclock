@@ -4,9 +4,11 @@ import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/compone
 import { Group, List, Row } from "~/components/list";
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
+import { Missing } from "~/components/program";
 import { COLLEGE_KINDS, TierTags } from "~/components/tags";
 import { TIER_FILTERS, TIERS, topTier } from "~/tiers";
 import { Select } from "~/components/ui/select";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
 import { PER_PAGE } from "../../server/platform/paging.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import type { Route } from "./+types/colleges.ts";
@@ -132,6 +134,7 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
           <p className="mb-4 text-[13px] text-muted-foreground">
             共 {total} 所学校、{colleges} 个学院
           </p>
+          <SchoolTable schools={schools} />
           <Schools schools={schools} />
           <Pagination total={total} page={page} perPage={perPage} />
         </div>
@@ -154,10 +157,58 @@ function SchoolLabel({ school }: { school: School }) {
   );
 }
 
-// Each school with its colleges beside it.
+// Wide screens: each school once, beside the rows of its colleges.
+function SchoolTable({ schools }: { schools: School[] }) {
+  return (
+    <Table className="max-lg:hidden">
+      <thead>
+        <tr>
+          <Th className="w-px">学校</Th>
+          <Th className="w-px">层次</Th>
+          <Th>学院</Th>
+          <Th className="w-px">类型</Th>
+          <Th className="w-px">所在地</Th>
+          <Th>招生方向</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {schools.map((school) =>
+          school.colleges.map((college, i) => (
+            <Tr key={college.id}>
+              {i === 0 && (
+                <>
+                  <Td rowSpan={school.colleges.length} className="font-medium whitespace-nowrap">
+                    {school.name}
+                  </Td>
+                  <Td center rowSpan={school.colleges.length} className="border-r">
+                    <span className="inline-flex gap-1">
+                      <TierTags tiers={school.tiers} />
+                    </span>
+                  </Td>
+                </>
+              )}
+              <Td>
+                <Link to={`/colleges/${college.id}`} className="hover:text-primary">
+                  {college.name}
+                </Link>
+              </Td>
+              <Td center>{COLLEGE_KINDS[college.kind] ?? college.kind}</Td>
+              <Td center>{college.region}</Td>
+              <Td className="text-muted-foreground">
+                {college.directions.join("、") || <Missing />}
+              </Td>
+            </Tr>
+          )),
+        )}
+      </tbody>
+    </Table>
+  );
+}
+
+// Phones: each school with its colleges beneath it.
 function Schools({ schools }: { schools: School[] }) {
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 lg:hidden">
       {schools.map((school) => (
         <Group key={school.id} label={<SchoolLabel school={school} />}>
           <List>

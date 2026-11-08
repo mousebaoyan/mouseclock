@@ -18,6 +18,9 @@ import { Button, buttonVariants } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Select } from "~/components/ui/select";
 import { List, Row } from "~/components/list";
+import { Missing } from "~/components/program";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
+import { cn } from "~/cn";
 import type { Route } from "./+types/admin-colleges.ts";
 
 export function meta() {
@@ -295,40 +298,55 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                     该校尚无学院，请在下方添加
                   </p>
                 ) : (
-                  <List className="rounded-none border-0 shadow-none">
-                    {colleges?.items.map((c) => (
-                      <Row
-                        key={c.id}
-                        selected={college?.id === c.id}
-                        title={<span className="font-medium">{c.name}</span>}
-                        meta={
-                          <>
-                            <span>{COLLEGE_KINDS[c.kind] ?? c.kind}</span>
-                            <span>{c.region}</span>
-                            {c.directions.length > 0 && (
-                              <span>招生方向：{c.directions.join("、")}</span>
-                            )}
-                          </>
-                        }
-                        side={
-                          <span className="flex gap-1">
-                            <Link
-                              to={`?school_id=${school.id}&edit_college=${c.id}`}
-                              className={buttonVariants({ variant: "outline", size: "xs" })}
-                            >
-                              编辑
-                            </Link>
-                            <Link
-                              to={`/admin/sources?college_id=${c.id}`}
-                              className={buttonVariants({ variant: "outline", size: "xs" })}
-                            >
-                              来源
-                            </Link>
-                          </span>
-                        }
-                      />
-                    ))}
-                  </List>
+                  <>
+                    <Table bare className="max-xl:hidden">
+                      <thead>
+                        <tr>
+                          <Th>学院</Th>
+                          <Th>类型</Th>
+                          <Th>所在地</Th>
+                          <Th>招生方向</Th>
+                          <Th>
+                            <span className="sr-only">操作</span>
+                          </Th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {colleges?.items.map((c) => (
+                          <Tr key={c.id} className={cn(college?.id === c.id && "bg-primary-soft")}>
+                            <Td className="font-medium">{c.name}</Td>
+                            <Td center>{COLLEGE_KINDS[c.kind] ?? c.kind}</Td>
+                            <Td center>{c.region}</Td>
+                            <Td className="text-muted-foreground">
+                              {c.directions.join("、") || <Missing />}
+                            </Td>
+                            <Td center>
+                              <CollegeActions school={school.id} college={c.id} />
+                            </Td>
+                          </Tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                    <List className="rounded-none border-0 shadow-none xl:hidden">
+                      {colleges?.items.map((c) => (
+                        <Row
+                          key={c.id}
+                          selected={college?.id === c.id}
+                          title={<span className="font-medium">{c.name}</span>}
+                          meta={
+                            <>
+                              <span>{COLLEGE_KINDS[c.kind] ?? c.kind}</span>
+                              <span>{c.region}</span>
+                              {c.directions.length > 0 && (
+                                <span>招生方向：{c.directions.join("、")}</span>
+                              )}
+                            </>
+                          }
+                          side={<CollegeActions school={school.id} college={c.id} />}
+                        />
+                      ))}
+                    </List>
+                  </>
                 )}
                 {colleges && (
                   <div className="px-4 pb-4 empty:hidden sm:px-5">
@@ -419,5 +437,24 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
         </div>
       </div>
     </Page>
+  );
+}
+
+function CollegeActions({ school, college }: { school: number; college: number }) {
+  return (
+    <span className="inline-flex gap-1">
+      <Link
+        to={`?school_id=${school}&edit_college=${college}`}
+        className={buttonVariants({ variant: "outline", size: "xs" })}
+      >
+        编辑
+      </Link>
+      <Link
+        to={`/admin/sources?college_id=${college}`}
+        className={buttonVariants({ variant: "outline", size: "xs" })}
+      >
+        来源
+      </Link>
+    </span>
   );
 }

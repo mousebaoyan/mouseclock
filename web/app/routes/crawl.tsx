@@ -1,4 +1,5 @@
 import type { InferResponseType } from "hono/client";
+import { useState } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
 import { failureText, RunResult } from "~/components/crawl";
@@ -10,6 +11,7 @@ import { Tag } from "~/components/tags";
 import { ClockTime } from "~/components/time";
 import { buttonVariants } from "~/components/ui/button";
 import { Reveal } from "~/components/ui/reveal";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { beijingDate } from "../time.ts";
 import type { Route } from "./+types/crawl.ts";
@@ -79,33 +81,77 @@ export default function Crawl({ loaderData }: Route.ComponentProps) {
           { label: "模型调用", value: `${number.format(calls)} 次` },
         ]}
       />
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
-        <section aria-label="各来源" className="min-w-0 space-y-3">
-          {oneSource && (
-            <Link
-              to={`?date=${day.date}`}
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              查看当天全部来源
-            </Link>
-          )}
-          {day.items.length === 0 ? (
-            <Empty>当天没有抓取记录</Empty>
-          ) : (
-            <List>
+      <section aria-label="各来源" className="space-y-3">
+        {oneSource && (
+          <Link
+            to={`?date=${day.date}`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            查看当天全部来源
+          </Link>
+        )}
+        {day.items.length === 0 ? (
+          <Empty>当天没有抓取记录</Empty>
+        ) : (
+          <>
+            <Table className="max-lg:hidden">
+              <thead>
+                <tr>
+                  <Th>来源</Th>
+                  <Th>通知栏目</Th>
+                  <Th>最近抓取</Th>
+                  <Th>结果</Th>
+                  <Th>新通知</Th>
+                  <Th>相关通知</Th>
+                  <Th>
+                    <span className="sr-only">详情</span>
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {day.items.map((source) => (
+                  <SourceRows key={source.id} source={source} />
+                ))}
+              </tbody>
+            </Table>
+            <List className="lg:hidden">
               {day.items.map((source) => (
                 <SourceRow key={source.id} source={source} />
               ))}
             </List>
-          )}
-          <Pagination total={day.total} page={day.page} perPage={day.per_page} />
-        </section>
-        <section aria-label="模型用量" className="space-y-3">
-          <h2 className="text-[15px] font-semibold">模型用量</h2>
-          {day.usage.length === 0 ? (
-            <Empty className="py-8">当天没有调用模型</Empty>
-          ) : (
-            <List>
+          </>
+        )}
+        <Pagination total={day.total} page={day.page} perPage={day.per_page} />
+      </section>
+      <section aria-label="模型用量" className="space-y-3">
+        <h2 className="text-[15px] font-semibold">模型用量</h2>
+        {day.usage.length === 0 ? (
+          <Empty className="py-8">当天没有调用模型</Empty>
+        ) : (
+          <>
+            <Table className="max-lg:hidden">
+              <thead>
+                <tr>
+                  <Th>用途</Th>
+                  <Th>模型</Th>
+                  <Th>调用次数</Th>
+                  <Th>输入 token</Th>
+                  <Th>输出 token</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {day.usage.map((row) => (
+                  <Tr key={`${row.purpose} ${row.model}`}>
+                    <Td className="font-medium">{PURPOSES[row.purpose]}</Td>
+                    <Td>{row.model}</Td>
+                    <Td center>{number.format(row.calls)}</Td>
+                    <Td center>{number.format(row.input_tokens)}</Td>
+                    <Td center>{number.format(row.output_tokens)}</Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            <List className="lg:hidden">
               {day.usage.map((row) => (
                 <Row
                   key={`${row.purpose} ${row.model}`}
@@ -120,9 +166,9 @@ export default function Crawl({ loaderData }: Route.ComponentProps) {
                 />
               ))}
             </List>
-          )}
-        </section>
-      </div>
+          </>
+        )}
+      </section>
     </Page>
   );
 }
@@ -186,77 +232,128 @@ function CrawlerSeen({ seenAt, now }: { seenAt: number | null; now: number }) {
   );
 }
 
-// A source's day: how its latest round went on the right, what the day found beneath its name,
-// and the rounds and the notices that couldn't be fetched when opened.
+function SourceName({ source }: { source: Source }) {
+  return (
+    <>
+      <span className="font-medium whitespace-nowrap">
+        {source.school}
+        <span className="ml-1">{source.college}</span>
+      </span>
+      {source.failing && (
+        <span title="连续 2 轮未能读取列表页">
+          <Tag color="red">连续失败</Tag>
+        </span>
+      )}
+      {source.stale && (
+        <span title="旺季内 30 天没有新通知，可能是网站改版导致配置失效">
+          <Tag color="amber">长期无更新</Tag>
+        </span>
+      )}
+    </>
+  );
+}
+
+function Section({ source }: { source: Source }) {
+  return (
+    <a href={source.url} target="_blank" rel="nofollow noopener" className="hover:text-primary">
+      {source.section || "通知栏目"}
+    </a>
+  );
+}
+
+// Each round of the day, with the notices it couldn't fetch, and what the source cost in tokens.
+function Rounds({ source }: { source: Source }) {
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-[13px]">
+      <ol className="space-y-1.5">
+        {source.runs.map((run) => (
+          <li key={run.id}>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
+              <ClockTime value={run.started_at} />
+              <RunResult run={run} />
+              <span className="text-muted-foreground tabular-nums">
+                列表 {run.listed} 条，新通知 {run.new_count} 条，相关 {run.useful_count} 条
+              </span>
+            </p>
+            <NoticeFailures run={run} />
+          </li>
+        ))}
+      </ol>
+      <p className="text-xs text-muted-foreground tabular-nums">
+        模型 token：{tokens(source.usage.input_tokens, source.usage.output_tokens)}
+      </p>
+    </div>
+  );
+}
+
+function total(source: Source, count: "new_count" | "useful_count") {
+  return source.runs.reduce((sum, run) => sum + run[count], 0);
+}
+
+// Wide screens: a source's day in a row, its rounds in one more beneath when opened.
+function SourceRows({ source }: { source: Source }) {
+  const [open, setOpen] = useState(false);
+  const latest = source.runs.at(-1);
+  return (
+    <>
+      <Tr className={cn(open && "border-b-0")}>
+        <Td>
+          <span className="flex items-center gap-2">
+            <SourceName source={source} />
+          </span>
+        </Td>
+        <Td className="text-muted-foreground">
+          <Section source={source} />
+        </Td>
+        <Td center>{latest && <ClockTime value={latest.started_at} />}</Td>
+        <Td center>{latest && <RunResult run={latest} />}</Td>
+        <Td center>{total(source, "new_count")}</Td>
+        <Td center>{total(source, "useful_count")}</Td>
+        <Td center>
+          <button
+            type="button"
+            aria-expanded={open}
+            onClick={() => setOpen(!open)}
+            className={buttonVariants({ variant: "ghost", size: "xs" })}
+          >
+            {open ? "收起" : "详情"}
+          </button>
+        </Td>
+      </Tr>
+      {open && (
+        <tr className="border-b last:border-b-0">
+          <td colSpan={7} className="px-4 pb-3">
+            <Rounds source={source} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+// Phones: how its latest round went on the right, what the day found beneath its name, and the
+// rounds when opened.
 function SourceRow({ source }: { source: Source }) {
   const latest = source.runs.at(-1);
-  const found = source.runs.reduce((sum, run) => sum + run.new_count, 0);
-  const useful = source.runs.reduce((sum, run) => sum + run.useful_count, 0);
+  const found = total(source, "new_count");
   return (
     <Row
-      title={
-        <>
-          <span className="font-medium">
-            {source.school}
-            <span className="ml-1">{source.college}</span>
-          </span>
-          {source.failing && (
-            <span title="连续 2 轮未能读取列表页">
-              <Tag color="red">连续失败</Tag>
-            </span>
-          )}
-          {source.stale && (
-            <span title="旺季内 30 天没有新通知，可能是网站改版导致配置失效">
-              <Tag color="amber">长期无更新</Tag>
-            </span>
-          )}
-        </>
-      }
+      title={<SourceName source={source} />}
       meta={
         <>
-          <a
-            href={source.url}
-            target="_blank"
-            rel="nofollow noopener"
-            className="hover:text-primary"
-          >
-            {source.section || "通知栏目"}
-          </a>
+          <Section source={source} />
           <span className="tabular-nums">
-            {found === 0 ? "无新通知" : `新通知 ${found} 条，其中相关 ${useful} 条`}
+            {found === 0
+              ? "无新通知"
+              : `新通知 ${found} 条，其中相关 ${total(source, "useful_count")} 条`}
           </span>
         </>
       }
       side={latest && <RunResult run={latest} className="text-[13px]" />}
-      sideMeta={
-        latest && (
-          <>
-            <ClockTime value={latest.started_at} />
-            {source.runs.length > 1 && `，共 ${source.runs.length} 轮`}
-          </>
-        )
-      }
+      sideMeta={latest && <ClockTime value={latest.started_at} />}
     >
       <Reveal label="详情" className="mt-1.5">
-        <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-[13px]">
-          <ol className="space-y-1.5">
-            {source.runs.map((run) => (
-              <li key={run.id}>
-                <p className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-                  <ClockTime value={run.started_at} />
-                  <RunResult run={run} />
-                  <span className="text-muted-foreground tabular-nums">
-                    列表 {run.listed} 条，新通知 {run.new_count} 条，相关 {run.useful_count} 条
-                  </span>
-                </p>
-                <NoticeFailures run={run} />
-              </li>
-            ))}
-          </ol>
-          <p className="text-xs text-muted-foreground tabular-nums">
-            模型 token：{tokens(source.usage.input_tokens, source.usage.output_tokens)}
-          </p>
-        </div>
+        <Rounds source={source} />
       </Reveal>
     </Row>
   );

@@ -11,8 +11,8 @@ import {
   type Edit,
   type EditField,
 } from "~/components/program-edit";
-import { ApplyDeadline, ApplyStart, Countdown, Missing } from "~/components/program";
-import { KindTag, RoleTag, StatusTag, Tag } from "~/components/tags";
+import { ApplyDeadline, ApplyStart, Missing, ProgramStatus } from "~/components/program";
+import { KindTag, RoleTag, Tag } from "~/components/tags";
 import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { Reveal } from "~/components/ui/reveal";
@@ -21,7 +21,7 @@ import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { DEGREES, fieldLabel, MODES } from "../fields.ts";
 import { editValues, FormError } from "../program-edit.server.ts";
 import type { loader as rootLoader } from "../root.tsx";
-import { beijingYear, formatApply, formatWindow, statusOf, useNow } from "../time.ts";
+import { beijingYear, formatApply, formatWindow, useNow } from "../time.ts";
 import type { Route } from "./+types/program-detail.ts";
 
 type ProgramApi = ReturnType<typeof createApi>["programs"][":id"];
@@ -170,15 +170,7 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
         items={[
           { label: "报名开始", value: <ApplyStart apply={applyValue} thisYear={thisYear} /> },
           { label: "报名截止", value: <ApplyDeadline apply={applyValue} thisYear={thisYear} /> },
-          {
-            label: "报名状态",
-            value: (
-              <span className="flex flex-wrap items-center gap-2">
-                <StatusTag status={statusOf(program, now)} />
-                <Countdown program={program} now={now} />
-              </span>
-            ),
-          },
+          { label: "报名状态", value: <ProgramStatus program={program} now={now} /> },
           {
             label: "活动时间",
             value: event ? (

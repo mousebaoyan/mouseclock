@@ -21,6 +21,8 @@ import { Button, buttonVariants } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Select } from "~/components/ui/select";
 import { List, Row } from "~/components/list";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
+import { cn } from "~/cn";
 import { beijingDate } from "~/time";
 import type { Route } from "./+types/admin-sources.ts";
 
@@ -230,62 +232,77 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
             没有符合条件的来源
           </p>
         ) : (
-          <List className="rounded-none border-0 shadow-none">
-            {sources.items.map((s) => (
-              <Row
-                key={s.id}
-                selected={source?.id === s.id}
-                title={
-                  <>
-                    <span className="font-medium">
-                      {s.school_name}
-                      <span className="ml-1">{s.college_name}</span>
-                    </span>
-                    {s.unavailable_reason ? (
-                      <span title={s.unavailable_reason}>
-                        <Tag color="amber">暂停抓取</Tag>
+          <>
+            <Table bare className="max-lg:hidden">
+              <thead>
+                <tr>
+                  <Th>学院</Th>
+                  <Th>通知栏目</Th>
+                  <Th>最近抓取</Th>
+                  <Th>结果</Th>
+                  <Th>
+                    <span className="sr-only">操作</span>
+                  </Th>
+                </tr>
+              </thead>
+              <tbody>
+                {sources.items.map((s) => (
+                  <Tr key={s.id} className={cn(source?.id === s.id && "bg-primary-soft")}>
+                    <Td>
+                      <span className="flex items-center gap-2">
+                        <SourceName source={s} />
                       </span>
-                    ) : null}
-                    {s.browser && <Tag color="gray">浏览器渲染</Tag>}
-                  </>
-                }
-                meta={
-                  <a
-                    href={s.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    title={s.url}
-                    className="max-w-full truncate hover:text-primary"
-                  >
-                    {s.section || "未填写栏目名称"}　{s.url}
-                  </a>
-                }
-                side={
-                  s.last_run ? (
-                    <Link
-                      to={`/crawl?date=${beijingDate(s.last_run.started_at)}&source_id=${s.id}`}
-                      className="hover:opacity-80"
+                    </Td>
+                    <Td className="max-w-80">
+                      <a
+                        href={s.url}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={s.url}
+                        className="block truncate text-muted-foreground hover:text-primary"
+                      >
+                        {s.section || s.url}
+                      </a>
+                    </Td>
+                    <Td center>{s.last_run && <DateTime value={s.last_run.finished_at} />}</Td>
+                    <Td center>
+                      <LastRun source={s} />
+                    </Td>
+                    <Td center>
+                      <EditLink source={s} />
+                    </Td>
+                  </Tr>
+                ))}
+              </tbody>
+            </Table>
+            <List className="rounded-none border-0 shadow-none lg:hidden">
+              {sources.items.map((s) => (
+                <Row
+                  key={s.id}
+                  selected={source?.id === s.id}
+                  title={<SourceName source={s} />}
+                  meta={
+                    <a
+                      href={s.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={s.url}
+                      className="max-w-full truncate hover:text-primary"
                     >
-                      <RunResult run={s.last_run} className="text-[13px]" />
-                    </Link>
-                  ) : (
-                    <span className="text-[13px] text-subtle-foreground">尚未抓取</span>
-                  )
-                }
-                sideMeta={
-                  <span className="flex items-center gap-2">
-                    {s.last_run && <DateTime value={s.last_run.finished_at} />}
-                    <Link
-                      to={`?edit=${s.id}&college_id=${s.college_id}#source-form`}
-                      className={buttonVariants({ variant: "outline", size: "xs" })}
-                    >
-                      编辑
-                    </Link>
-                  </span>
-                }
-              />
-            ))}
-          </List>
+                      {s.section || s.url}
+                    </a>
+                  }
+                  side={<LastRun source={s} className="text-[13px]" />}
+                  sideMeta={
+                    <span className="flex items-center gap-2">
+                      {s.last_run && <DateTime value={s.last_run.finished_at} />}
+                      <EditLink source={s} />
+                    </span>
+                  }
+                />
+              ))}
+            </List>
+          </>
         )}
         <div className="px-4 pb-4 empty:hidden sm:px-5">
           <Pagination total={sources.total} page={sources.page} perPage={sources.per_page} />
@@ -444,6 +461,51 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
         </Panel>
       </div>
     </Page>
+  );
+}
+
+type ListedSource = SourcesPage["items"][number];
+
+function SourceName({ source }: { source: ListedSource }) {
+  return (
+    <>
+      <span className="font-medium whitespace-nowrap">
+        {source.school_name}
+        <span className="ml-1">{source.college_name}</span>
+      </span>
+      {source.unavailable_reason && (
+        <span title={source.unavailable_reason}>
+          <Tag color="amber">暂停抓取</Tag>
+        </span>
+      )}
+      {source.browser && <Tag color="gray">浏览器渲染</Tag>}
+    </>
+  );
+}
+
+// How its latest round went, linking to that day of the crawl board.
+function LastRun({ source, className }: { source: ListedSource; className?: string }) {
+  if (!source.last_run) {
+    return <span className={cn("text-subtle-foreground", className)}>尚未抓取</span>;
+  }
+  return (
+    <Link
+      to={`/crawl?date=${beijingDate(source.last_run.started_at)}&source_id=${source.id}`}
+      className="hover:opacity-80"
+    >
+      <RunResult run={source.last_run} className={className} />
+    </Link>
+  );
+}
+
+function EditLink({ source }: { source: ListedSource }) {
+  return (
+    <Link
+      to={`?edit=${source.id}&college_id=${source.college_id}#source-form`}
+      className={buttonVariants({ variant: "outline", size: "xs" })}
+    >
+      编辑
+    </Link>
   );
 }
 

@@ -1,13 +1,14 @@
 import type { InferResponseType } from "hono/client";
 import { Link } from "react-router";
 import { ExternalLink } from "~/components/icons";
-import { Group, List, Row } from "~/components/list";
+import { List, Row } from "~/components/list";
 import { Empty, Page } from "~/components/page";
 import { buttonVariants } from "~/components/ui/button";
-import { ApplyDeadline, ApplyStart, Countdown } from "~/components/program";
-import { COLLEGE_KINDS, KindTag, StatusTag, Tag, TierTags } from "~/components/tags";
+import { ApplyDeadline, ApplyStart, ProgramStatus } from "~/components/program";
+import { COLLEGE_KINDS, KindTag, Tag, TierTags } from "~/components/tags";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { beijingYear, statusOf, useNow } from "../time.ts";
+import { beijingYear, useNow } from "../time.ts";
 import type { Route } from "./+types/college-detail.ts";
 
 type CollegeDetail = InferResponseType<
@@ -59,49 +60,86 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
         </a>
       ))}
     >
-      <section aria-label="历年项目" className="space-y-6">
-        {college.programs.length === 0 ? (
-          <Empty>该学院尚无收录的项目</Empty>
-        ) : (
-          college.programs.map((group) => (
-            <Group
-              key={group.cohort}
-              label={<p className="text-lg font-semibold tabular-nums">{group.cohort} 届</p>}
-            >
-              <List>
-                {group.programs.map((program) => (
-                  <Row
-                    key={program.id}
-                    title={
-                      <>
-                        <Link
-                          to={`/programs/${program.id}`}
-                          className="text-[15px] font-medium hover:text-primary"
-                        >
-                          {program.name}
-                        </Link>
-                        <KindTag kind={program.kind} />
-                      </>
-                    }
-                    meta={
-                      <>
-                        <span>
-                          报名开始 <ApplyStart apply={program.apply} thisYear={thisYear} />
-                        </span>
-                        <span>
-                          报名截止 <ApplyDeadline apply={program.apply} thisYear={thisYear} />
-                        </span>
-                      </>
-                    }
-                    side={<StatusTag status={statusOf(program, now)} />}
-                    sideMeta={<Countdown program={program} now={now} />}
-                  />
-                ))}
-              </List>
-            </Group>
-          ))
-        )}
-      </section>
+      {college.programs.length === 0 ? (
+        <Empty>该学院尚无收录的项目</Empty>
+      ) : (
+        <section aria-label="历年项目">
+          <Table className="max-lg:hidden">
+            <thead>
+              <tr>
+                <Th className="w-28">届</Th>
+                <Th>项目</Th>
+                <Th>类型</Th>
+                <Th>报名开始</Th>
+                <Th>报名截止</Th>
+                <Th>状态</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {college.programs.map((group) =>
+                group.programs.map((program, i) => (
+                  <Tr key={program.id}>
+                    {i === 0 && (
+                      <Td center rowSpan={group.programs.length} className="border-r font-medium">
+                        {group.cohort} 届
+                      </Td>
+                    )}
+                    <Td>
+                      <Link
+                        to={`/programs/${program.id}`}
+                        className="font-medium text-pretty hover:text-primary"
+                      >
+                        {program.name}
+                      </Link>
+                    </Td>
+                    <Td center>
+                      <KindTag kind={program.kind} />
+                    </Td>
+                    <Td center>
+                      <ApplyStart apply={program.apply} thisYear={thisYear} />
+                    </Td>
+                    <Td center>
+                      <ApplyDeadline apply={program.apply} thisYear={thisYear} />
+                    </Td>
+                    <Td center>
+                      <ProgramStatus program={program} now={now} />
+                    </Td>
+                  </Tr>
+                )),
+              )}
+            </tbody>
+          </Table>
+          <List className="lg:hidden">
+            {college.programs.map((group) =>
+              group.programs.map((program) => (
+                <Row
+                  key={program.id}
+                  title={
+                    <>
+                      <Link
+                        to={`/programs/${program.id}`}
+                        className="font-medium hover:text-primary"
+                      >
+                        {program.name}
+                      </Link>
+                      <KindTag kind={program.kind} />
+                    </>
+                  }
+                  meta={
+                    <>
+                      <span>{group.cohort} 届</span>
+                      <span className="tabular-nums">
+                        <ApplyDeadline apply={program.apply} thisYear={thisYear} /> 截止
+                      </span>
+                    </>
+                  }
+                  side={<ProgramStatus program={program} now={now} />}
+                />
+              )),
+            )}
+          </List>
+        </section>
+      )}
     </Page>
   );
 }

@@ -1,12 +1,12 @@
-import { cn } from "~/cn";
+import { STATUS_COLORS, Tag } from "./tags.tsx";
 import type { ApplyValue } from "../../server/modules/programs/schemas.ts";
-import { countdown, formatTime, statusOf } from "../time.ts";
+import { countdown, formatTime, STATUS_LABELS, statusOf } from "../time.ts";
 
-// A program's application dates and countdown, the same in every list of programs.
+// A program's application dates and status, the same wherever programs are listed.
 
 type Instants = { apply_start: number | null; apply_deadline: number | null };
 
-// Within this long of the deadline the countdown turns red: reminders go out three days before
+// Within this long of the deadline the status turns red: reminders go out three days before
 // (design §11).
 const SOON_SECONDS = 3 * 86_400;
 
@@ -32,21 +32,18 @@ export function Missing() {
   return <span className="text-subtle-foreground">未注明</span>;
 }
 
-export function Countdown({ program, now }: { program: Instants; now: number }) {
-  const left = countdown(program, now);
-  if (!left) return null;
+// A program's state in one tag: how long is left while it takes applications, or until it does,
+// red within three days of the deadline; otherwise what the state is.
+export function ProgramStatus({ program, now }: { program: Instants; now: number }) {
+  const status = statusOf(program, now);
+  if (!status) return <Tag color="gray">时间未注明</Tag>;
   const soon =
-    statusOf(program, now) === "open" &&
+    status === "open" &&
     program.apply_deadline !== null &&
     program.apply_deadline - now < SOON_SECONDS;
   return (
-    <span
-      className={cn(
-        "text-xs tabular-nums",
-        soon ? "font-medium text-destructive" : "text-muted-foreground",
-      )}
-    >
-      {left}
-    </span>
+    <Tag color={soon ? "red" : STATUS_COLORS[status]}>
+      {countdown(program, now) ?? STATUS_LABELS[status]}
+    </Tag>
   );
 }

@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { cn } from "~/cn";
 
-// Lists of the site are grouped, as a diary is by day: the group's name stands to the left of
-// its items on wide screens and above them on narrow ones, so what belongs together reads at a
-// glance instead of as rows of a spreadsheet.
+// Lists on phones, where the tables of wide screens (ui/table.tsx) would not fit, and lists that
+// are no table anywhere. A group's name stands to the left of its items on wide screens and
+// above them on narrow ones.
 
 export function Group({ label, children }: { label: ReactNode; children: ReactNode }) {
   return (

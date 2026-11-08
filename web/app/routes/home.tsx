@@ -1,33 +1,27 @@
 import { hc, type InferResponseType } from "hono/client";
 import { data, Link, useLocation, useRouteLoaderData } from "react-router";
-import { cn } from "~/cn";
 import { ExternalLink } from "~/components/icons";
-import { Group, List, Row } from "~/components/list";
+import { List, Row } from "~/components/list";
 import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/components/filters";
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
-import { KindTag, PROGRAM_KINDS, StatusTag, TopTier } from "~/components/tags";
+import { ApplyDeadline, ApplyStart, Missing, ProgramStatus } from "~/components/program";
+import { KindTag, PROGRAM_KINDS, TopTier } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
 import { Segmented } from "~/components/ui/segmented";
 import { Select } from "~/components/ui/select";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
 import type { ApiType } from "../../server/app.ts";
 import { SITE_DESCRIPTION, SITE_NAME } from "../../server/platform/site.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { cohortOf, tablePage, type Filters } from "../program-table.ts";
 import type { loader as rootLoader } from "../root.tsx";
-import {
-  beijingDate,
-  currentCohort,
-  formatTime,
-  STATUS_LABELS,
-  statusOf,
-  useNow,
-} from "../time.ts";
+import { currentCohort, formatTime, STATUS_LABELS, useNow } from "../time.ts";
 import type { Route } from "./+types/home.ts";
 
-type Table = InferResponseType<ReturnType<typeof createApi>["programs"]["$get"], 200>;
-type Program = Table["programs"][number];
+type TableData = InferResponseType<ReturnType<typeof createApi>["programs"]["$get"], 200>;
+type Program = TableData["programs"][number];
 
 export function meta() {
   return [{ title: SITE_NAME }, { name: "description", content: SITE_DESCRIPTION }];
@@ -38,7 +32,7 @@ export function meta() {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const params = new URL(request.url).searchParams;
   const date = new Date();
-  const table = await readApi<Table>(
+  const table = await readApi<TableData>(
     await context.get(apiContext).programs.$get({ query: { cohort: cohortOf(params, date) } }),
   );
   return tablePage(table, params, date);
@@ -46,7 +40,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 
 // After that the browser keeps the whole cohort, and filters, sorts and pages it itself. It asks
 // again for another cohort or after a while; the server answers 304 while nothing changed.
-let kept: { cohort: string; at: number; table: Table } | null = null;
+let kept: { cohort: string; at: number; table: TableData } | null = null;
 const KEEP_MS = 5 * 60_000;
 
 export async function clientLoader({ request }: Route.ClientLoaderArgs) {
@@ -73,7 +67,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <Empty>{preview ? "目前没有即将截止的项目" : "没有符合条件的项目"}</Empty>
       ) : (
         <div>
-          <Agenda
+          <ProgramTable
+            programs={programs}
+            sort={filters.sort}
+            now={now}
+            thisYear={loaderData.thisYear}
+          />
+          <ProgramList
             programs={programs}
             sort={filters.sort}
             now={now}
@@ -219,165 +219,119 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
   );
 }
 
-// The programs grouped by the day their applications close, as the notice wrote it: a deadline
-// given only as a month, such as 6月下旬, is a group of its own, since the page never shows the
-// instant worked out for sorting (design §8.2). Sorted by publication, they group by that day.
-type Day = { key: string; label: string; weekday: string | null; days: number | null };
-
-const weekdays = new Intl.DateTimeFormat("zh-CN", { weekday: "short", timeZone: "UTC" });
-
-function dayOf(program: Program, sort: Filters["sort"], now: number, thisYear: number): Day {
-  if (sort === "published") {
-    const date = program.notice.published_on;
-    return date
-      ? { key: date, label: `${formatTime({ date }, thisYear)} 发布`, weekday: null, days: null }
-      : { key: "", label: "发布日期未注明", weekday: null, days: null };
-  }
-  const end = program.apply?.end;
-  if (!end) return { key: "", label: "截止时间未注明", weekday: null, days: null };
-  if ("month" in end) {
-    return {
-      key: end.month + (end.part ?? ""),
-      label: formatTime(end, thisYear),
-      weekday: null,
-      days: null,
-    };
-  }
-  if ("mark" in end && end.mark) {
-    return {
-      key: end.date + end.mark,
-      label: formatTime(end, thisYear),
-      weekday: null,
-      days: null,
-    };
-  }
-  const at = Date.parse(end.date);
-  return {
-    key: end.date,
-    label: formatTime({ date: end.date }, thisYear),
-    weekday: weekdays.format(at),
-    days: Math.round((at - Date.parse(beijingDate(now))) / 86_400_000),
-  };
-}
-
-function groupsOf(programs: Program[], sort: Filters["sort"], now: number, thisYear: number) {
-  const groups: { day: Day; programs: Program[] }[] = [];
-  for (const program of programs) {
-    const day = dayOf(program, sort, now, thisYear);
-    const last = groups.at(-1);
-    if (last?.day.key === day.key) last.programs.push(program);
-    else groups.push({ day, programs: [program] });
-  }
-  return groups;
-}
-
-// How far the day is from today, by the calendar; the countdown on a program's page is by the
-// hour instead.
-const RELATIVE: Partial<Record<number, string>> = { [-1]: "昨天", 0: "今天", 1: "明天", 2: "后天" };
-
-function DayLabel({ day }: { day: Day }) {
-  const soon = day.days !== null && day.days >= 0 && day.days <= 3;
+// Wide screens: one program to a row and one thing to a cell, so each column reads straight
+// down. Sorted by publication, the date it was published comes in as well.
+function ProgramTable({ programs, sort, now, thisYear }: ListProps) {
   return (
-    <div className="flex items-baseline justify-between gap-3 lg:block">
-      <p className="flex items-baseline gap-2 lg:block">
-        <span className="text-lg font-semibold tracking-tight tabular-nums">{day.label}</span>
-        {day.weekday && (
-          <span className="text-sm text-muted-foreground lg:mt-0.5 lg:block">{day.weekday}</span>
-        )}
-      </p>
-      {day.days !== null && (
-        <p
-          className={cn(
-            "text-[13px] lg:mt-1.5",
-            soon ? "font-medium text-destructive" : "text-muted-foreground",
-          )}
-        >
-          {RELATIVE[day.days] ?? (day.days < 0 ? `${-day.days} 天前` : `${day.days} 天后`)}
-        </p>
-      )}
-    </div>
+    <Table className="max-lg:hidden">
+      <thead>
+        <tr>
+          <Th>学校</Th>
+          <Th>学院</Th>
+          <Th>项目</Th>
+          <Th>类型</Th>
+          {sort === "published" && <Th>发布日期</Th>}
+          <Th>报名开始</Th>
+          <Th>报名截止</Th>
+          <Th>状态</Th>
+          <Th>原文</Th>
+        </tr>
+      </thead>
+      <tbody>
+        {programs.map((program) => (
+          <Tr key={program.id}>
+            <Td>
+              <span className="flex items-center gap-2 whitespace-nowrap">
+                <span className="font-medium">{program.school.name}</span>
+                <TopTier tiers={program.school.tiers} />
+              </span>
+            </Td>
+            <Td>
+              <Link to={`/colleges/${program.college.id}`} className="hover:text-primary">
+                {program.college.name}
+              </Link>
+            </Td>
+            <Td className="text-center">
+              <Link
+                to={`/programs/${program.id}`}
+                className="font-medium text-pretty hover:text-primary"
+              >
+                {program.name}
+              </Link>
+            </Td>
+            <Td center>
+              <KindTag kind={program.kind} />
+            </Td>
+            {sort === "published" && (
+              <Td center>
+                {program.notice.published_on ? (
+                  formatTime({ date: program.notice.published_on }, thisYear)
+                ) : (
+                  <Missing />
+                )}
+              </Td>
+            )}
+            <Td center>
+              <ApplyStart apply={program.apply} thisYear={thisYear} />
+            </Td>
+            <Td center>
+              <ApplyDeadline apply={program.apply} thisYear={thisYear} />
+            </Td>
+            <Td center>
+              <ProgramStatus program={program} now={now} />
+            </Td>
+            <Td center>
+              <a
+                href={program.notice.url}
+                target="_blank"
+                rel="nofollow noopener"
+                aria-label={`${program.name}的通知原文`}
+                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-primary"
+              >
+                <ExternalLink />
+              </a>
+            </Td>
+          </Tr>
+        ))}
+      </tbody>
+    </Table>
   );
 }
 
-// Under a deadline day: when on that day, or when the program opens if it hasn't yet.
-function When({
-  program,
-  sort,
-  thisYear,
-  now,
-}: {
-  program: Program;
-  sort: Filters["sort"];
-  thisYear: number;
-  now: number;
-}) {
-  const { start, end, rolling } = program.apply ?? {};
-  if (statusOf(program, now) === "upcoming" && start) return `${formatTime(start, thisYear)} 开始`;
-  if (sort === "published")
-    return end ? `${formatTime(end, thisYear)} 截止` : rolling ? "额满即止" : null;
-  if (end && "time" in end) return rolling ? `${end.time} 截止或额满即止` : `${end.time} 截止`;
-  return rolling ? "额满即止" : null;
-}
-
-function Agenda({
-  programs,
-  sort,
-  now,
-  thisYear,
-}: {
-  programs: Program[];
-  sort: Filters["sort"];
-  now: number;
-  thisYear: number;
-}) {
+// Phones: the same programs as a list, two lines each.
+function ProgramList({ programs, now, thisYear }: ListProps) {
   return (
-    <div className="space-y-6">
-      {groupsOf(programs, sort, now, thisYear).map((group) => (
-        <Group key={group.day.key} label={<DayLabel day={group.day} />}>
-          <List>
-            {group.programs.map((program) => (
-              <Row
-                key={program.id}
-                title={
-                  <>
-                    <Link
-                      to={`/programs/${program.id}`}
-                      className="text-[15px] font-medium text-pretty hover:text-primary"
-                    >
-                      {program.name}
-                    </Link>
-                    <KindTag kind={program.kind} />
-                  </>
-                }
-                meta={
-                  <>
-                    <span className="text-foreground/85">{program.school.name}</span>
-                    <Link to={`/colleges/${program.college.id}`} className="hover:text-primary">
-                      {program.college.name}
-                    </Link>
-                    <span>{program.college.region}</span>
-                    <TopTier tiers={program.school.tiers} />
-                    <a
-                      href={program.notice.url}
-                      target="_blank"
-                      rel="nofollow noopener"
-                      className="inline-flex items-center gap-0.5 hover:text-primary"
-                    >
-                      原文
-                      <ExternalLink className="size-3" />
-                    </a>
-                  </>
-                }
-                side={
-                  // Most of the list is open; only the others say so.
-                  statusOf(program, now) !== "open" && <StatusTag status={statusOf(program, now)} />
-                }
-                sideMeta={<When program={program} sort={sort} thisYear={thisYear} now={now} />}
-              />
-            ))}
-          </List>
-        </Group>
+    <List className="lg:hidden">
+      {programs.map((program) => (
+        <Row
+          key={program.id}
+          title={
+            <>
+              <Link to={`/programs/${program.id}`} className="font-medium hover:text-primary">
+                {program.name}
+              </Link>
+              <KindTag kind={program.kind} />
+            </>
+          }
+          meta={
+            <>
+              <span className="text-foreground/85">{program.school.name}</span>
+              <Link to={`/colleges/${program.college.id}`} className="hover:text-primary">
+                {program.college.name}
+              </Link>
+              <TopTier tiers={program.school.tiers} />
+            </>
+          }
+          side={<ProgramStatus program={program} now={now} />}
+          sideMeta={
+            <span className="tabular-nums">
+              <ApplyDeadline apply={program.apply} thisYear={thisYear} /> 截止
+            </span>
+          }
+        />
       ))}
-    </div>
+    </List>
   );
 }
+
+type ListProps = { programs: Program[]; sort: Filters["sort"]; now: number; thisYear: number };
