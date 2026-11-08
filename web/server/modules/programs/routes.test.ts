@@ -229,7 +229,35 @@ test("a member's browser keeps the table until a version or an admin changes som
     .execute();
   expect((await ask(next)).status).toBe(200);
 
+  const other = await app.request("/api/v1/programs?cohort=2028", {
+    headers: { ...member.headers, "if-none-match": next },
+  });
+  expect(other.status).toBe(200);
+
   const preview = await app.request(url, { headers: { "if-none-match": etag } });
   expect(preview.status).toBe(200);
   expect(preview.headers.get("etag")).toBeNull();
+});
+
+test("a change committed after a later one still changes the tag", async () => {
+  const seeded = await college();
+  await program(seeded, { apply: until("2026-06-01") });
+  const url = "/api/v1/programs?cohort=2027";
+  const { id: userId } = await db.selectFrom("users").select("id").executeTakeFirstOrThrow();
+  const entry = { user_id: userId, action: "update_school", target_type: "school", target_id: 1 };
+  // The first transaction takes the lower id, then waits while a second one commits.
+  const held = Promise.withResolvers<void>();
+  const taken = Promise.withResolvers<void>();
+  const slow = db.transaction().execute(async (trx) => {
+    await trx.insertInto("audit_log").values(entry).execute();
+    taken.resolve();
+    await held.promise;
+  });
+  await taken.promise;
+  await db.insertInto("audit_log").values(entry).execute();
+  const etag = (await app.request(url, member)).headers.get("etag") ?? "";
+  held.resolve();
+  await slow;
+  const after = await app.request(url, { headers: { ...member.headers, "if-none-match": etag } });
+  expect(after.status).toBe(200);
 });

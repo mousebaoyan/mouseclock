@@ -13,7 +13,7 @@ import {
   TierTags,
   TIERS,
 } from "~/components/tags";
-import { buttonVariants } from "~/components/ui/button";
+import { Button, buttonVariants } from "~/components/ui/button";
 import type { ApiType } from "../../server/app.ts";
 import { PER_PAGE } from "../../server/platform/paging.ts";
 import { SITE_DESCRIPTION, SITE_NAME } from "../../server/platform/site.ts";
@@ -165,11 +165,13 @@ function FilterForm({
   // address changes some other way, such as a page link or the nav's link back to the table, the
   // form starts again from the new address.
   const [seen, setSeen] = useState(search);
-  const [applied, setApplied] = useState(search);
+  // The address the form is navigating to, until it arrives.
+  const [applying, setApplying] = useState<string | null>(null);
   const [formKey, setFormKey] = useState(search);
   if (search !== seen) {
     setSeen(search);
-    if (search !== applied) setFormKey(search);
+    if (search === applying) setApplying(null);
+    else setFormKey(search);
   }
   const opened = new URLSearchParams(formKey);
   const filters = readFilters(opened);
@@ -181,7 +183,8 @@ function FilterForm({
       if (typeof value === "string" && value !== "") params.append(name, value);
     }
     const next = params.size > 0 ? `?${params}` : "";
-    setApplied(next);
+    if (next === search) return;
+    setApplying(next);
     void navigate({ search: next }, { replace: true, preventScrollReset: true });
   }
   // The address with a filter set to `values`, back on the first page.
@@ -292,6 +295,10 @@ function FilterForm({
             <option key={direction}>{direction}</option>
           ))}
         </select>
+        {/* Changes apply as they are made; without scripts, they do on pressing this. */}
+        <Button type="submit" variant="outline">
+          筛选
+        </Button>
       </div>
       {/* Set by the links above and the pages below, and kept when the form changes. */}
       {filters.status && <input type="hidden" name="status" value={filters.status} />}

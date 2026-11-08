@@ -87,13 +87,14 @@ export async function listPrograms(cohort: number, preview: boolean) {
 
 // What the table's data is as of. It changes only with a new version, an edit or revert, or what
 // admins do (reviews, deleting programs, editing schools and colleges), and each of those adds a
-// row to one of these tables.
+// row to one of these tables, which only grow. Counted rather than the highest id: transactions
+// can commit in another order than they took their ids.
 export async function tableVersion() {
   const { rows } = await sql<{ version: string }>`
     select concat(
-      (select coalesce(max(id), 0) from program_versions), '-',
-      (select coalesce(max(id), 0) from edits), '-',
-      (select coalesce(max(id), 0) from audit_log)
+      (select count(*) from program_versions), '-',
+      (select count(*) from edits), '-',
+      (select count(*) from audit_log)
     ) as version
   `.execute(db);
   return rows[0].version;

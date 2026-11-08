@@ -11,11 +11,13 @@ const STARTED = Date.now().toString(36);
 
 // A member's browser keeps the table and asks again with its ETag; while nothing changed, the
 // answer is an empty 304 (design §14). Previews change with the clock, as programs close, and
-// aren't tagged. The version is taken before the rows: if they change in between, the tag is
-// older than the data, and the next request downloads them again rather than keep stale ones.
+// aren't tagged; a request the route will turn down isn't either. The version is taken before the
+// rows: if they change in between, the tag is older than the data, and the next request downloads
+// them again rather than keep stale ones.
 const unlessUnchanged = createMiddleware<AppEnv>(async (c, next) => {
-  if (!can(c.var.viewer, "read")) return next();
-  const etag = `"${STARTED}-${await tableVersion()}"`;
+  const query = ProgramTableQuery.safeParse(c.req.query());
+  if (!query.success || !can(c.var.viewer, "read")) return next();
+  const etag = `"${STARTED}-${query.data.cohort}-${await tableVersion()}"`;
   c.header("ETag", etag);
   c.header("Cache-Control", "private, no-cache");
   if (c.req.header("if-none-match") === etag) return c.body(null, 304);

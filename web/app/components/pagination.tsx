@@ -17,7 +17,8 @@ export function Pagination({
   prefix?: string;
 }) {
   const [search] = useSearchParams();
-  if (total <= PER_PAGE[0]) return null;
+  // A short list needs no pages, unless the address asks for one past its end.
+  if (total <= PER_PAGE[0] && page === 1) return null;
   const pages = Math.ceil(total / perPage);
   function href(to: { page: number; perPage?: number }) {
     const params = new URLSearchParams(search);
