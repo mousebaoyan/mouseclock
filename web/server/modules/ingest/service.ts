@@ -19,7 +19,7 @@ const LEASE_MS = 2 * 3600_000;
 // Design §7.3: twice a day, every four hours in the busy months.
 const INTERVAL_MS = 12 * 3600_000;
 const BUSY_INTERVAL_MS = 4 * 3600_000;
-const BUSY_MONTHS = new Set([3, 4, 5, 6, 7, 8, 9, 12, 1]);
+export const BUSY_MONTHS = new Set([3, 4, 5, 6, 7, 8, 9, 12, 1]);
 // Notices of programs still open are fetched again once a day to catch changes (design §7.4),
 // in their source's round; those without a deadline, for this long after the program appeared.
 const RECHECK_MS = 24 * 3600_000;
@@ -30,6 +30,8 @@ const MAX_PROBES = 5;
 export type Failure =
   "timeout" | "unreachable" | "too_many_redirects" | "http_status" | "no_items" | "error";
 export type Usage = { model: string; input_tokens: number; output_tokens: number };
+export const PURPOSES = ["screening", "extraction", "probe"] as const;
+export type Purpose = (typeof PURPOSES)[number];
 export type ListedItem = { url: string; title: string; published_on?: string };
 
 export async function createCrawlerToken(name: string) {
@@ -95,7 +97,7 @@ async function assertSource(trx: Transaction<DB>, sourceId: number) {
 
 async function recordUsage(
   trx: Transaction<DB>,
-  purpose: "screening" | "extraction" | "probe",
+  purpose: Purpose,
   refs: { source_id?: number; snapshot_id?: number; probe_id?: number },
   usage: Usage[],
 ) {

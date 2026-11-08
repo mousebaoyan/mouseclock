@@ -61,7 +61,7 @@
 | | `POST /programs/{id}/resolve-dispute` | 复核争议，管理员 |
 | 求收录 | `GET`、`POST /inclusion-requests` | 列表、提交 |
 | | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回 |
-| 抓取看板 | `GET /crawl-runs?date=` | 某天各来源的结果和用量 |
+| 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
 | 我的 | `GET /me`、`PATCH /me/email-settings` | 自己的资料和邮件开关 |
 | | `GET`、`POST`、`DELETE /me/tokens` | 个人令牌，只认网页会话 |
 | 数据下载 | `GET /export` | 全部项目和字段，登录后可用 |

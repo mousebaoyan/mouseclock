@@ -17,8 +17,10 @@ import {
   linkClass,
   panelClass,
 } from "~/components/admin";
+import { RunResult } from "~/components/crawl";
 import { Pagination } from "~/components/pagination";
 import { Button, buttonVariants } from "~/components/ui/button";
+import { beijingDate } from "~/time";
 import type { Route } from "./+types/admin-sources.ts";
 
 export async function loader({ request, context }: Route.LoaderArgs): Promise<{
@@ -204,21 +206,16 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                   </td>
                   <td className="py-4 pr-4 align-top">
                     {s.last_run ? (
-                      <div>
-                        <CrawlTime value={s.last_run.finished_at} />
-                        <span
-                          className={`mt-1 block ${s.last_run.failure ? "text-destructive" : s.last_run.notice_failure_count > 0 ? "text-warning" : "text-success"}`}
+                      <div className="space-y-1">
+                        <Link
+                          to={`/crawl?date=${beijingDate(s.last_run.started_at)}&source_id=${s.id}`}
+                          className={`${linkClass} block`}
                         >
-                          {s.last_run.failure
-                            ? `列表失败：${s.last_run.detail || s.last_run.failure}`
-                            : s.last_run.notice_failure_count > 0
-                              ? `列表成功，${s.last_run.notice_failure_count} 条通知未抓成`
-                              : "成功"}
-                        </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          列表 {s.last_run.listed} · 新增 {s.last_run.new_count} · 有用{" "}
-                          {s.last_run.useful_count}
-                        </span>
+                          <CrawlTime value={s.last_run.finished_at} />
+                        </Link>
+                        <p>
+                          <RunResult run={s.last_run} />
+                        </p>
                       </div>
                     ) : (
                       <span className="text-muted-foreground">还没抓取</span>
