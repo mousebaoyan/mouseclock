@@ -1,5 +1,10 @@
 import { data, Form, Link, redirect, useNavigation } from "react-router";
-import { CollegeInput, SchoolInput } from "../../server/modules/sources/schemas.ts";
+import {
+  CollegeInput,
+  LOGO_MAX_BYTES,
+  LOGO_TYPES,
+  SchoolInput,
+} from "../../server/modules/sources/schemas.ts";
 import { apiContext, readApi } from "../api.server.ts";
 import {
   formText,
@@ -11,6 +16,7 @@ import {
 import { Field, FormMessage } from "~/components/form";
 import { Search } from "~/components/icons";
 import { Page, Panel } from "~/components/page";
+import { SchoolLogo } from "~/components/school-logo";
 import { Pagination } from "~/components/pagination";
 import { COLLEGE_KINDS, TierTag } from "~/components/tags";
 import { TIERS } from "~/tiers";
@@ -97,6 +103,25 @@ export async function action({ request, context }: Route.ActionArgs) {
     region: formText(form, "region"),
     directions: formText(form, "directions"),
   };
+  // An emblem goes on its own, once one is picked.
+  if (intent === "logo") {
+    const file = form.get("logo");
+    if (!(file instanceof File) || file.size === 0)
+      return data({ error: "请选择校徽图片", draft }, { status: 400 });
+    const res = await api.admin.schools[":id"].logo.$put(
+      { param: { id } },
+      { init: { body: file } },
+    );
+    if (res.status !== 204)
+      return data({ error: (await res.json()).error.message, draft }, { status: res.status });
+    return redirect(`/admin/colleges?school_id=${id}&edit_school=1&saved=1`);
+  }
+  if (intent === "remove_logo") {
+    const res = await api.admin.schools[":id"].logo.$delete({ param: { id } });
+    if (res.status !== 204)
+      return data({ error: (await res.json()).error.message, draft }, { status: res.status });
+    return redirect(`/admin/colleges?school_id=${id}&edit_school=1&saved=1`);
+  }
   if (intent === "school") {
     const school = SchoolInput.safeParse({
       name: draft.name,
@@ -251,7 +276,8 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                     aria-current={school?.id === s.id ? "true" : undefined}
                     className="flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-2.5 hover:bg-muted/50 aria-[current]:border-primary aria-[current]:bg-primary-soft"
                   >
-                    <span className="min-w-0">
+                    <SchoolLogo school={s} size="sm" />
+                    <span className="min-w-0 flex-1">
                       <span className="block font-medium">{s.name}</span>
                       {s.short_names.length > 0 && (
                         <span className="block text-xs text-muted-foreground">
@@ -276,12 +302,16 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
         </Panel>
         <div className="min-w-0 space-y-5">
           {!school || editSchool ? (
-            schoolForm
+            <>
+              {schoolForm}
+              {editSchool && school && <LogoPanel school={school} busy={busy} />}
+            </>
           ) : (
             <>
               <Panel
                 title={
-                  <span className="flex flex-wrap items-center gap-2">
+                  <span className="flex flex-wrap items-center gap-2.5">
+                    <SchoolLogo school={school} size="sm" />
                     {school.name}
                     <TierTag tier={school.tier} />
                   </span>
@@ -455,5 +485,55 @@ function CollegeActions({ school, college }: { school: number; college: number }
         来源
       </Link>
     </span>
+  );
+}
+
+// A saved school's emblem: picking a file sends it at once, and it shows here and on every page.
+function LogoPanel({ school, busy }: { school: SchoolDetail; busy: boolean }) {
+  return (
+    <Panel title="校徽">
+      <div className="flex flex-wrap items-center gap-4">
+        <SchoolLogo school={school} size="lg" />
+        <div className="min-w-0 space-y-2.5">
+          <p className="text-[13px] text-muted-foreground">
+            PNG、JPEG、WebP 或 SVG 图片，不超过 {LOGO_MAX_BYTES / 1024}{" "}
+            KB；方形、背景透明或白色的显示效果最好
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <Form method="post" encType="multipart/form-data">
+              <input type="hidden" name="intent" value="logo" />
+              <input type="hidden" name="id" value={school.id} />
+              <label
+                className={buttonVariants({
+                  variant: "outline",
+                  size: "sm",
+                  className:
+                    "cursor-pointer has-focus-visible:ring-3 has-focus-visible:ring-ring/30",
+                })}
+              >
+                {school.logo ? "更换校徽" : "上传校徽"}
+                <input
+                  type="file"
+                  name="logo"
+                  accept={LOGO_TYPES.join(",")}
+                  disabled={busy}
+                  onChange={(event) => event.currentTarget.form?.requestSubmit()}
+                  className="sr-only"
+                />
+              </label>
+            </Form>
+            {school.logo && (
+              <Form method="post">
+                <input type="hidden" name="intent" value="remove_logo" />
+                <input type="hidden" name="id" value={school.id} />
+                <Button variant="ghost" size="sm" disabled={busy}>
+                  移除校徽
+                </Button>
+              </Form>
+            )}
+          </div>
+        </div>
+      </div>
+    </Panel>
   );
 }

@@ -8,6 +8,7 @@ import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
 import type { Kind } from "../programs/schemas.ts";
 import { applyOf } from "../programs/service.ts";
+import { logoOf } from "./logos.ts";
 import {
   type SchoolInput,
   type SchoolPatch,
@@ -22,6 +23,7 @@ import {
   type Failure,
   type PublicSchool,
   type PublicProgramCohort,
+  type LogoType,
 } from "./schemas.ts";
 
 export type Actor = { user_id: number; via: "web" | "seed" };
@@ -41,12 +43,63 @@ async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
   }
 }
 
-const SCHOOL = ["id", "name", "short_names", "tier"] as const;
+// A school as admins see it, from a query on `schools`.
+const SCHOOL = ["id", "name", "short_names", "tier", logoOf("schools.id").as("logo")] as const;
 
 // Whether the school's name or one of its short names has `q` in it.
 function schoolNamed(q: string) {
   const pattern = `%${q}%`;
   return sql<boolean>`(schools.name ILIKE ${pattern} OR EXISTS (SELECT FROM unnest(schools.short_names) AS short_name WHERE short_name ILIKE ${pattern}))`;
+}
+
+export async function getLogo(schoolId: number) {
+  const row = await db
+    .selectFrom("school_logos")
+    .select(["content_type", "data"])
+    .where("school_id", "=", schoolId)
+    .executeTakeFirst();
+  if (!row) throw new AppError(404, "not_found", "该学校没有校徽");
+  return row;
+}
+
+export async function setLogo(
+  actor: Actor,
+  schoolId: number,
+  logo: { content_type: LogoType; data: Buffer },
+) {
+  await write(async (trx) => {
+    await trx
+      .insertInto("school_logos")
+      .values({ school_id: schoolId, ...logo })
+      .onConflict((conflict) =>
+        conflict.column("school_id").doUpdateSet({ ...logo, updated_at: sql`now()` }),
+      )
+      .execute();
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "update",
+      target_type: "school",
+      target_id: schoolId,
+      detail: { via: actor.via, logo: logo.content_type },
+    });
+  });
+}
+
+export async function removeLogo(actor: Actor, schoolId: number) {
+  await write(async (trx) => {
+    const result = await trx
+      .deleteFrom("school_logos")
+      .where("school_id", "=", schoolId)
+      .executeTakeFirst();
+    if (result.numDeletedRows === 0n) throw new AppError(404, "not_found", "该学校没有校徽");
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "update",
+      target_type: "school",
+      target_id: schoolId,
+      detail: { via: actor.via, logo: null },
+    });
+  });
 }
 
 export async function listSchools({ q, ...paging }: z.infer<typeof PageQuery>) {
@@ -152,6 +205,7 @@ export async function listPublicColleges() {
       "schools.name as school_name",
       "schools.short_names as school_short_names",
       "schools.tier as school_tier",
+      logoOf("schools.id").as("school_logo"),
       "colleges.id",
       "colleges.name",
       "colleges.kind",
@@ -172,6 +226,7 @@ export async function listPublicColleges() {
         name: row.school_name,
         short_names: row.school_short_names,
         tier: row.school_tier,
+        logo: row.school_logo,
         colleges: [],
       };
       schools.set(row.school_id, school);
@@ -200,6 +255,7 @@ export async function getPublicCollege(id: number) {
       "schools.id as school_id",
       "schools.name as school_name",
       "schools.tier as school_tier",
+      logoOf("schools.id").as("school_logo"),
     ])
     .where("colleges.id", "=", id)
     .executeTakeFirst();
@@ -241,6 +297,7 @@ export async function getPublicCollege(id: number) {
       id: college.school_id,
       name: college.school_name,
       tier: college.school_tier,
+      logo: college.school_logo,
     },
     name: college.name,
     kind: college.kind,

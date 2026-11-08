@@ -8,9 +8,11 @@ export const WIDTH = "mx-auto w-full max-w-7xl px-4 sm:px-6";
 
 // The frame every page shares. A list's page shows no heading of its own: the nav already says
 // where it is, and the page starts with the list's controls. A page of one thing, such as a
-// program, is headed by its name, with where it sits above and its tags beneath.
+// program, is headed by its name, with where it sits above, its tags beneath and its school's
+// emblem (`logo`) beside it.
 export function Page({
   title,
+  logo,
   meta,
   crumbs,
   actions,
@@ -18,6 +20,7 @@ export function Page({
   children,
 }: {
   title: ReactNode;
+  logo?: ReactNode;
   meta?: ReactNode;
   crumbs?: { to: string; label: string }[];
   actions?: ReactNode;
@@ -43,15 +46,18 @@ export function Page({
             </nav>
           )}
           <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
-            <div className="min-w-0">
-              <h1 className="text-xl font-semibold tracking-tight text-pretty sm:text-2xl">
-                {title}
-              </h1>
-              {meta && (
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-                  {meta}
-                </div>
-              )}
+            <div className="flex min-w-0 items-center gap-4">
+              {logo}
+              <div className="min-w-0">
+                <h1 className="text-xl font-semibold tracking-tight text-pretty sm:text-2xl">
+                  {title}
+                </h1>
+                {meta && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                    {meta}
+                  </div>
+                )}
+              </div>
             </div>
             {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
           </div>

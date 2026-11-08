@@ -1,4 +1,6 @@
 import { createRoute, z } from "@hono/zod-openapi";
+import { bodyLimit } from "hono/body-limit";
+import { AppError } from "../../platform/errors.ts";
 import {
   authorize,
   createRouter,
@@ -27,6 +29,8 @@ import {
   SourceQuery,
   PublicCollegeDetail,
   PublicCollegeList,
+  LOGO_MAX_BYTES,
+  LOGO_TYPES,
 } from "./schemas.ts";
 import {
   createCollege,
@@ -46,6 +50,9 @@ import {
   updateSource,
   getPublicCollege,
   listPublicColleges,
+  getLogo,
+  setLogo,
+  removeLogo,
 } from "./service.ts";
 
 const errors = {
@@ -59,7 +66,88 @@ function json<T extends z.ZodType>(schema: T) {
   return { "application/json": { schema } };
 }
 
-export const sourcesRoutes = createRouter()
+const image = Object.fromEntries(
+  LOGO_TYPES.map((type) => [type, { schema: z.string().openapi({ format: "binary" }) }]),
+);
+
+const router = createRouter();
+router.use(
+  "/admin/schools/:id/logo",
+  bodyLimit({
+    maxSize: LOGO_MAX_BYTES,
+    onError() {
+      throw new AppError(413, "too_large", `校徽不能超过 ${LOGO_MAX_BYTES / 1024} KB`);
+    },
+  }),
+);
+
+export const sourcesRoutes = router
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/schools/{id}/logo",
+      summary: "校徽",
+      description:
+        "人人都能看。地址里的 v 是最后修改的时间，图片换了地址就变，所以浏览器可以一直缓存",
+      request: { params: IdParam },
+      responses: {
+        200: { description: "校徽图片", content: image },
+        400: errorResponse("学校编号格式有误"),
+        404: errorResponse("该学校没有校徽"),
+      },
+    }),
+    async (c) => {
+      const logo = await getLogo(c.req.valid("param").id);
+      return c.body(new Uint8Array(logo.data), 200, {
+        "Content-Type": logo.content_type,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        // An SVG opened on its own could run scripts; this keeps it a picture.
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+        "X-Content-Type-Options": "nosniff",
+      });
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "put",
+      path: "/admin/schools/{id}/logo",
+      summary: "上传或更换校徽",
+      description: `请求体就是图片本身，Content-Type 写它的类型：PNG、JPEG、WebP 或 SVG，不超过 ${LOGO_MAX_BYTES / 1024} KB`,
+      request: { params: IdParam, body: { required: true, content: image } },
+      responses: {
+        204: { description: "已保存" },
+        ...errors,
+        413: errorResponse("图片太大"),
+      },
+    }),
+    async (c) => {
+      const admin = authorize(c, "admin");
+      const declared = c.req.header("content-type")?.split(";")[0].trim().toLowerCase();
+      const type = LOGO_TYPES.find((item) => item === declared);
+      if (!type)
+        throw new AppError(400, "invalid_request", "校徽只能是 PNG、JPEG、WebP 或 SVG 图片");
+      const data = Buffer.from(await c.req.arrayBuffer());
+      if (data.length === 0) throw new AppError(400, "invalid_request", "请选择校徽图片");
+      await setLogo({ user_id: admin.id, via: "web" }, c.req.valid("param").id, {
+        content_type: type,
+        data,
+      });
+      return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "delete",
+      path: "/admin/schools/{id}/logo",
+      summary: "移除校徽",
+      request: { params: IdParam },
+      responses: { 204: { description: "已移除" }, ...errors },
+    }),
+    async (c) => {
+      await removeLogo({ user_id: authorize(c, "admin").id, via: "web" }, c.req.valid("param").id);
+      return c.body(null, 204);
+    },
+  )
   .openapi(
     createRoute({
       method: "get",

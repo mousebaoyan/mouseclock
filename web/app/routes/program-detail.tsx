@@ -4,6 +4,7 @@ import { data, Form, Link, redirect, useRouteLoaderData, useSearchParams } from 
 import { FormMessage } from "~/components/form";
 import { ExternalLink, Quote } from "~/components/icons";
 import { Facts, Page, Panel } from "~/components/page";
+import { SchoolLogo } from "~/components/school-logo";
 import {
   EditForm,
   EditHistory,
@@ -119,15 +120,15 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
       title={program.name}
       crumbs={[
         { to: "/", label: "项目总表" },
-        { to: `/colleges/${college.id}`, label: `${school.name}${college.name}` },
+        { to: `/colleges/${college.id}`, label: `${school.name} ${college.name}` },
       ]}
+      logo={<SchoolLogo school={school} size="lg" />}
       meta={
         <>
-          <span className="text-foreground">{school.name}</span>
-          <TierTag tier={school.tier} />
-          <Link to={`/colleges/${college.id}`} className="hover:text-primary">
-            {college.name}
+          <Link to={`/colleges/${college.id}`} className="text-foreground hover:text-primary">
+            {school.name} {college.name}
           </Link>
+          <TierTag tier={school.tier} />
           <span>{program.cohort} 届</span>
           <KindTag kind={program.kind} />
           {verified && <Tag color="green">已核对</Tag>}

@@ -13,6 +13,7 @@ import {
   createCollege,
   createSchool,
   createSource,
+  setLogo,
   type Actor,
 } from "../server/modules/sources/service.ts";
 import { fakeUsers } from "../test/fake-mousehole.ts";
@@ -111,13 +112,32 @@ function html(text: string) {
     .join("");
 }
 
+// Made-up emblems in a school's colour; the schools without one show how pages stand in for it.
 const SCHOOLS = [
-  { name: "北辰大学", short_names: ["北辰", "BCU"], tier: "c9", region: "北京" },
-  { name: "东湖大学", short_names: ["东湖", "DHU"], tier: "985", region: "湖北" },
-  { name: "南山理工大学", short_names: ["南理工", "南山理工"], tier: "211", region: "广东" },
-  { name: "西江师范大学", short_names: ["西江师大"], tier: "double_first_class", region: "广西" },
-  { name: "临海科技大学", short_names: ["临海科大"], tier: null, region: "浙江" },
-] satisfies (z.infer<typeof SchoolInput> & { region: string })[];
+  { name: "北辰大学", short_names: ["北辰", "BCU"], tier: "c9", region: "北京", logo: "#8c1d2f" },
+  { name: "东湖大学", short_names: ["东湖", "DHU"], tier: "985", region: "湖北", logo: "#1f4e8c" },
+  {
+    name: "南山理工大学",
+    short_names: ["南理工", "南山理工"],
+    tier: "211",
+    region: "广东",
+    logo: "#1d6b4f",
+  },
+  {
+    name: "西江师范大学",
+    short_names: ["西江师大"],
+    tier: "double_first_class",
+    region: "广西",
+    logo: null,
+  },
+  { name: "临海科技大学", short_names: ["临海科大"], tier: null, region: "浙江", logo: null },
+] satisfies (z.infer<typeof SchoolInput> & { region: string; logo: string | null })[];
+
+function emblem(name: string, colour: string) {
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96"><circle cx="48" cy="48" r="47" fill="${colour}"/><circle cx="48" cy="48" r="39" fill="none" stroke="#fff" stroke-width="2.5"/><text x="48" y="61" fill="#fff" font-size="36" font-family="serif" text-anchor="middle">${name.slice(0, 1)}</text></svg>`,
+  );
+}
 const COLLEGES = [
   { name: "计算机学院", directions: ["计算机", "人工智能"] },
   { name: "软件学院", directions: ["软件"] },
@@ -209,6 +229,12 @@ for (const school of SCHOOLS) {
     short_names: school.short_names,
     tier: school.tier,
   });
+  if (school.logo) {
+    await setLogo(actor, schoolId, {
+      content_type: "image/svg+xml",
+      data: emblem(school.name, school.logo),
+    });
+  }
   for (const college of COLLEGES.slice(0, 2 + (i % 2))) {
     const collegeId = await createCollege(actor, {
       school_id: schoolId,

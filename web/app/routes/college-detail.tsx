@@ -1,6 +1,7 @@
 import type { InferResponseType } from "hono/client";
 import { ExternalLink } from "~/components/icons";
 import { Empty, Page } from "~/components/page";
+import { SchoolLogo } from "~/components/school-logo";
 import { buttonVariants } from "~/components/ui/button";
 import { ProgramCard, ProgramCards } from "~/components/program";
 import { COLLEGE_KINDS, Tag, TierTag } from "~/components/tags";
@@ -15,7 +16,7 @@ type CollegeDetail = InferResponseType<
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const { college } = loaderData;
-  return [{ title: `${college.school.name}${college.name} · 鼠钟` }];
+  return [{ title: `${college.school.name} ${college.name} · 鼠钟` }];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -31,11 +32,11 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
   const now = useNow(loaderData.now);
   return (
     <Page
-      title={college.name}
+      title={`${school.name} ${college.name}`}
+      logo={<SchoolLogo school={school} size="lg" />}
       crumbs={[{ to: "/colleges", label: "院校清单" }]}
       meta={
         <>
-          <span className="text-foreground">{school.name}</span>
           <TierTag tier={school.tier} />
           <span>{college.region}</span>
           {college.kind !== "college" && <span>{COLLEGE_KINDS[college.kind] ?? college.kind}</span>}

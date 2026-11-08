@@ -4,6 +4,7 @@ import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/compone
 import { Group, List, Row } from "~/components/list";
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
+import { SchoolLogo } from "~/components/school-logo";
 import { Missing } from "~/components/program";
 import { COLLEGE_KINDS, TierTag } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
@@ -104,14 +105,15 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
 
 function SchoolLabel({ school }: { school: School }) {
   return (
-    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 lg:block">
-      <p className="text-base font-semibold">{school.name}</p>
-      <p className="text-[13px] text-muted-foreground lg:mt-0.5">{regionsOf(school).join("、")}</p>
-      {school.tier && (
-        <p className="lg:mt-2">
+    <div className="flex items-center gap-3">
+      <SchoolLogo school={school} size="md" />
+      <div className="min-w-0">
+        <p className="flex flex-wrap items-center gap-2 text-base font-semibold">
+          {school.name}
           <TierTag tier={school.tier} />
         </p>
-      )}
+        <p className="mt-0.5 text-[13px] text-muted-foreground">{regionsOf(school).join("、")}</p>
+      </div>
     </div>
   );
 }
@@ -125,7 +127,8 @@ function SchoolTable({ schools }: { schools: School[] }) {
           <Tr key={college.id}>
             {i === 0 && (
               <Td rowSpan={school.colleges.length} className="border-r">
-                <span className="inline-flex items-center gap-2 font-medium whitespace-nowrap">
+                <span className="inline-flex items-center gap-2.5 font-medium whitespace-nowrap">
+                  <SchoolLogo school={school} size="sm" />
                   {school.name}
                   <TierTag tier={school.tier} />
                 </span>

@@ -211,6 +211,7 @@ test("detail exposes source summaries and failure reasons without crawler config
       id: seeded.schoolId,
       name: "测试大学",
       tier: "985",
+      logo: null,
     },
     name: "计算机学院",
     kind: "college",

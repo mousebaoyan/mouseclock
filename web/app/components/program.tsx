@@ -81,7 +81,7 @@ export function ProgramCard({
           <KindTag kind={program.kind} />
         </div>
       </div>
-      <h3 className="mt-2 mb-4 line-clamp-2 text-[15px] leading-snug font-medium text-pretty group-hover:text-primary">
+      <h3 className="mt-3 mb-4 line-clamp-2 text-[15px] leading-snug font-semibold text-pretty group-hover:text-primary">
         <Link
           to={`/programs/${program.id}`}
           className="outline-none after:absolute after:inset-0 after:rounded-xl"

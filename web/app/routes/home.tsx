@@ -2,6 +2,7 @@ import { hc, type InferResponseType } from "hono/client";
 import { data, Link, useLocation, useRouteLoaderData } from "react-router";
 import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/components/filters";
 import { Empty, Page } from "~/components/page";
+import { SchoolLogo } from "~/components/school-logo";
 import { Pagination } from "~/components/pagination";
 import { ProgramCard, ProgramCards } from "~/components/program";
 import { PROGRAM_KINDS, TierTag } from "~/components/tags";
@@ -230,26 +231,31 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
   );
 }
 
-// The program's school and college on its card; sorted by publication, the date it was published.
+// Who runs the program, on its card: the school's emblem, the school and college as one name
+// that opens the college, and its tier and region beneath; sorted by publication, the date it
+// was published as well.
 function Place({ program, published, thisYear }: PlaceProps) {
   return (
-    <>
-      <p className="flex items-center gap-2">
-        <span className="truncate font-semibold">{program.school.name}</span>
-        <TierTag tier={program.school.tier} />
-      </p>
-      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-muted-foreground">
-        <Link to={`/colleges/${program.college.id}`} className="relative z-1 hover:text-primary">
-          {program.college.name}
+    <div className="flex items-center gap-3">
+      <SchoolLogo school={program.school} size="md" />
+      <div className="min-w-0">
+        <Link
+          to={`/colleges/${program.college.id}`}
+          className="relative z-1 font-medium text-pretty hover:text-primary"
+        >
+          {program.school.name} {program.college.name}
         </Link>
-        <span>{program.college.region}</span>
-        {published && program.notice.published_on && (
-          <span className="tabular-nums">
-            发布于 {formatTime({ date: program.notice.published_on }, thisYear)}
-          </span>
-        )}
-      </p>
-    </>
+        <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
+          <TierTag tier={program.school.tier} />
+          <span>{program.college.region}</span>
+          {published && program.notice.published_on && (
+            <span className="tabular-nums">
+              发布于 {formatTime({ date: program.notice.published_on }, thisYear)}
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
   );
 }
 

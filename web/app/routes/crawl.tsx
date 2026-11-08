@@ -217,8 +217,7 @@ function SourceName({ source }: { source: Source }) {
   return (
     <>
       <span className="font-medium">
-        {source.school}
-        <span className="ml-1">{source.college}</span>
+        {source.school} {source.college}
       </span>
       {source.failing && (
         <span title="连续 2 轮未能读取列表页">

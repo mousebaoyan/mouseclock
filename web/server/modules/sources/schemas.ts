@@ -31,6 +31,12 @@ export const ListedItem = z
   })
   .openapi("ListedItem");
 export const Config = z.record(z.string(), z.unknown(), { error: "抓取配置要是 JSON 对象" });
+// Schools' emblems (design §9.1). Pages show them at a few dozen pixels, so a page of cards
+// stays light (design §14).
+export const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"] as const;
+export type LogoType = (typeof LOGO_TYPES)[number];
+export const LOGO_MAX_BYTES = 64 * 1024;
+
 // Lists count each item once: the filters count a college once for each of its directions.
 const unique = (items: string[]) => new Set(items).size === items.length;
 // What admins fill in, named for validation messages (named in platform/http.ts).
@@ -67,11 +73,13 @@ export const SchoolPatch = SchoolInput.partial().refine(hasFields, "请填写要
 export const CollegePatch = CollegeInput.partial().refine(hasFields, "请填写要修改的字段");
 export const SourcePatch = SourceInput.partial().refine(hasFields, "请填写要修改的字段");
 
+const Logo = z.string().nullable().openapi({ description: "校徽的地址，没有为空" });
 export const School = z.object({
   id: Int,
   name: z.string(),
   short_names: z.array(z.string()),
   tier: z.string().nullable(),
+  logo: Logo,
 });
 export const College = z.object({
   id: Int,
@@ -137,6 +145,7 @@ export const PublicSchool = z.object({
   name: z.string(),
   short_names: z.array(z.string()).openapi({ description: "简称，只用来搜索" }),
   tier: z.string().nullable(),
+  logo: Logo,
   colleges: z.array(PublicCollege),
 });
 export const PublicCollegeList = z.object({ schools: z.array(PublicSchool) });
@@ -160,7 +169,7 @@ export const PublicProgramCohort = z.object({
 });
 export const PublicCollegeDetail = z.object({
   id: Int,
-  school: School.pick({ id: true, name: true, tier: true }),
+  school: School.pick({ id: true, name: true, tier: true, logo: true }),
   name: z.string(),
   kind: z.string(),
   region: z.string(),

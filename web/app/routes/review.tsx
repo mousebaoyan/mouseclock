@@ -235,8 +235,7 @@ export default function Review({ loaderData, actionData }: Route.ComponentProps)
                           : ` 撤销了 #${edit.reverts_id}，涉及 `}
                       </span>
                       <Link to={`/programs/${edit.program.id}#edits`} className="link">
-                        {edit.program.school}
-                        {edit.program.college} {edit.program.name}
+                        {edit.program.school} {edit.program.college} {edit.program.name}
                       </Link>
                       <span className="text-muted-foreground"> 的{fieldLabel(edit.field)}</span>
                     </p>
@@ -278,8 +277,7 @@ function ItemHeader({ item }: { item: Item }) {
       <div className="min-w-0">
         {item.program && (
           <Link to={`/programs/${item.program.id}`} className="link font-medium">
-            {item.program.school}
-            {item.program.college} {item.program.name}
+            {item.program.school} {item.program.college} {item.program.name}
           </Link>
         )}
         <p className="mt-0.5 text-[13px] text-muted-foreground">

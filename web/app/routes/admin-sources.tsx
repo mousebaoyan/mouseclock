@@ -177,8 +177,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
             <>
               已接入来源
               <span className="ml-2 font-normal text-muted-foreground">
-                {college.school_name}
-                {college.name}
+                {college.school_name} {college.name}
               </span>
             </>
           ) : (
@@ -345,10 +344,10 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                     className="flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-2.5 text-sm hover:bg-muted/50 aria-[current]:border-primary aria-[current]:bg-primary-soft"
                   >
                     <span className="min-w-0">
-                      <span className="block font-medium">{c.school_name}</span>
-                      <span className="block text-[13px] text-muted-foreground">
-                        {c.name}　{c.region}
+                      <span className="block font-medium">
+                        {c.school_name} {c.name}
                       </span>
+                      <span className="block text-[13px] text-muted-foreground">{c.region}</span>
                     </span>
                     {college?.id === c.id && <Check className="shrink-0 text-primary" />}
                   </Link>
@@ -367,7 +366,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
         </Panel>
         <Panel
           title={source ? "编辑来源" : "接入新来源"}
-          description={college ? `${college.school_name}${college.name}` : undefined}
+          description={college ? `${college.school_name} ${college.name}` : undefined}
         >
           {college ? (
             <>
@@ -462,8 +461,7 @@ function SourceName({ source }: { source: ListedSource }) {
   return (
     <>
       <span className="font-medium">
-        {source.school_name}
-        <span className="ml-1">{source.college_name}</span>
+        {source.school_name} {source.college_name}
       </span>
       {source.unavailable_reason && (
         <span title={source.unavailable_reason}>

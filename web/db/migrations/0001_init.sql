@@ -40,6 +40,15 @@ CREATE TABLE schools (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 
+-- A school's emblem, served from this site so pages don't load the schools' own (design §9.1).
+CREATE TABLE school_logos (
+  school_id     integer PRIMARY KEY REFERENCES schools (id),
+  content_type  text    NOT NULL
+                CHECK (content_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/svg+xml')),
+  data          bytea   NOT NULL,
+  updated_at    timestamptz NOT NULL DEFAULT now()
+);
+
 CREATE TABLE colleges (
   id          integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   school_id   integer NOT NULL REFERENCES schools (id),

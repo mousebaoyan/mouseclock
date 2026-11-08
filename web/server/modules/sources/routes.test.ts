@@ -26,6 +26,8 @@ const endpoints: [string, string, object?][] = [
   ["POST", "schools", { name: "某大学", short_names: [], tier: null }],
   ["GET", "schools/1"],
   ["PATCH", "schools/1", { short_names: ["某大"] }],
+  ["PUT", "schools/1/logo", {}],
+  ["DELETE", "schools/1/logo"],
   ["GET", "colleges"],
   [
     "POST",
@@ -512,6 +514,51 @@ test("an audit failure rolls back both creation and update", async () => {
       .where("id", "=", row.id)
       .executeTakeFirstOrThrow(),
   ).toEqual({ name: "回滚前" });
+});
+
+test("admins put up and take down a school's emblem, which anyone loads from its address", async () => {
+  const actor: Actor = { user_id: adminId, via: "web" };
+  const school = await createSchool(actor, { name: "校徽大学", short_names: [], tier: null });
+  expect(school.logo).toBeNull();
+  const put = (type: string, body: Uint8Array<ArrayBuffer>) =>
+    app.request(`/api/v1/admin/schools/${school.id}/logo`, {
+      method: "PUT",
+      headers: { ...admin.headers, "content-type": type },
+      body,
+    });
+  expect((await put("text/html", new Uint8Array([1]))).status).toBe(400);
+  expect((await put("image/png", new Uint8Array(64 * 1024 + 1))).status).toBe(413);
+  expect((await put("image/png", new Uint8Array([1, 2, 3]))).status).toBe(204);
+  const res = await api.admin.schools[":id"].$get({ param: { id: String(school.id) } }, admin);
+  if (res.status !== 200) throw new Error("School failed");
+  const { logo } = await res.json();
+  if (logo === null) throw new Error("No emblem");
+  expect(logo).toMatch(new RegExp(`^/api/v1/schools/${school.id}/logo\\?v=\\d+$`));
+  // No sign-in needed; it changes address when it changes, so browsers may keep it, and an SVG
+  // opened on its own runs nothing.
+  const image = await app.request(logo);
+  expect(image.headers.get("content-type")).toBe("image/png");
+  expect(image.headers.get("cache-control")).toContain("immutable");
+  expect(image.headers.get("content-security-policy")).toContain("sandbox");
+  expect(new Uint8Array(await image.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3]));
+  const removed = await app.request(`/api/v1/admin/schools/${school.id}/logo`, {
+    method: "DELETE",
+    headers: admin.headers,
+  });
+  expect(removed.status).toBe(204);
+  expect((await app.request(logo)).status).toBe(404);
+  const logs = await db
+    .selectFrom("audit_log")
+    .select("detail")
+    .where("target_type", "=", "school")
+    .where("target_id", "=", school.id)
+    .orderBy("id")
+    .execute();
+  expect(logs.map((log) => log.detail)).toEqual([
+    expect.objectContaining({ before: null }),
+    { via: "web", logo: "image/png" },
+    { via: "web", logo: null },
+  ]);
 });
 
 test("school lists are searchable by name or any short name, and paginated; owners may manage too", async () => {
