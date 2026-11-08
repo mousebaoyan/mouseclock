@@ -12,11 +12,12 @@ import { Field, FormMessage } from "~/components/form";
 import { Search } from "~/components/icons";
 import { Page, Panel } from "~/components/page";
 import { Pagination } from "~/components/pagination";
-import { COLLEGE_KINDS, TierTags, TIERS } from "~/components/tags";
+import { COLLEGE_KINDS, TierTags } from "~/components/tags";
+import { TIERS } from "~/tiers";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Select } from "~/components/ui/select";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
+import { List, Row } from "~/components/list";
 import type { Route } from "./+types/admin-colleges.ts";
 
 export function meta() {
@@ -202,11 +203,8 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
     </Panel>
   );
   return (
-    <Page
-      title="院校管理"
-      description="先添加学校，再维护其下的学院、研究所或研究生院。尚未接入来源的学院也可保留在清单中。"
-    >
-      <FormMessage error={actionData?.error} saved={saved && "已保存，并已记入操作日志。"} />
+    <Page title="院校管理" hideTitle>
+      <FormMessage error={actionData?.error} saved={saved && "已保存"} />
       <div className="grid items-start gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
         <Panel
           title="学校"
@@ -234,9 +232,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
             <Button variant="outline">搜索</Button>
           </Form>
           {schools.items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
-              未找到学校，可新增学校。
-            </p>
+            <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">未找到学校</p>
           ) : (
             <ul className="divide-y">
               {schools.items.map((s) => (
@@ -296,53 +292,43 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
               >
                 {colleges?.items.length === 0 ? (
                   <p className="px-4 py-6 text-center text-[13px] text-muted-foreground sm:px-5">
-                    该校尚无学院，请在下方添加。
+                    该校尚无学院，请在下方添加
                   </p>
                 ) : (
-                  <Table bare>
-                    <thead>
-                      <tr>
-                        <Th>学院</Th>
-                        <Th className="w-px">类型</Th>
-                        <Th className="w-px">地区</Th>
-                        <Th>招生方向</Th>
-                        <Th className="w-px">操作</Th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {colleges?.items.map((c) => (
-                        <Tr
-                          key={c.id}
-                          className={college?.id === c.id ? "bg-primary-soft" : undefined}
-                        >
-                          <Td className="font-medium">{c.name}</Td>
-                          <Td center className="whitespace-nowrap text-muted-foreground">
-                            {COLLEGE_KINDS[c.kind] ?? c.kind}
-                          </Td>
-                          <Td center className="whitespace-nowrap">
-                            {c.region}
-                          </Td>
-                          <Td className="text-muted-foreground">
-                            {c.directions.length > 0 ? c.directions.join("、") : "未注明"}
-                          </Td>
-                          <Td center className="whitespace-nowrap">
+                  <List className="rounded-none border-0 shadow-none">
+                    {colleges?.items.map((c) => (
+                      <Row
+                        key={c.id}
+                        selected={college?.id === c.id}
+                        title={<span className="font-medium">{c.name}</span>}
+                        meta={
+                          <>
+                            <span>{COLLEGE_KINDS[c.kind] ?? c.kind}</span>
+                            <span>{c.region}</span>
+                            {c.directions.length > 0 && (
+                              <span>招生方向：{c.directions.join("、")}</span>
+                            )}
+                          </>
+                        }
+                        side={
+                          <span className="flex gap-1">
                             <Link
                               to={`?school_id=${school.id}&edit_college=${c.id}`}
-                              className={buttonVariants({ variant: "ghost", size: "xs" })}
+                              className={buttonVariants({ variant: "outline", size: "xs" })}
                             >
                               编辑
                             </Link>
                             <Link
                               to={`/admin/sources?college_id=${c.id}`}
-                              className={buttonVariants({ variant: "ghost", size: "xs" })}
+                              className={buttonVariants({ variant: "outline", size: "xs" })}
                             >
                               来源
                             </Link>
-                          </Td>
-                        </Tr>
-                      ))}
-                    </tbody>
-                  </Table>
+                          </span>
+                        }
+                      />
+                    ))}
+                  </List>
                 )}
                 {colleges && (
                   <div className="px-4 pb-4 empty:hidden sm:px-5">
@@ -371,9 +357,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                         defaultValue={String(collegeValues?.school_id ?? school.id)}
                         options={schoolOptions.map((s) => ({ value: String(s.id), label: s.name }))}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        找不到目标学校时，可在左侧搜索。
-                      </p>
+                      <p className="text-xs text-muted-foreground">找不到学校时可在左侧搜索</p>
                     </div>
                     <Field label="学院名称">
                       <input
@@ -407,7 +391,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                       />
                     </Field>
                   </div>
-                  <Field label="招生方向" hint="多个方向以逗号或顿号分隔。">
+                  <Field label="招生方向" hint="多个方向以逗号或顿号分隔">
                     <input
                       name="directions"
                       defaultValue={

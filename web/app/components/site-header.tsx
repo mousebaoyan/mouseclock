@@ -40,7 +40,7 @@ function pagesFor(me: Me | null) {
 const popup =
   "min-w-40 origin-(--transform-origin) rounded-lg border bg-popover p-1 text-sm shadow-pop transition-[opacity,scale] duration-100 outline-none data-ending-style:scale-98 data-ending-style:opacity-0 data-starting-style:scale-98 data-starting-style:opacity-0";
 const menuItem =
-  "flex w-full cursor-default items-center gap-2 rounded-md px-2.5 py-1.5 text-left outline-none select-none data-highlighted:bg-accent";
+  "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left outline-none select-none data-highlighted:bg-accent";
 
 // Wide screens: the site's name on the left, the pages in the middle and the account on the
 // right. Phones keep the name and the account, and open the pages from a menu button.
@@ -51,15 +51,13 @@ export function SiteHeader({ me }: { me: Me | null }) {
   const pages = pagesFor(me);
   const inAdmin = pages.admin.some((page) => pathname.startsWith(page.to));
   return (
-    <header className="ink sticky top-0 z-40 border-b bg-band">
+    <header className="sticky top-0 z-40 border-b bg-card/90 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
         <Link
           to="/"
           className="flex items-center gap-2 justify-self-start text-lg leading-none font-semibold tracking-tight"
         >
-          <span className="flex size-7 items-center justify-center rounded-md bg-white">
-            <LogoMark className="size-5.5" />
-          </span>
+          <LogoMark className="size-6" />
           {SITE_NAME}
         </Link>
         <nav aria-label="主导航" className="flex h-full items-stretch max-md:hidden">
@@ -121,7 +119,7 @@ function navLink({ isActive }: { isActive: boolean }) {
   return cn(
     "relative flex items-center px-3.5 text-sm whitespace-nowrap text-muted-foreground hover:text-foreground",
     isActive &&
-      "font-medium text-foreground after:absolute after:inset-x-3.5 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-signal",
+      "font-medium text-foreground after:absolute after:inset-x-3.5 after:bottom-0 after:h-0.5 after:rounded-t-full after:bg-primary",
   );
 }
 

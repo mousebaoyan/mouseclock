@@ -1,11 +1,12 @@
 import type { InferResponseType } from "hono/client";
 import { Link, useLocation } from "react-router";
 import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/components/filters";
+import { Group, List, Row } from "~/components/list";
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
-import { COLLEGE_KINDS, TIER_FILTERS, TIERS, TierTags } from "~/components/tags";
+import { COLLEGE_KINDS, TierTags } from "~/components/tags";
+import { TIER_FILTERS, TIERS, topTier } from "~/tiers";
 import { Select } from "~/components/ui/select";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
 import { PER_PAGE } from "../../server/platform/paging.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import type { Route } from "./+types/colleges.ts";
@@ -59,11 +60,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })
     .filter(
       (school) =>
-        school.colleges.length > 0 &&
-        (tiers.length === 0 ||
-          tiers.some((tier) =>
-            tier === "other" ? school.tiers.length === 0 : school.tiers.includes(tier),
-          )),
+        school.colleges.length > 0 && (tiers.length === 0 || tiers.includes(topTier(school.tiers))),
     );
   matched.sort(
     (a, b) =>
@@ -90,35 +87,31 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
   const { schools, total, colleges, page, perPage, filters, regions } = loaderData;
   const { search } = useLocation();
   const { set } = useFilters();
-  const filtered = filters.q || filters.tiers.length > 0 || filters.region;
+  const active = filters.tiers.length > 0 || Boolean(filters.region);
+  const filtered = active || Boolean(filters.q);
   return (
-    <Page
-      title="院校清单"
-      description="鼠钟收录的学校与学院。进入学院页面可查看其通知栏目与历年项目。"
-    >
+    <Page title="院校清单" hideTitle>
       <FilterBar
-        top={
+        search={<SearchBox value={filters.q} placeholder="搜索学校或学院名称" />}
+        selects={
           <>
-            <SearchBox value={filters.q} placeholder="搜索学校或学院名称" />
-            <div className="grid flex-[1_1_100%] grid-cols-2 gap-2 sm:flex sm:flex-none">
-              <Select
-                aria-label="地区"
-                value={filters.region}
-                onValueChange={(value) => set("region", value)}
-                options={[
-                  { value: "", label: "全部地区" },
-                  ...regions.map((r) => ({ value: r, label: r })),
-                ]}
-                className="sm:w-32"
-              />
-              <Select
-                aria-label="排序"
-                value={filters.sort}
-                onValueChange={(value) => set("sort", value)}
-                options={SORTS}
-                className="sm:w-34"
-              />
-            </div>
+            <Select
+              aria-label="地区"
+              value={filters.region}
+              onValueChange={(value) => set("region", value)}
+              options={[
+                { value: "", label: "全部地区" },
+                ...regions.map((r) => ({ value: r, label: r })),
+              ]}
+              className="sm:w-32"
+            />
+            <Select
+              aria-label="排序"
+              value={filters.sort}
+              onValueChange={(value) => set("sort", value)}
+              options={SORTS}
+              className="sm:w-34"
+            />
           </>
         }
         rows={[
@@ -129,17 +122,17 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
             ),
           },
         ]}
+        active={active}
         clear={filtered ? keepOnly(search, ["sort", "per_page"]) : null}
       />
       {schools.length === 0 ? (
-        <Empty>{filtered ? "没有符合条件的院校，请调整筛选条件。" : "尚未收录院校。"}</Empty>
+        <Empty>{filtered ? "没有符合条件的院校" : "尚未收录院校"}</Empty>
       ) : (
         <div>
-          <p className="mb-2 text-[13px] text-muted-foreground">
+          <p className="mb-4 text-[13px] text-muted-foreground">
             共 {total} 所学校、{colleges} 个学院
           </p>
-          <SchoolTable schools={schools} />
-          <SchoolCards schools={schools} />
+          <Schools schools={schools} />
           <Pagination total={total} page={page} perPage={perPage} />
         </div>
       )}
@@ -147,111 +140,59 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
   );
 }
 
-function SchoolName({ school }: { school: School }) {
+function SchoolLabel({ school }: { school: School }) {
   return (
-    <>
-      <span className="font-medium">{school.name}</span>
-      {school.short_name && school.short_name !== school.name && (
-        <span className="ml-2 text-[13px] text-muted-foreground">{school.short_name}</span>
+    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 lg:block">
+      <p className="text-base font-semibold">{school.name}</p>
+      <p className="text-[13px] text-muted-foreground lg:mt-0.5">{regionOf(school)}</p>
+      {school.tiers.length > 0 && (
+        <p className="flex flex-wrap gap-1 lg:mt-2">
+          <TierTags tiers={school.tiers} />
+        </p>
       )}
-    </>
-  );
-}
-
-function Directions({ directions }: { directions: string[] }) {
-  return directions.length > 0 ? (
-    directions.join("、")
-  ) : (
-    <span className="text-subtle-foreground">未注明</span>
-  );
-}
-
-// One row per college; a school's name and tiers span the rows of its colleges.
-function SchoolTable({ schools }: { schools: School[] }) {
-  return (
-    <div className="max-md:hidden">
-      <Table>
-        <thead>
-          <tr>
-            <Th className="w-px">学校</Th>
-            <Th>学院</Th>
-            <Th className="w-px">单位类型</Th>
-            <Th className="w-px">地区</Th>
-            <Th>招生方向</Th>
-          </tr>
-        </thead>
-        {schools.map((school) => (
-          <tbody key={school.id} className="border-b last:border-b-0 hover:bg-muted/40">
-            {school.colleges.map((college, i) => (
-              <Tr key={college.id} className="hover:bg-transparent">
-                {i === 0 && (
-                  <Td rowSpan={school.colleges.length} className="border-r whitespace-nowrap">
-                    <SchoolName school={school} />
-                    {school.tiers.length > 0 && (
-                      <span className="mt-1.5 flex gap-1">
-                        <TierTags tiers={school.tiers} />
-                      </span>
-                    )}
-                  </Td>
-                )}
-                <Td>
-                  <Link to={`/colleges/${college.id}`} className="link">
-                    {college.name}
-                  </Link>
-                </Td>
-                <Td center className="whitespace-nowrap text-muted-foreground">
-                  {COLLEGE_KINDS[college.kind] ?? college.kind}
-                </Td>
-                <Td center className="whitespace-nowrap">
-                  {college.region}
-                </Td>
-                <Td className="text-muted-foreground">
-                  <Directions directions={college.directions} />
-                </Td>
-              </Tr>
-            ))}
-          </tbody>
-        ))}
-      </Table>
     </div>
   );
 }
 
-function SchoolCards({ schools }: { schools: School[] }) {
+// Each school with its colleges beside it.
+function Schools({ schools }: { schools: School[] }) {
   return (
-    <ul className="space-y-3 md:hidden">
+    <div className="space-y-6">
       {schools.map((school) => (
-        <li key={school.id} className="overflow-hidden rounded-xl border bg-card shadow-card">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 border-b px-4 py-3">
-            <SchoolName school={school} />
-            <span className="flex flex-wrap gap-1">
-              <TierTags tiers={school.tiers} />
-            </span>
-          </div>
-          <ul className="divide-y">
+        <Group key={school.id} label={<SchoolLabel school={school} />}>
+          <List>
             {school.colleges.map((college) => (
-              <li key={college.id}>
-                <Link
-                  to={`/colleges/${college.id}`}
-                  className="block px-4 py-2.5 hover:bg-muted/40"
-                >
-                  <span className="flex items-baseline justify-between gap-3">
-                    <span className="font-medium text-primary">{college.name}</span>
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {COLLEGE_KINDS[college.kind] ?? college.kind}　{college.region}
-                    </span>
-                  </span>
-                  {college.directions.length > 0 && (
-                    <span className="mt-0.5 block text-[13px] text-muted-foreground">
-                      {college.directions.join("、")}
-                    </span>
-                  )}
-                </Link>
-              </li>
+              <Row
+                key={college.id}
+                title={
+                  <Link
+                    to={`/colleges/${college.id}`}
+                    className="text-[15px] font-medium hover:text-primary"
+                  >
+                    {college.name}
+                  </Link>
+                }
+                meta={
+                  // Only what sets a college apart: most are colleges, in their school's city.
+                  (college.kind !== "college" ||
+                    college.region !== regionOf(school) ||
+                    college.directions.length > 0) && (
+                    <>
+                      {college.kind !== "college" && (
+                        <span>{COLLEGE_KINDS[college.kind] ?? college.kind}</span>
+                      )}
+                      {college.region !== regionOf(school) && <span>{college.region}</span>}
+                      {college.directions.length > 0 && (
+                        <span>招生方向：{college.directions.join("、")}</span>
+                      )}
+                    </>
+                  )
+                }
+              />
             ))}
-          </ul>
-        </li>
+          </List>
+        </Group>
       ))}
-    </ul>
+    </div>
   );
 }

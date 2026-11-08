@@ -59,7 +59,7 @@ export function Select({
                 <Base.Item
                   key={option.value}
                   value={option.value}
-                  className="flex cursor-default items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 whitespace-nowrap outline-none select-none data-highlighted:bg-accent data-selected:font-medium data-selected:text-primary"
+                  className="flex items-center gap-2 rounded-md py-1.5 pr-2 pl-2.5 whitespace-nowrap outline-none select-none data-highlighted:bg-accent data-selected:font-medium data-selected:text-primary"
                 >
                   <Base.ItemText className="flex-1">{option.label}</Base.ItemText>
                   <Base.ItemIndicator className="flex">

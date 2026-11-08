@@ -6,59 +6,58 @@ import { ChevronRight } from "~/components/icons";
 // Every page has the same width, the header's.
 export const WIDTH = "mx-auto w-full max-w-7xl px-4 sm:px-6";
 
-// The frame every page shares: the ink band under the header with where the page sits, its title
-// and what it is for, any actions on the right and, on some pages, more beneath; the content's
-// first card overlaps the band's lower edge.
+// The frame every page shares. A list's page shows no heading of its own: the nav already says
+// where it is, and the page starts with the list's controls. A page of one thing, such as a
+// program, is headed by its name, with where it sits above and its tags beneath.
 export function Page({
   title,
-  description,
+  meta,
   crumbs,
   actions,
-  hero,
+  hideTitle,
   children,
 }: {
   title: ReactNode;
-  description?: ReactNode;
+  meta?: ReactNode;
   crumbs?: { to: string; label: string }[];
   actions?: ReactNode;
-  hero?: ReactNode;
+  hideTitle?: boolean;
   children: ReactNode;
 }) {
   return (
-    <main>
-      <div className="ink bg-band">
-        <div className={cn(WIDTH, "space-y-6 pt-7 pb-16 sm:pt-9 sm:pb-20")}>
-          <div className="space-y-2.5">
-            {crumbs && (
-              <nav aria-label="位置" className="flex flex-wrap items-center gap-1 text-[13px]">
-                {crumbs.map((crumb) => (
-                  <span key={crumb.to} className="flex items-center gap-1">
-                    <Link to={crumb.to} className="text-muted-foreground hover:text-foreground">
-                      {crumb.label}
-                    </Link>
-                    <ChevronRight className="size-3.5 text-subtle-foreground" />
-                  </span>
-                ))}
-              </nav>
-            )}
-            <div className="flex flex-wrap items-end justify-between gap-x-8 gap-y-4">
-              <div className="min-w-0 max-w-3xl">
-                <h1 className="text-2xl font-bold tracking-tight text-pretty sm:text-[2rem] sm:leading-tight">
-                  {title}
-                </h1>
-                {description && (
-                  <div className="mt-2 text-sm leading-relaxed text-muted-foreground">
-                    {description}
-                  </div>
-                )}
-              </div>
-              {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+    <main className={cn(WIDTH, "space-y-5 pt-6 pb-14 sm:pt-8")}>
+      {hideTitle ? (
+        <h1 className="sr-only">{title}</h1>
+      ) : (
+        <header className="space-y-2">
+          {crumbs && (
+            <nav aria-label="位置" className="flex flex-wrap items-center gap-1 text-[13px]">
+              {crumbs.map((crumb) => (
+                <span key={crumb.to} className="flex items-center gap-1">
+                  <Link to={crumb.to} className="text-muted-foreground hover:text-primary">
+                    {crumb.label}
+                  </Link>
+                  <ChevronRight className="size-3.5 text-subtle-foreground" />
+                </span>
+              ))}
+            </nav>
+          )}
+          <div className="flex flex-wrap items-start justify-between gap-x-8 gap-y-3">
+            <div className="min-w-0">
+              <h1 className="text-xl font-semibold tracking-tight text-pretty sm:text-2xl">
+                {title}
+              </h1>
+              {meta && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  {meta}
+                </div>
+              )}
             </div>
+            {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
           </div>
-          {hero}
-        </div>
-      </div>
-      <div className={cn(WIDTH, "relative -mt-10 space-y-5 pb-14 sm:-mt-12")}>{children}</div>
+        </header>
+      )}
+      {children}
     </main>
   );
 }

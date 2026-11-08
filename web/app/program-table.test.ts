@@ -64,10 +64,22 @@ test("filters narrow down together; tiers and kinds take any of those ticked", (
     program(2, { tiers: ["211"], kind: "pre_recommendation" }),
     program(3, { tiers: ["c9", "985"], region: "上海" }),
   ];
-  expect(ids("tier=c9&tier=211", programs)).toEqual([1, 2, 3]);
+  expect(ids("tier=c9&tier=211", programs)).toEqual([2, 3]);
   expect(ids("tier=985&region=上海&direction=软件", programs)).toEqual([1]);
   expect(ids("kind=pre_recommendation", programs)).toEqual([2]);
   expect(ids("kind=summer_camp&kind=pre_recommendation&region=北京", programs)).toEqual([2]);
+});
+
+test("a tier picks the schools whose highest tier it is; 其他 those with none", () => {
+  const programs = [
+    program(1, { tiers: ["c9", "985", "211", "double_first_class"] }),
+    program(2, { tiers: ["985", "211", "double_first_class"] }),
+    program(3, { tiers: ["211"] }),
+    program(4, { tiers: ["double_first_class"] }),
+  ];
+  expect(ids("tier=211", programs)).toEqual([3]);
+  expect(ids("tier=985", programs)).toEqual([2]);
+  expect(ids("tier=double_first_class", programs)).toEqual([4]);
 });
 
 test("the tier 其他 picks the schools with no tier, alongside any others ticked", () => {

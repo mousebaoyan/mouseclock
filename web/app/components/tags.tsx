@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { cn } from "~/cn";
 import { Check } from "~/components/icons";
 import type { Kind, Role } from "../../server/modules/programs/schemas.ts";
+import { TIERS, topTier } from "../tiers.ts";
 import { STATUS_LABELS, type Status } from "../time.ts";
 
 // Tags tell tiers, kinds and statuses apart at a glance: text in a hue on a light wash of it
@@ -90,16 +91,6 @@ export function Chip({
   );
 }
 
-// Highest first, the order tags show in. "other" picks the schools with none of them, and so
-// has no tag of its own.
-export const TIERS = [
-  { value: "c9", label: "C9", color: "red" },
-  { value: "985", label: "985", color: "violet" },
-  { value: "211", label: "211", color: "blue" },
-  { value: "double_first_class", label: "双一流", color: "teal" },
-] as const satisfies { value: string; label: string; color: TagColor }[];
-export const TIER_FILTERS = [...TIERS, { value: "other", label: "其他", color: "gray" }] as const;
-
 export function TierTags({ tiers }: { tiers: string[] }) {
   return TIERS.filter((tier) => tiers.includes(tier.value)).map((tier) => (
     <Tag key={tier.value} color={tier.color}>
@@ -114,6 +105,12 @@ export const COLLEGE_KINDS: Partial<Record<string, string>> = {
   institute: "研究所",
   graduate_school: "研究生院",
 };
+
+// Only the highest: in a list, C9 already says 985, 211 and 双一流.
+export function TopTier({ tiers }: { tiers: string[] }) {
+  const top = TIERS.find((tier) => tier.value === topTier(tiers));
+  return top ? <Tag color={top.color}>{top.label}</Tag> : null;
+}
 
 export const PROGRAM_KINDS: Record<Kind, { label: string; color: TagColor }> = {
   winter_camp: { label: "冬令营", color: "sky" },

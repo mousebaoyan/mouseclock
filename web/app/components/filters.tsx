@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
-import { Search } from "~/components/icons";
+import { cn } from "~/cn";
+import { Filter, Search } from "~/components/icons";
 import { Chip, type TagColor } from "~/components/tags";
 import { buttonVariants } from "~/components/ui/button";
 
@@ -36,7 +37,7 @@ export function SearchBox({ value, placeholder }: { value: string; placeholder: 
   const [key, setKey] = useState(location.key);
   if (!typed && key !== location.key) setKey(location.key);
   return (
-    <label className="relative min-w-0 flex-[1_1_16rem]">
+    <label className="relative min-w-0 flex-[1_1_10rem]">
       <span className="sr-only">搜索</span>
       <Search className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle-foreground" />
       <input
@@ -86,22 +87,57 @@ export function ChipGroup({
   );
 }
 
-// The box above a list: a search and dropdowns on top, then labelled rows of choices. `clear`
-// is the address without filters, shown once any is set.
+// The box above a list: a search and dropdowns on top, then labelled rows of choices. On phones
+// all but the search fold under 筛选, so the list starts on the first screen; they start open
+// when one of them is set (`active`), so a shared link shows why the list is shorter. `clear` is the
+// address without filters, shown once any is set.
 export function FilterBar({
-  top,
+  search,
+  selects,
   rows,
+  active,
   clear,
 }: {
-  top: ReactNode;
+  search: ReactNode;
+  selects: ReactNode;
   rows: { label: string; content: ReactNode }[];
+  active: boolean;
   clear: string | null;
 }) {
+  const [open, setOpen] = useState(active);
   return (
     <section aria-label="筛选" className="rounded-xl border bg-card shadow-card">
-      <div className="flex flex-wrap gap-2 p-3 sm:p-4">{top}</div>
+      <div className="flex flex-wrap gap-2 p-3 sm:p-4">
+        {search}
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={() => setOpen(!open)}
+          className={buttonVariants({
+            variant: "outline",
+            className: cn("sm:hidden", open && "border-primary/40 bg-primary-soft text-primary"),
+          })}
+        >
+          <Filter />
+          筛选
+          {active && <span aria-hidden="true" className="size-1.5 rounded-full bg-primary" />}
+        </button>
+        <div
+          className={cn(
+            "grid flex-[1_1_100%] grid-cols-2 gap-2 sm:flex sm:flex-none",
+            !open && "max-sm:hidden",
+          )}
+        >
+          {selects}
+        </div>
+      </div>
       {rows.length > 0 && (
-        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 border-t p-3 sm:p-4">
+        <div
+          className={cn(
+            "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 border-t p-3 sm:p-4",
+            !open && "max-sm:hidden",
+          )}
+        >
           {rows.map((row, i) => (
             <div key={row.label} className="contents">
               <span aria-hidden="true" className="text-[13px] text-muted-foreground">

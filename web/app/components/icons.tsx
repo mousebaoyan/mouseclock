@@ -41,6 +41,7 @@ export const ChevronDown = icon(lucide.ChevronDown);
 export const ChevronLeft = icon(lucide.ChevronLeft);
 export const ChevronRight = icon(lucide.ChevronRight);
 export const ExternalLink = icon(lucide.ExternalLink);
+export const Filter = icon(lucide.SlidersHorizontal);
 export const LogOut = icon(lucide.LogOut);
 export const Menu = icon(lucide.Menu);
 export const Quote = icon(lucide.TextQuote);

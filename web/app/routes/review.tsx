@@ -28,47 +28,47 @@ const REASONS: Record<Reason, { label: string; color: TagColor; hint: string }> 
   no_deadline: {
     label: "缺少截止时间",
     color: "red",
-    hint: "报名通知中未找到报名截止时间。原文确未写明的，选择「原文未写明」；已写明的，请前往项目页补充报名时间。",
+    hint: "通知中未找到报名截止时间：原文确未写明的选择「原文未写明」，已写明的请到项目页补充",
   },
   conflicts_edit: {
     label: "与人工修改冲突",
     color: "orange",
-    hint: "新通知修改了人工改过的字段，总表暂时保留人工修改的值。通过后改用通知中的值。",
+    hint: "新通知改动了人工修改过的字段，总表暂时保留人工修改的值，通过后改用通知中的值",
   },
   implausible: {
     label: "数值异常",
     color: "amber",
-    hint: "报名截止时间早于通知发布日期，可能抽取有误。请对照原文，确认无误后再通过。",
+    hint: "报名截止早于通知发布日期，可能抽取有误，请对照原文确认",
   },
   evidence_not_found: {
     label: "依据无法核实",
     color: "violet",
-    hint: "抽取给出的原文句子在快照中找不到。请对照原文，确认数值无误后再通过。",
+    hint: "抽取给出的原文句子在快照中找不到，请对照原文确认",
   },
   low_confidence: {
     label: "置信度低",
     color: "sky",
-    hint: "模型对该值把握不足。请对照原文，确认无误后再通过。",
+    hint: "模型对该值把握不足，请对照原文确认",
   },
   unknown_program: {
     label: "项目编号不符",
     color: "blue",
-    hint: "抽取认为这是已有项目，但该校没有对应的项目编号。请选择要归入的项目，或新建项目。",
+    hint: "抽取认为这是已有项目，但该校没有对应编号，请选择要归入的项目或新建",
   },
   unknown_college: {
     label: "学院不符",
     color: "teal",
-    hint: "抽取出的学院不属于该校。请选择要归入的项目，或选择学院后新建项目。",
+    hint: "抽取出的学院不属于该校，请选择要归入的项目，或选择学院后新建",
   },
   implausible_cohort: {
     label: "届别异常",
     color: "pink",
-    hint: "届别应在通知发布年份至其后两年之间。请选择要归入的项目，或修正届别后新建项目。",
+    hint: "届别应在通知发布年份到其后两年之间，请选择要归入的项目，或修正届别后新建",
   },
   possible_duplicate: {
     label: "疑似重复",
     color: "green",
-    hint: "新建的项目与已有项目的学院、届别和类型均相同。如为同一项目，请合并到原项目；如为另一批次，请保留。",
+    hint: "与已有项目的学院、届别和类型相同：同一项目请合并，另一批次请保留",
   },
 };
 
@@ -150,14 +150,11 @@ export default function Review({ loaderData, actionData }: Route.ComponentProps)
   const { items, edits, thisYear } = loaderData;
   const reason = REASONS[items.reason];
   return (
-    <Page
-      title="审核"
-      description="抽取结果中无法自动确认的字段与项目，由编辑对照原文处理：通过即写入总表，驳回仅关闭该条目（总体设计 §12.2）。所有处理均记入操作日志。"
-    >
+    <Page title="审核" hideTitle>
       <div className="grid items-start gap-5 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <nav
           aria-label="待审核的类别"
-          className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 lg:sticky lg:top-20 lg:mx-0 lg:flex-col lg:gap-0.5 lg:overflow-visible lg:rounded-lg lg:border lg:bg-card lg:p-1.5"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:sticky lg:top-20 lg:flex lg:flex-col lg:gap-0.5 lg:rounded-lg lg:border lg:bg-card lg:p-1.5"
         >
           {Object.entries(REASONS).map(([key, { label, color }]) => {
             const on = key === items.reason;
@@ -199,7 +196,7 @@ export default function Review({ loaderData, actionData }: Route.ComponentProps)
           <Panel title={reason.label} description={reason.hint} flush>
             {items.items.length === 0 ? (
               <p className="px-4 py-10 text-center text-[13px] text-muted-foreground sm:px-5">
-                「{reason.label}」类别下的条目已全部处理。
+                「{reason.label}」类别下的条目已全部处理
               </p>
             ) : (
               <ol className="divide-y">
@@ -220,13 +217,9 @@ export default function Review({ loaderData, actionData }: Route.ComponentProps)
               <Pagination total={items.total} page={items.page} perPage={items.per_page} />
             </div>
           </Panel>
-          <Panel
-            title="最近修改"
-            description="全站的人工修改与撤销记录，可在对应项目页撤销。"
-            flush
-          >
+          <Panel title="最近修改" flush>
             {edits.items.length === 0 ? (
-              <p className="px-4 py-4 text-[13px] text-muted-foreground sm:px-5">暂无修改记录。</p>
+              <p className="px-4 py-4 text-[13px] text-muted-foreground sm:px-5">暂无修改记录</p>
             ) : (
               <ol className="divide-y">
                 {edits.items.map((edit) => (

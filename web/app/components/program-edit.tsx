@@ -98,7 +98,7 @@ export function EditForm({
   );
 }
 
-const CLEAR_HINT = "全部留空即清除该项。";
+const CLEAR_HINT = "全部留空即清除该项";
 
 function Inputs({ field, program }: { field: EditField; program: Program }) {
   const { fields } = program;
@@ -142,7 +142,7 @@ function Inputs({ field, program }: { field: EditField; program: Program }) {
   if (field === "apply") {
     const { start, end, rolling } = fields.apply ?? {};
     return (
-      <Times hint={`${TIME_HINT}。${CLEAR_HINT}`}>
+      <Times hint={`${TIME_HINT}；${CLEAR_HINT}`}>
         <TimeInput name="start" label="报名开始" value={start?.value} />
         <TimeInput name="end" label="报名截止" value={end?.value} />
         <div className="flex items-end pb-2">
@@ -156,7 +156,7 @@ function Inputs({ field, program }: { field: EditField; program: Program }) {
   if (field === "event") {
     const { start, end, mode, place } = fields.event ?? {};
     return (
-      <Times hint={`${TIME_HINT}。${CLEAR_HINT}`}>
+      <Times hint={`${TIME_HINT}；${CLEAR_HINT}`}>
         <TimeInput name="start" label="活动开始" value={start?.value} />
         <TimeInput name="end" label="活动结束" value={end?.value} />
         <div className="space-y-1.5">
@@ -213,7 +213,7 @@ function Inputs({ field, program }: { field: EditField; program: Program }) {
             />
           </div>
         ))}
-        <p className="text-xs text-muted-foreground">{TIME_HINT}。清空一行即删除该时间。</p>
+        <p className="text-xs text-muted-foreground">{TIME_HINT}；清空一行即删除该时间</p>
       </fieldset>
     );
   }
@@ -250,7 +250,7 @@ function Inputs({ field, program }: { field: EditField; program: Program }) {
     );
   }
   return (
-    <Field label={fieldLabel(field)} hint={`每行填写一项。${CLEAR_HINT}`}>
+    <Field label={fieldLabel(field)} hint={`每行填写一项；${CLEAR_HINT}`}>
       <textarea
         name="value"
         rows={4}
@@ -299,7 +299,7 @@ export function EditHistory({
     ? edits.find((edit) => String(edit.user.id) === search.get("revoke"))
     : undefined;
   if (edits.length === 0) {
-    return <p className="text-[13px] text-muted-foreground">暂无修改记录。</p>;
+    return <p className="text-[13px] text-muted-foreground">暂无修改记录</p>;
   }
   return (
     <div className="space-y-3">
@@ -314,7 +314,7 @@ export function EditHistory({
           <input type="hidden" name="user_id" value={revoking.user.id} />
           <p>
             确认撤销 {revoking.user.display_name}
-            在所有项目上的全部修改，并收回其修改权限？撤销后又被他人修改过的字段将保留。
+            在所有项目上的全部修改，并收回其修改权限？撤销后又被他人修改过的字段将保留
           </p>
           <div className="flex gap-2">
             <Button size="sm" variant="destructive" disabled={busy}>

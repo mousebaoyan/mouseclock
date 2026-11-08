@@ -3,10 +3,8 @@
 /* Like mousehole and the main site: html[data-theme] is set before first paint (root.tsx). */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* An alarm clock watching deadlines: every page opens on a band of deep ink, the header and the
-   page's title in one, and the cards below overlap its edge. Amber, from the logo's ears, is the
-   signal on the ink; vermilion is kept for deadlines that are close and for errors, so it always
-   means "act now". System fonts only: Chinese web fonts run to megabytes (design §14). */
+/* Cool paper and indigo ink; vermilion is kept for deadlines that are close and for errors, so
+   it always means "act now". System fonts only: Chinese web fonts run to megabytes (design §14). */
 @theme inline {
   --font-sans:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
@@ -28,8 +26,6 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
-  --color-band: var(--band);
-  --color-signal: var(--signal);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-tag-red: var(--tag-red);
@@ -53,8 +49,6 @@
 :root {
   color-scheme: light;
   --background: #f3f5f8;
-  --band: #14203a;
-  --signal: #f5b53d;
   --foreground: #18212f;
   --card: #ffffff;
   --popover: #ffffff;
@@ -88,8 +82,6 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
   --background: #0f141b;
-  --band: #0a1120;
-  --signal: #f2b544;
   --foreground: #e6eaf0;
   --card: #161c25;
   --popover: #1b2230;
@@ -117,38 +109,6 @@
   --tag-violet: #bba4f5;
   --tag-pink: #f293bd;
   --tag-gray: #a0a9b8;
-}
-
-/* The ink band: the dark theme's colors, with amber as its primary, so tags, links and buttons
-   inside it read on the ink without colors of their own. */
-.ink {
-  --foreground: #eef1f6;
-  --card: rgb(255 255 255 / 0.05);
-  --primary: var(--signal);
-  --primary-hover: #ffc75e;
-  --primary-foreground: #14203a;
-  --primary-soft: rgb(245 181 61 / 0.14);
-  --muted: rgb(255 255 255 / 0.06);
-  --muted-foreground: #aab4c6;
-  --subtle-foreground: #7d889c;
-  --accent: rgb(255 255 255 / 0.1);
-  --border: rgb(255 255 255 / 0.1);
-  --input: rgb(255 255 255 / 0.2);
-  --ring: var(--signal);
-  --destructive: #ff8a72;
-  --success: #6fcf97;
-  --warning: #f5c26b;
-  --tag-red: #ff9a8a;
-  --tag-orange: #ffad73;
-  --tag-amber: #f3cb6e;
-  --tag-green: #7dd8a2;
-  --tag-teal: #78d8cb;
-  --tag-sky: #86cdf5;
-  --tag-blue: #a3bdf8;
-  --tag-violet: #c4b0f7;
-  --tag-pink: #f5a0c6;
-  --tag-gray: #aab4c6;
-  color: var(--foreground);
 }
 
 @layer base {
@@ -179,9 +139,16 @@
       transition-duration: 1ms !important;
     }
   }
-  /* Tailwind 4 resets buttons to the default cursor. */
+  /* Tailwind 4 resets buttons to the default cursor; Base UI's options, menu items and boxes
+     are spans and divs. Everything that can be clicked shows the hand. */
   button:not(:disabled),
-  [role="button"]:not([aria-disabled="true"]) {
+  [role="button"]:not([aria-disabled="true"]),
+  [role="combobox"]:not([data-disabled]),
+  [role="option"]:not([data-disabled]),
+  [role="menuitem"]:not([data-disabled]),
+  [role="checkbox"]:not([data-disabled]),
+  label:has([role="checkbox"]),
+  summary {
     cursor: pointer;
   }
   /* Lucide's look for the icons of components/icons.tsx; size-* and stroke-* classes win. */

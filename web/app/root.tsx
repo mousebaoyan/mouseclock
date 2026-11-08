@@ -85,10 +85,10 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   // A 404's data is the router's own English; others carry what a loader threw for people.
   const detail =
     response?.status === 404
-      ? "链接有误，或内容已被删除。"
+      ? "链接有误，或内容已被删除"
       : typeof response?.data === "string"
         ? response.data
-        : "页面加载失败，请稍后重试。";
+        : "页面加载失败，请稍后重试";
   return (
     <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-20 text-center">
       <title>{title}</title>

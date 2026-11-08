@@ -20,7 +20,7 @@ import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { Checkbox } from "~/components/ui/checkbox";
 import { Select } from "~/components/ui/select";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
+import { List, Row } from "~/components/list";
 import { beijingDate } from "~/time";
 import type { Route } from "./+types/admin-sources.ts";
 
@@ -110,7 +110,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       config = JSON.parse(draft.config);
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error;
-      return data({ error: "抓取配置不是有效的 JSON，请检查引号与逗号。", draft }, { status: 400 });
+      return data({ error: "抓取配置不是有效的 JSON，请检查引号与逗号", draft }, { status: 400 });
     }
   }
   // Trying the page before saving it (design §7.2): the result shows under the form.
@@ -167,11 +167,8 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
   const selectCollege = (id: number) =>
     `?college_id=${id}${source ? `&edit=${source.id}` : ""}#source-form`;
   return (
-    <Page
-      title="来源管理"
-      description="每个来源对应学院官网的一个通知列表页，保存后按计划自动抓取。"
-    >
-      <FormMessage error={actionData?.error} saved={saved && "已保存，并已记入操作日志。"} />
+    <Page title="来源管理" hideTitle>
+      <FormMessage error={actionData?.error} saved={saved && "已保存"} />
       <Panel
         title={
           college ? (
@@ -230,76 +227,65 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
         </Form>
         {sources.items.length === 0 ? (
           <p className="px-4 py-8 text-center text-[13px] text-muted-foreground">
-            没有符合条件的来源，可在下方接入新来源。
+            没有符合条件的来源
           </p>
         ) : (
-          <Table bare>
-            <thead>
-              <tr>
-                <Th>来源</Th>
-                <Th className="w-px">抓取方式</Th>
-                <Th className="w-px">状态</Th>
-                <Th>上次抓取</Th>
-                <Th className="w-px">操作</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {sources.items.map((s) => (
-                <Tr key={s.id} className={source?.id === s.id ? "bg-primary-soft" : undefined}>
-                  <Td className="max-w-80">
-                    <p className="font-medium">
+          <List className="rounded-none border-0 shadow-none">
+            {sources.items.map((s) => (
+              <Row
+                key={s.id}
+                selected={source?.id === s.id}
+                title={
+                  <>
+                    <span className="font-medium">
                       {s.school_name}
                       <span className="ml-1">{s.college_name}</span>
-                    </p>
-                    <a
-                      href={s.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      title={s.url}
-                      className="mt-0.5 block truncate text-xs text-muted-foreground hover:text-primary"
-                    >
-                      {s.section || "未填写栏目名称"}　{s.url}
-                    </a>
-                  </Td>
-                  <Td center className="whitespace-nowrap text-muted-foreground">
-                    {s.browser ? "浏览器渲染" : "直接请求"}
-                  </Td>
-                  <Td center className="whitespace-nowrap">
+                    </span>
                     {s.unavailable_reason ? (
                       <span title={s.unavailable_reason}>
                         <Tag color="amber">暂停抓取</Tag>
                       </span>
-                    ) : (
-                      <Tag color="green">正常</Tag>
-                    )}
-                  </Td>
-                  <Td>
-                    {s.last_run ? (
-                      <Link
-                        to={`/crawl?date=${beijingDate(s.last_run.started_at)}&source_id=${s.id}`}
-                        className="group block"
-                      >
-                        <RunResult run={s.last_run} className="text-[13px]" />
-                        <span className="mt-0.5 block text-xs text-muted-foreground group-hover:text-primary">
-                          <DateTime value={s.last_run.finished_at} />
-                        </span>
-                      </Link>
-                    ) : (
-                      <span className="text-subtle-foreground">尚未抓取</span>
-                    )}
-                  </Td>
-                  <Td center>
+                    ) : null}
+                    {s.browser && <Tag color="gray">浏览器渲染</Tag>}
+                  </>
+                }
+                meta={
+                  <a
+                    href={s.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={s.url}
+                    className="max-w-full truncate hover:text-primary"
+                  >
+                    {s.section || "未填写栏目名称"}　{s.url}
+                  </a>
+                }
+                side={
+                  s.last_run ? (
+                    <Link
+                      to={`/crawl?date=${beijingDate(s.last_run.started_at)}&source_id=${s.id}`}
+                      className="hover:opacity-80"
+                    >
+                      <RunResult run={s.last_run} className="text-[13px]" />
+                    </Link>
+                  ) : (
+                    <span className="text-[13px] text-subtle-foreground">尚未抓取</span>
+                  )
+                }
+                sideMeta={
+                  <span className="flex items-center gap-2">
+                    {s.last_run && <DateTime value={s.last_run.finished_at} />}
                     <Link
                       to={`?edit=${s.id}&college_id=${s.college_id}#source-form`}
-                      className={buttonVariants({ variant: "ghost", size: "xs" })}
+                      className={buttonVariants({ variant: "outline", size: "xs" })}
                     >
                       编辑
                     </Link>
-                  </Td>
-                </Tr>
-              ))}
-            </tbody>
-          </Table>
+                  </span>
+                }
+              />
+            ))}
+          </List>
         )}
         <div className="px-4 pb-4 empty:hidden sm:px-5">
           <Pagination total={sources.total} page={sources.page} perPage={sources.per_page} />
@@ -313,11 +299,11 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
           title="选择学院"
           description={
             <>
-              尚未添加院校的，请先到
+              找不到学院时，请先到
               <Link to="/admin/colleges" className="link mx-0.5">
                 院校管理
               </Link>
-              添加。
+              添加
             </>
           }
           flush
@@ -339,7 +325,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
             <Button variant="outline">查找</Button>
           </Form>
           {colleges.items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">未找到学院。</p>
+            <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">未找到学院</p>
           ) : (
             <ul className="max-h-104 divide-y overflow-y-auto">
               {colleges.items.map((c) => (
@@ -406,7 +392,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                 </Checkbox>
                 <Field
                   label="抓取配置（JSON）"
-                  hint="留空则使用通用抓取。配置须为 JSON 对象，字段由抓取节点定义。"
+                  hint="留空则使用通用抓取；配置须为 JSON 对象，字段由抓取节点定义"
                 >
                   <textarea
                     name="config"
@@ -419,14 +405,14 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                 </Field>
                 <Field
                   label="暂停抓取的原因"
-                  hint="填写后暂停后续抓取，清空并保存即可恢复；正在进行的抓取会继续完成。"
+                  hint="填写后暂停后续抓取，清空并保存即可恢复；正在进行的抓取会继续完成"
                 >
                   <textarea
                     name="unavailable_reason"
                     rows={2}
                     maxLength={1000}
                     defaultValue={fields?.unavailable_reason ?? ""}
-                    placeholder="例如：需要登录、有验证码。可正常抓取时留空。"
+                    placeholder="例如：需要登录、有验证码；可正常抓取时留空"
                     className="field h-auto py-2"
                   />
                 </Field>
@@ -453,9 +439,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
               )}
             </>
           ) : (
-            <p className="py-6 text-center text-[13px] text-muted-foreground">
-              请先在左侧选择学院。
-            </p>
+            <p className="py-6 text-center text-[13px] text-muted-foreground">请先在左侧选择学院</p>
           )}
         </Panel>
       </div>
@@ -476,7 +460,7 @@ function WaitingForCrawler() {
   return (
     <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
       <span aria-hidden="true" className="size-2 shrink-0 animate-pulse rounded-full bg-primary" />
-      等待抓取节点领取任务。抓取节点每分钟领取一次任务，结果返回后本页将自动刷新。
+      等待抓取节点领取任务，结果返回后本页自动刷新
     </p>
   );
 }
@@ -515,7 +499,7 @@ function ProbeResult({ probe, adoptTo }: { probe: SourceProbe; adoptTo: string }
               </pre>
             </>
           ) : (
-            <p className="text-[13px] text-muted-foreground">无需配置，使用通用抓取即可。</p>
+            <p className="text-[13px] text-muted-foreground">无需配置，使用通用抓取即可</p>
           )}
           <Link to={adoptTo} className={buttonVariants({ size: "sm" })}>
             采用此配置

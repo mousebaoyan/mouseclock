@@ -1,4 +1,5 @@
 import type { Kind } from "../server/modules/programs/schemas.ts";
+import { topTier } from "./tiers.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
 import { beijingYear, currentCohort, statusOf, type Status } from "./time.ts";
 
@@ -20,11 +21,6 @@ type Program = {
 // Absent: not closed yet, which is what people come for.
 export const STATUS_FILTERS = ["open", "upcoming", "closed", "all"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number] | null;
-
-// "other" picks the schools with no tier.
-function tierMatches(filter: string, tiers: string[]) {
-  return filter === "other" ? tiers.length === 0 : tiers.includes(filter);
-}
 
 function statusMatches(filter: StatusFilter, status: Status | null) {
   if (filter === null) return status !== "closed";
@@ -61,8 +57,7 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
   const q = filters.q.toLowerCase();
   const picked = programs.filter((p) => {
     if (filters.kinds.length > 0 && !filters.kinds.includes(p.kind)) return false;
-    if (filters.tiers.length > 0 && !filters.tiers.some((t) => tierMatches(t, p.school.tiers)))
-      return false;
+    if (filters.tiers.length > 0 && !filters.tiers.includes(topTier(p.school.tiers))) return false;
     if (filters.region && p.college.region !== filters.region) return false;
     if (filters.direction && !p.college.directions.includes(filters.direction)) return false;
     return (
@@ -110,11 +105,6 @@ export function tablePage<P extends Program>(
   return {
     ...tableView(table.programs, filters, now),
     preview: table.preview,
-    // The band of the page counts down to these, whatever the filters: the API gives the
-    // cohort by deadline.
-    soonest: table.programs
-      .filter((p) => p.apply_deadline !== null && statusOf(p, now) === "open")
-      .slice(0, 4),
     cohort: Number(cohortOf(params, date)),
     filters,
     thisYear: beijingYear(date),

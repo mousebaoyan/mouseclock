@@ -26,7 +26,7 @@ export default function SnapshotPage({ loaderData }: Route.ComponentProps) {
     <Page
       title={notice.title}
       crumbs={[{ to: "/", label: "项目总表" }]}
-      description={
+      meta={
         <>
           通知快照，抓取于 <DateTime value={snapshot.fetched_at} />
         </>
@@ -52,11 +52,11 @@ export default function SnapshotPage({ loaderData }: Route.ComponentProps) {
         <aside className="space-y-4 lg:sticky lg:top-20">
           <Panel title="关于快照">
             <p className="text-[13px] leading-relaxed text-muted-foreground">
-              快照是鼠钟抓取时保存的原文，仅保留文字、表格和链接，不含图片与样式。
+              快照仅保留原文的文字、表格和链接，不含图片与样式
             </p>
             {notice.removed && (
               <p className="mt-3 rounded-md bg-warning/8 px-3 py-2 text-[13px] text-warning">
-                原文已被删除。
+                原文已被删除
               </p>
             )}
           </Panel>

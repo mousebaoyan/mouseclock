@@ -11,7 +11,7 @@ import {
   type Edit,
   type EditField,
 } from "~/components/program-edit";
-import { ApplyDeadline, ApplyStart, Countdown, Missing, WindowBar } from "~/components/program";
+import { ApplyDeadline, ApplyStart, Countdown, Missing } from "~/components/program";
 import { KindTag, RoleTag, StatusTag, Tag } from "~/components/tags";
 import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
@@ -110,6 +110,8 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
   const applyValue = apply
     ? { start: apply.start?.value, end: apply.end?.value, rolling: apply.rolling?.value }
     : null;
+  const applyUrl = program.fields.apply_url?.value;
+  const { event } = program.fields;
   const formError = (field: string) =>
     actionData?.intent === "edit" && actionData.field === field ? actionData.error : undefined;
   return (
@@ -119,13 +121,17 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
         { to: "/", label: "项目总表" },
         { to: `/colleges/${college.id}`, label: `${school.name}${college.name}` },
       ]}
-      description={
-        <span className="flex flex-wrap items-center gap-2">
-          <KindTag kind={program.kind} />
-          <StatusTag status={statusOf(program, now)} />
-          {verified && <Tag color="green">已核对</Tag>}
+      meta={
+        <>
+          <span className="text-foreground">{school.name}</span>
+          <Link to={`/colleges/${college.id}`} className="hover:text-primary">
+            {college.name}
+          </Link>
           <span>{program.cohort} 届</span>
-        </span>
+          <KindTag kind={program.kind} />
+          {verified && <Tag color="green">已核对</Tag>}
+          {notice.removed && <Tag color="gray">原文已删除</Tag>}
+        </>
       }
       actions={
         <>
@@ -134,15 +140,26 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
               to="?edit=program"
               replace
               preventScrollReset
-              className={buttonVariants({ variant: "outline" })}
+              className={buttonVariants({ variant: "ghost" })}
             >
               修改基本信息
             </Link>
           )}
-          <a href={notice.url} target="_blank" rel="nofollow noopener" className={buttonVariants()}>
+          <a
+            href={notice.url}
+            target="_blank"
+            rel="nofollow noopener"
+            className={buttonVariants({ variant: applyUrl ? "outline" : "default" })}
+          >
             查看通知原文
             <ExternalLink />
           </a>
+          {applyUrl && (
+            <a href={applyUrl} target="_blank" rel="nofollow noopener" className={buttonVariants()}>
+              报名入口
+              <ExternalLink />
+            </a>
+          )}
         </>
       }
     >
@@ -151,43 +168,35 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
       )}
       <Facts
         items={[
-          {
-            label: "学校与学院",
-            value: (
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                {school.name}
-                <Link to={`/colleges/${college.id}`} className="link font-normal">
-                  {college.name}
-                </Link>
-              </span>
-            ),
-          },
-          {
-            label: "报名开始",
-            value: <ApplyStart apply={applyValue} thisYear={thisYear} />,
-          },
-          {
-            label: "报名截止",
-            value: <ApplyDeadline apply={applyValue} thisYear={thisYear} />,
-          },
+          { label: "报名开始", value: <ApplyStart apply={applyValue} thisYear={thisYear} /> },
+          { label: "报名截止", value: <ApplyDeadline apply={applyValue} thisYear={thisYear} /> },
           {
             label: "报名状态",
             value: (
               <span className="flex flex-wrap items-center gap-2">
                 <StatusTag status={statusOf(program, now)} />
                 <Countdown program={program} now={now} />
-                <WindowBar program={program} now={now} />
               </span>
+            ),
+          },
+          {
+            label: "活动时间",
+            value: event ? (
+              formatWindow({ start: event.start?.value, end: event.end?.value }, thisYear) || (
+                <Missing />
+              )
+            ) : (
+              <Missing />
             ),
           },
         ]}
       />
       <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
         <div className="min-w-0 space-y-5">
-          <Panel title="项目信息" description="根据通知原文整理，每项均可展开查看原文依据。" flush>
+          <Panel title="项目信息" flush>
             {rows.length === 0 ? (
               <p className="px-4 py-4 text-[13px] text-muted-foreground sm:px-5">
-                尚未从通知中整理出项目信息。
+                尚未从通知中整理出项目信息
               </p>
             ) : (
               <dl className="divide-y">
@@ -221,11 +230,7 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
               </dl>
             )}
           </Panel>
-          <Panel
-            id="edits"
-            title="修改记录"
-            description="人工修改过的字段不会被后续通知覆盖；每次修改均可撤销，撤销后恢复为修改前的内容。"
-          >
+          <Panel id="edits" title="修改记录">
             <EditHistory
               edits={edits}
               thisYear={thisYear}
@@ -240,38 +245,17 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
           </Panel>
         </div>
         <aside className="space-y-5">
-          <Panel title="通知原文">
-            <a
-              href={notice.url}
-              target="_blank"
-              rel="nofollow noopener"
-              className="link font-medium text-pretty"
-            >
-              {notice.title}
-            </a>
-            <p className="mt-1.5 text-xs break-all text-muted-foreground">{notice.url}</p>
-            {notice.published_on && (
-              <p className="mt-2 text-[13px] text-muted-foreground">
-                发布日期：{notice.published_on}
-              </p>
-            )}
-            {notice.removed && (
-              <p className="mt-3 rounded-md bg-warning/8 px-3 py-2 text-[13px] text-warning">
-                原文已被删除，可通过各版本的快照查看。
-              </p>
-            )}
-          </Panel>
           {can?.edit && (
             <Panel title="核对">
               {verified ? (
                 <p className="text-[13px] text-muted-foreground">
-                  {verified.by} 已于 <DateTime value={verified.at} /> 核对全部字段。
+                  {verified.by} 已于 <DateTime value={verified.at} /> 核对全部字段
                 </p>
               ) : (
                 <Form method="post" preventScrollReset className="space-y-3">
                   <input type="hidden" name="intent" value="verify" />
                   <p className="text-[13px] text-muted-foreground">
-                    请对照原文核对全部字段后再标记。出现新版本或有人修改后，标记将自动取消。
+                    对照原文核对全部字段后再标记，出现新版本或有人修改后标记自动取消
                   </p>
                   <Button size="sm" variant="outline">
                     标记为已核对
@@ -281,11 +265,7 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
               )}
             </Panel>
           )}
-          <Panel
-            title="版本记录"
-            description="每条相关通知为一个版本，快照为抓取时保存的原文。"
-            flush
-          >
+          <Panel title="版本记录" flush>
             <ol className="divide-y">
               {versions.map((version) => (
                 <li key={version.number} className="px-4 py-3 text-sm sm:px-5">
@@ -302,7 +282,8 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
                   >
                     {version.notice.title}
                   </a>
-                  {version.changes.length > 0 && (
+                  {/* The first version brings every field, so only later ones say which. */}
+                  {version.number > 1 && version.changes.length > 0 && (
                     <p className="mt-1 text-[13px] text-muted-foreground">
                       更新字段：{version.changes.map(fieldLabel).join("、")}
                     </p>
