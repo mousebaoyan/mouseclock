@@ -193,8 +193,10 @@
 /* Buttons and fields as classes rather than utilities spelled out on each: a long table has
    many. Utilities a caller adds still win, being in a later layer. */
 @layer components {
+  /* A button gives a little under the finger. */
   .btn {
-    @apply inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-transparent text-sm font-medium whitespace-nowrap outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/30 disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0;
+    @apply inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-transparent text-sm font-medium whitespace-nowrap outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/30 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0;
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale;
   }
   .btn-primary {
     @apply bg-primary text-primary-foreground hover:bg-primary-hover;
@@ -257,6 +259,49 @@
 /* Motion, short and light, as mousehole's: only opacity and transform move, so none of it costs
    layout, and prefers-reduced-motion turns it all off. */
 
+/* A page opened from another fades in, and its cards and rows rise one after another
+   (components/page-transition.tsx). The page itself only fades: a transform on it would carry
+   along the fixed panels inside. */
+.page-in {
+  animation: fade-in 220ms ease-out;
+}
+.page-in .stagger > * {
+  animation: rise-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.page-in .stagger > :nth-child(2) {
+  animation-delay: 30ms;
+}
+.page-in .stagger > :nth-child(3) {
+  animation-delay: 60ms;
+}
+.page-in .stagger > :nth-child(4) {
+  animation-delay: 90ms;
+}
+.page-in .stagger > :nth-child(5) {
+  animation-delay: 120ms;
+}
+.page-in .stagger > :nth-child(n + 6) {
+  animation-delay: 150ms;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* A filter, a tab or a page of a list picked: the list cross-fades to the new one rather than
+   snap (the links' viewTransition), where the browser has view transitions. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
 /* A dropdown or menu grows from the edge by its button (components/disclosure.tsx); the phones'
    drawer slides in over a fading backdrop. */
 .pop-in {
@@ -271,11 +316,6 @@
 .fade-in {
   animation: fade-in 200ms ease-out;
 }
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-}
 .slide-in {
   animation: slide-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -285,6 +325,17 @@
   }
 }
 
+/* What opens beneath a control, such as a Reveal's evidence or the phones' filters, eases down
+   into view. A utility, so it can wait for a variant such as group-open. */
+@utility drop-in {
+  animation: drop-in 180ms ease-out;
+}
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
 
 /* A snapshot's HTML, which keeps only text-level tags (programs/sanitize.ts); the reset took their
    spacing away. */

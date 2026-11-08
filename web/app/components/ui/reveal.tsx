@@ -23,7 +23,7 @@ export function Reveal({
         {label}
         <ChevronDown className="size-3.5 transition-transform duration-200 group-open/reveal:rotate-180" />
       </summary>
-      <div className="pt-2">{children}</div>
+      <div className="pt-2 group-open/reveal:drop-in">{children}</div>
     </details>
   );
 }

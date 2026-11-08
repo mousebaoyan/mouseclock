@@ -79,6 +79,7 @@ export function Chip({
       to={to}
       replace
       preventScrollReset
+      viewTransition
       className={cn(
         "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-[13px] whitespace-nowrap pointer-coarse:h-9",
         on

@@ -20,6 +20,7 @@ export function Segmented({
           to={item.to}
           replace
           preventScrollReset
+          viewTransition
           aria-current={item.on ? "true" : undefined}
           className={cn(
             "flex flex-1 flex-col items-center justify-center rounded-[5px] border px-1 py-1 text-[13px] leading-tight whitespace-nowrap sm:h-7 sm:flex-none sm:flex-row sm:gap-1.5 sm:px-3 sm:py-0",

@@ -12,6 +12,7 @@ import {
 } from "react-router";
 import type { Route } from "./+types/root.ts";
 import { apiContext } from "./api.server.ts";
+import { PageTransition } from "~/components/page-transition";
 import { SiteHeader } from "~/components/site-header";
 import { buttonVariants } from "~/components/ui/button";
 import "./app.css";
@@ -68,7 +69,9 @@ export default function App() {
   return (
     <>
       {loading && <div aria-hidden="true" className="nav-progress" />}
-      <Outlet />
+      <PageTransition>
+        <Outlet />
+      </PageTransition>
     </>
   );
 }

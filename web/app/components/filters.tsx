@@ -131,7 +131,7 @@ export function FilterBar({
         <div
           className={cn(
             "grid flex-[1_1_100%] grid-cols-2 gap-2 sm:flex sm:flex-none",
-            !open && "max-sm:hidden",
+            open ? "max-sm:drop-in" : "max-sm:hidden",
           )}
         >
           {selects}
@@ -141,7 +141,7 @@ export function FilterBar({
         <div
           className={cn(
             "grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-4 gap-y-3 border-t p-3 sm:p-4",
-            !open && "max-sm:hidden",
+            open ? "max-sm:drop-in" : "max-sm:hidden",
           )}
         >
           {rows.map((row, i) => (
@@ -156,6 +156,7 @@ export function FilterBar({
                     to={clear}
                     replace
                     preventScrollReset
+                    viewTransition
                     className={buttonVariants({ variant: "ghost", size: "xs" })}
                   >
                     清除筛选

@@ -53,7 +53,7 @@ export function ProgramStatus({ program, now }: { program: Instants; now: number
 
 // Lists of programs are cards, one to a program: one column on phones, up to three side by side.
 export function ProgramCards({ children }: { children: ReactNode }) {
-  return <ul className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">{children}</ul>;
+  return <ul className="stagger grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">{children}</ul>;
 }
 
 // Who runs the program on top, beside how long is left and what kind it is, which is what a list
