@@ -1,4 +1,4 @@
-import type { EditValue } from "../server/modules/review/schemas.ts";
+import type { StoredValue } from "../server/modules/programs/schemas.ts";
 import { PROGRAM_KINDS } from "./components/tags.tsx";
 import { formatTime, formatWindow } from "./time.ts";
 
@@ -39,7 +39,7 @@ export function fieldLabel(key: string) {
 }
 
 // A value an edit changed, as the page shows the field.
-export function formatValue(key: string, value: EditValue | null, thisYear: number) {
+export function formatValue(key: string, value: StoredValue | null, thisYear: number) {
   if (value === null) return "空";
   if (typeof value === "boolean") return value ? "是" : "否";
   if (typeof value === "number") return `${value} 届`;

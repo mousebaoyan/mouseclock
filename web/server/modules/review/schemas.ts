@@ -5,14 +5,13 @@ import {
   ApplyValue,
   Cohort,
   DateItem,
-  DateWindow,
   DegreeList,
   EventValue,
   Kind,
   ProgramName,
   Text,
   Texts,
-  TimeValue,
+  StoredValue,
 } from "../programs/schemas.ts";
 
 // What a program has besides its fields, which people can change too.
@@ -63,24 +62,12 @@ export const ProgramEdit = z
   .openapi("ProgramEdit");
 export type ProgramEdit = z.infer<typeof ProgramEdit>;
 
-// A value as program_fields keeps it, one part of a field made of parts; or a program's name,
-// cohort or kind.
-const EditValue = z.union([
-  z.string(),
-  z.number(),
-  z.boolean(),
-  z.array(z.string()),
-  TimeValue,
-  DateWindow,
-]);
-export type EditValue = z.infer<typeof EditValue>;
-
 export const Edit = z
   .object({
     id: Int,
     field: z.string().openapi({ description: "program_fields 的键，或 name、cohort、kind" }),
-    old_value: EditValue.nullable().openapi({ description: "为空是原来没有" }),
-    new_value: EditValue.nullable().openapi({ description: "为空是清空了" }),
+    old_value: StoredValue.nullable().openapi({ description: "为空是原来没有" }),
+    new_value: StoredValue.nullable().openapi({ description: "为空是清空了" }),
     reason: z.string().nullable().openapi({ description: "撤销的为空" }),
     basis: z.string().nullable().openapi({ description: "撤销的为空" }),
     user: z.object({ id: Int, display_name: z.string() }),

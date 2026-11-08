@@ -1,4 +1,4 @@
-import { sql, type Transaction } from "kysely";
+import { sql, type Kysely, type Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
@@ -298,8 +298,8 @@ function noticeYear(publishedOn: string | null) {
   return Number((publishedOn ?? new Date(Date.now() + 8 * 3600_000).toISOString()).slice(0, 4));
 }
 
-async function extractionContext(
-  trx: Transaction<DB>,
+export async function extractionContext(
+  trx: Kysely<DB>,
   sourceId: number,
   publishedOn: string | null,
 ) {
@@ -421,7 +421,7 @@ export type ExtractedProgram = {
 
 // Why something waits on the review page instead of going on the table (design §8.3, §8.4).
 // Deciding on it means merging and versioning, so the items belong here rather than to review.
-type ReviewReason =
+export type ReviewReason =
   // a field held back from a version
   | "evidence_not_found"
   | "low_confidence"
@@ -443,7 +443,7 @@ type ReviewItem = {
   payload: Json;
 };
 
-async function holdForReview(trx: Transaction<DB>, items: ReviewItem[]) {
+export async function holdForReview(trx: Transaction<DB>, items: ReviewItem[]) {
   if (items.length === 0) return;
   await trx
     .insertInto("review_items")
@@ -478,7 +478,7 @@ export async function recordExtraction(
     const snapshot = await trx
       .selectFrom("snapshots as s")
       .innerJoin("notices as n", "n.id", "s.notice_id")
-      .select(["s.text", "s.extracted_at", "n.source_id", "n.published_on"])
+      .select(["s.extracted_at", "n.source_id", "n.published_on"])
       .where("s.id", "=", snapshotId)
       .forUpdate("s")
       .executeTakeFirst();
@@ -486,13 +486,7 @@ export async function recordExtraction(
     // Sent again after a lost response: the first one counted.
     if (snapshot.extracted_at) return;
 
-    const attachments = await trx
-      .selectFrom("attachments")
-      .select("text")
-      .where("snapshot_id", "=", snapshotId)
-      .orderBy("position")
-      .execute();
-    const docs = { body: snapshot.text, attachments: attachments.map((a) => a.text) };
+    const docs = await docsOf(trx, snapshotId);
     const context = await extractionContext(trx, snapshot.source_id, snapshot.published_on);
     const year = noticeYear(snapshot.published_on);
     const held: ReviewItem[] = [];
@@ -534,7 +528,23 @@ export async function recordExtraction(
   });
 }
 
-async function mergeProgram(
+// The texts a snapshot's evidence is looked up in: its body and its attachments, by position.
+export async function docsOf(trx: Transaction<DB>, snapshotId: number) {
+  const { text } = await trx
+    .selectFrom("snapshots")
+    .select("text")
+    .where("id", "=", snapshotId)
+    .executeTakeFirstOrThrow();
+  const attachments = await trx
+    .selectFrom("attachments")
+    .select("text")
+    .where("snapshot_id", "=", snapshotId)
+    .orderBy("position")
+    .execute();
+  return { body: text, attachments: attachments.map((a) => a.text) };
+}
+
+export async function mergeProgram(
   trx: Transaction<DB>,
   snapshotId: number,
   publishedOn: string | null,
@@ -564,8 +574,19 @@ async function mergeProgram(
       });
     }
   }
-  // One version at a time per program, so their numbers don't collide.
-  await trx.selectFrom("programs").select("id").where("id", "=", programId).forUpdate().execute();
+  // One version at a time per program, so their numbers don't collide. The program may have been
+  // merged into another on the review page since the candidates were read.
+  const live = await trx
+    .selectFrom("programs")
+    .select("id")
+    .where("id", "=", programId)
+    .where("deleted_at", "is", null)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!live) {
+    held.push({ reason: "unknown_program", snapshot_id: snapshotId, payload: program });
+    return held;
+  }
   const { number } = await trx
     .selectFrom("program_versions")
     .select(sql<number>`coalesce(max(number), 0) + 1`.as("number"))

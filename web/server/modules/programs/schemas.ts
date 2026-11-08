@@ -217,6 +217,18 @@ export const DateWindow = z.union([
 ]);
 export type DateWindow = z.infer<typeof DateWindow>;
 
+// A value as program_fields keeps it, a part of a field made of parts on its own; or a program's
+// name, cohort or kind, as edits keep them.
+export const StoredValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.string()),
+  TimeValue,
+  DateWindow,
+]);
+export type StoredValue = z.infer<typeof StoredValue>;
+
 // The fields of design §8.2 put back together, each part with what supports it.
 export const ProgramFields = z
   .object({
