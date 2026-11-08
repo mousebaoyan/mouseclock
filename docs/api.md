@@ -70,6 +70,7 @@
 | | `GET`、`POST /admin/colleges`，`GET`、`PATCH /admin/colleges/{id}` | 管理员查询、新增、修改学院 |
 | | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
 | | `POST /admin/users/{id}/revoke-edits` | 撤销某人的全部修改，收回这个人在鼠钟的修改权限 |
+| | `GET`、`POST /admin/crawler-tokens`，`POST /admin/crawler-tokens/{id}/revoke` | 站长查询、生成、作废抓取节点令牌：生成时返回的令牌只出现这一次，作废马上生效；生成和作废记进操作日志 |
 | | `/admin/tags`、`/admin/users`、`/admin/settings` | 标签预设、修改权限、系统设置 |
 
 ## 4. MCP

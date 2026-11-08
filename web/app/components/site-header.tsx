@@ -18,7 +18,7 @@ type Me = {
   display_name: string;
   avatar_url: string | null;
   frozen: boolean;
-  can: { edit: boolean; admin: boolean };
+  can: { edit: boolean; admin: boolean; owner: boolean };
 };
 
 function navLink({ isActive }: { isActive: boolean }) {
@@ -65,6 +65,11 @@ export function SiteHeader({ me }: { me: Me | null }) {
           {me?.can.admin && (
             <NavLink to="/admin/sources" className={navLink}>
               来源管理
+            </NavLink>
+          )}
+          {me?.can.owner && (
+            <NavLink to="/admin/settings" className={navLink}>
+              系统设置
             </NavLink>
           )}
         </nav>

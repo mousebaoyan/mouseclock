@@ -22,7 +22,7 @@ export async function recordAudit(
   entry: {
     user_id: number;
     action: string;
-    target_type: "school" | "college" | "source" | "user" | "review_item";
+    target_type: "school" | "college" | "source" | "user" | "review_item" | "crawler_token";
     target_id: number;
     detail: Record<string, unknown>;
   },

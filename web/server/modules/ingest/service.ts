@@ -2,6 +2,7 @@ import { sql, type Kysely, type Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
+import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
 import type { ExtractedFields, Kind, Role } from "../programs/schemas.ts";
 import {
@@ -13,6 +14,7 @@ import {
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
+import { recordAudit } from "../review/service.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
 const LEASE_MS = 2 * 3600_000;
@@ -27,6 +29,8 @@ const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
 
+type Owner = { user_id: number; via: "web" };
+
 export type Failure =
   "timeout" | "unreachable" | "too_many_redirects" | "http_status" | "no_items" | "error";
 export type Usage = { model: string; input_tokens: number; output_tokens: number };
@@ -34,13 +38,68 @@ export const PURPOSES = ["screening", "extraction", "probe"] as const;
 export type Purpose = (typeof PURPOSES)[number];
 export type ListedItem = { url: string; title: string; published_on?: string };
 
-export async function createCrawlerToken(name: string) {
+// Made by the owner in the system settings (design §6.2), or for a local crawler with
+// `pnpm crawler-token`, which no one logs in for. The token is shown once: only its SHA-256 is
+// kept.
+export async function createCrawlerToken(name: string, owner?: Owner) {
   const token = newToken();
-  await db
-    .insertInto("crawler_tokens")
-    .values({ name, token_hash: hashToken(token) })
-    .execute();
+  await db.transaction().execute(async (trx) => {
+    const { id } = await trx
+      .insertInto("crawler_tokens")
+      .values({ name, token_hash: hashToken(token) })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    if (owner) {
+      await recordAudit(trx, {
+        user_id: owner.user_id,
+        action: "create",
+        target_type: "crawler_token",
+        target_id: id,
+        detail: { via: owner.via, name },
+      });
+    }
+  });
   return token;
+}
+
+export async function listCrawlerTokens() {
+  const rows = await db
+    .selectFrom("crawler_tokens")
+    .select(["id", "name", "created_at", "last_seen_at", "revoked_at"])
+    .orderBy("id", "desc")
+    .execute();
+  return rows.map((row) => ({
+    ...row,
+    created_at: unix(row.created_at),
+    last_seen_at: row.last_seen_at && unix(row.last_seen_at),
+    revoked_at: row.revoked_at && unix(row.revoked_at),
+  }));
+}
+
+// A revoked token stops working at once: every request looks it up (crawlerTokenId).
+export async function revokeCrawlerToken(owner: Owner, id: number) {
+  await db.transaction().execute(async (trx) => {
+    const token = await trx
+      .selectFrom("crawler_tokens")
+      .select(["name", "revoked_at"])
+      .where("id", "=", id)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!token) throw new AppError(404, "not_found", "令牌不存在");
+    if (token.revoked_at) throw new AppError(409, "already_revoked", "这个令牌已经作废了");
+    await trx
+      .updateTable("crawler_tokens")
+      .set({ revoked_at: new Date() })
+      .where("id", "=", id)
+      .execute();
+    await recordAudit(trx, {
+      user_id: owner.user_id,
+      action: "revoke",
+      target_type: "crawler_token",
+      target_id: id,
+      detail: { via: owner.via, name: token.name },
+    });
+  });
 }
 
 export async function crawlerTokenId(token: string) {
