@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import time
-from collections.abc import Callable
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncGenerator
+from contextlib import asynccontextmanager
+from typing import Self
 from urllib.parse import urljoin
 
 from playwright.async_api import (
@@ -25,10 +26,12 @@ from playwright.async_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 
+from crawler.crawl.contract import WorkSource
 from crawler.crawl.fetch import (
     MAX_REDIRECTS,
     TIMEOUT,
     USER_AGENT,
+    Fetcher,
     FetchError,
     Response,
 )
@@ -41,14 +44,32 @@ _CHALLENGES = {202, 412}
 _logger = logging.getLogger(__name__)
 
 
+async def _close_popup(page: Page) -> None:
+    if await page.opener() is not None:
+        await page.close()
+
+
+async def _route(route: Route) -> None:
+    if route.request.resource_type in _BLOCKED:
+        await route.abort()
+    else:
+        await route.continue_()
+
+
 class Browser:
-    def __init__(self, permit: Callable[[str], AbstractAsyncContextManager[None]]) -> None:
-        self.permit = permit
+    def __init__(self, fetcher: Fetcher) -> None:
+        self.fetcher = fetcher
         self.slots = asyncio.Semaphore(PAGE_LIMIT)
         self._lock = asyncio.Lock()
         self._playwright: Playwright | None = None
         self._browser: PlaywrightBrowser | None = None
         self._user_agent = ""
+
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
+        await self.close()
 
     async def _start(self) -> PlaywrightBrowser:
         async with self._lock:
@@ -69,23 +90,23 @@ class Browser:
             self._browser = browser
             return browser
 
-    async def session(self, url: str) -> BrowserSession:
+    @asynccontextmanager
+    async def session(self, source: WorkSource) -> AsyncGenerator[PageSession]:
+        if not source.browser:
+            yield PageSession(self.fetcher, None)
+            return
         try:
             browser = await self._start()
-            context = await browser.new_context(
+            async with await browser.new_context(
                 user_agent=self._user_agent, service_workers="block", accept_downloads=False
-            )
-            session = BrowserSession(self, context)
-            try:
-                await session.configure()
-            except BaseException:
-                await context.close()
-                raise
-            return session
+            ) as context:
+                await context.route("**/*", _route)
+                context.on("page", _close_popup)
+                yield PageSession(self.fetcher, BrowserSession(self, context))
         except PlaywrightTimeoutError as error:
-            raise FetchError("timeout", url) from error
+            raise FetchError("timeout", source.url) from error
         except PlaywrightError as error:
-            raise FetchError("unreachable", url) from error
+            raise FetchError("unreachable", source.url) from error
 
     async def close(self) -> None:
         try:
@@ -101,22 +122,8 @@ class BrowserSession:
         self._owner = owner
         self._context = context
 
-    async def configure(self) -> None:
-        await self._context.route("**/*", self._route)
-        self._context.on("page", self._new_page)
-
-    async def _new_page(self, page: Page) -> None:
-        if await page.opener() is not None:
-            await page.close()
-
-    async def _route(self, route: Route) -> None:
-        if route.request.resource_type in _BLOCKED:
-            await route.abort()
-        else:
-            await route.continue_()
-
     async def get(self, url: str) -> Response:
-        async with self._owner.slots, self._owner.permit(url):
+        async with self._owner.slots, self._owner.fetcher.permit(url):
             started = time.monotonic()
             try:
                 async with await self._context.new_page() as page:
@@ -153,7 +160,7 @@ class BrowserSession:
 
     async def download(self, url: str, *, page_url: str) -> Response:
         for _ in range(MAX_REDIRECTS + 1):
-            async with self._owner.permit(url):
+            async with self._owner.fetcher.permit(url):
                 try:
                     response = await self._context.request.get(
                         url,
@@ -182,5 +189,18 @@ class BrowserSession:
                     raise FetchError("unreachable", url) from error
         raise FetchError("too_many_redirects", url)
 
-    async def close(self) -> None:
-        await self._context.close()
+
+class PageSession:
+    def __init__(self, fetcher: Fetcher, browser_session: BrowserSession | None) -> None:
+        self._fetcher = fetcher
+        self._browser_session = browser_session
+
+    async def get(self, url: str) -> Response:
+        if self._browser_session is not None:
+            return await self._browser_session.get(url)
+        return await self._fetcher.get(url)
+
+    async def download(self, url: str, *, page_url: str) -> Response:
+        if self._browser_session is not None:
+            return await self._browser_session.download(url, page_url=page_url)
+        return await self._fetcher.get(url)

@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
+from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import (
     AttachmentInfo,
     ExtractedProgram,
@@ -25,7 +26,7 @@ from crawler.crawl.contract import (
     Usage,
     WorkSource,
 )
-from crawler.crawl.fetch import Fetcher, FetchError, PageSession
+from crawler.crawl.fetch import FetchError
 from crawler.crawl.website import Website
 
 logger = logging.getLogger(__name__)
@@ -80,7 +81,7 @@ def _failure(error: FetchError | StepError) -> tuple[Failure, str | None]:
 
 async def crawl_source(
     source: WorkSource,
-    fetcher: Fetcher,
+    browser: Browser,
     website: Website,
     steps: Steps,
     clock: Callable[[], float] = time.time,
@@ -88,7 +89,7 @@ async def crawl_source(
     started_at = int(clock())
     async with AsyncExitStack() as stack:
         try:
-            pages = await stack.enter_async_context(fetcher.session(source.browser, url=source.url))
+            pages = await stack.enter_async_context(browser.session(source))
             items = await steps.list_items(pages, source)
             if not items:
                 raise StepError("no_items")

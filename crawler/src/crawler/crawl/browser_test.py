@@ -5,11 +5,14 @@ from typing import Self
 
 import httpx
 import pytest
-from playwright.async_api import Error as PlaywrightError
-from playwright.async_api import TimeoutError as PlaywrightTimeoutError
 
 from crawler.crawl.browser import Browser
-from crawler.crawl.fetch import INTERVAL, Failure, Fetcher, FetchError
+from crawler.crawl.contract import WorkSource
+from crawler.crawl.fetch import INTERVAL, Fetcher, FetchError
+
+SOURCE = WorkSource(
+    id=7, url="https://a/list", section="通知公告", browser=True, config=None, backfill=False
+)
 
 
 def run(main: Callable[[], Awaitable[None]]) -> None:
@@ -66,8 +69,6 @@ class FakePage:
         driver.started.put_nowait(self)
         if driver.block_pages:
             await self.ready.wait()
-        if driver.error is not None:
-            raise driver.error
         for status, navigation, main_frame in driver.responses:
             frame = self.main_frame if main_frame else object()
             self.handlers["response"](FakeResponse(status, FakeRequest(frame, navigation)))
@@ -103,8 +104,6 @@ class FakeDownloads:
         self.responses: list[FakeDownload] = []
 
     async def get(self, url: str, *, headers: dict[str, str], **_options: object) -> FakeDownload:
-        if self.context.driver.error is not None:
-            raise self.context.driver.error
         response = FakeDownload(
             url, f"%PDF context {self.context.number}: {headers['Referer']}".encode()
         )
@@ -131,7 +130,10 @@ class FakeContext:
         self.pages.append(page)
         return page
 
-    async def close(self) -> None:
+    async def __aenter__(self) -> Self:
+        return self
+
+    async def __aexit__(self, *_: object) -> None:
         self.closed = True
 
 
@@ -141,7 +143,6 @@ class FakeBrowser:
         self.started: asyncio.Queue[FakePage] = asyncio.Queue()
         self.block_pages = False
         self.destination: str | None = None
-        self.error: PlaywrightError | None = None
         self.responses = [(200, True, True)]
 
     async def new_context(self, **_options: object) -> FakeContext:
@@ -177,7 +178,8 @@ def test_page_visits_and_http_requests_wait_for_each_other(driver: FakeBrowser) 
     async def main() -> None:
         async with (
             Fetcher(httpx.MockTransport(handle), clock.clock, clock.sleep) as fetcher,
-            fetcher.session(True, url="https://a/list") as session,
+            Browser(fetcher) as browser,
+            browser.session(SOURCE) as session,
         ):
             first_http = asyncio.create_task(fetcher.get("https://a/first"))
             await http_started.wait()
@@ -208,8 +210,9 @@ def test_page_limit_is_shared_by_rounds(driver: FakeBrowser) -> None:
     async def main() -> None:
         async with (
             Fetcher() as fetcher,
-            fetcher.session(True, url="https://a/list") as first,
-            fetcher.session(True, url="https://b/list") as second,
+            Browser(fetcher) as browser,
+            browser.session(SOURCE) as first,
+            browser.session(SOURCE.model_copy(update={"id": 8, "url": "https://b/list"})) as second,
         ):
             tasks = [
                 asyncio.create_task(first.get("https://a/list")),
@@ -235,17 +238,20 @@ def test_each_round_opens_reuses_and_closes_its_context(driver: FakeBrowser) -> 
     clock = FakeClock()
 
     async def main() -> None:
-        async with Fetcher(clock=clock.clock, sleep=clock.sleep) as fetcher:
-            async with fetcher.session(False, url="https://a/list"):
+        async with (
+            Fetcher(clock=clock.clock, sleep=clock.sleep) as fetcher,
+            Browser(fetcher) as browser,
+        ):
+            async with browser.session(SOURCE.model_copy(update={"browser": False})):
                 assert driver.contexts == []
-            async with fetcher.session(True, url="https://a/list") as session:
+            async with browser.session(SOURCE) as session:
                 assert len(driver.contexts) == 1
                 await session.get("https://a/list")
                 await session.get("https://a/notice")
                 assert len(driver.contexts[0].pages) == 2
                 assert not driver.contexts[0].closed
             assert driver.contexts[0].closed
-            async with fetcher.session(True, url="https://a/list"):
+            async with browser.session(SOURCE):
                 assert len(driver.contexts) == 2
             assert driver.contexts[1].closed
 
@@ -256,9 +262,12 @@ def test_downloads_use_the_rounds_context_request_client(driver: FakeBrowser) ->
     clock = FakeClock()
 
     async def main() -> None:
-        async with Fetcher(clock=clock.clock, sleep=clock.sleep) as fetcher:
+        async with (
+            Fetcher(clock=clock.clock, sleep=clock.sleep) as fetcher,
+            Browser(fetcher) as browser,
+        ):
             for number in (1, 2):
-                async with fetcher.session(True, url="https://a/list") as session:
+                async with browser.session(SOURCE) as session:
                     await session.get("https://a/notice")
                     attachment = await session.download(
                         "https://a/file.pdf", page_url="https://a/notice"
@@ -284,8 +293,9 @@ def test_last_main_navigation_response_is_used_without_a_cross_site_permit(
     async def main() -> None:
         async with (
             Fetcher() as fetcher,
+            Browser(fetcher) as browser,
             fetcher.permit("https://b/busy"),
-            fetcher.session(True, url="https://a/list") as session,
+            browser.session(SOURCE) as session,
         ):
             response = await session.get("https://a/notice")
             assert response.status == 200
@@ -300,81 +310,14 @@ def test_unresolved_challenges_fail(driver: FakeBrowser, status: int) -> None:
     driver.responses = [(status, True, True)]
 
     async def main() -> None:
-        async with Fetcher() as fetcher, fetcher.session(True, url="https://a/list") as session:
+        async with (
+            Fetcher() as fetcher,
+            Browser(fetcher) as browser,
+            browser.session(SOURCE) as session,
+        ):
             with pytest.raises(FetchError) as caught:
                 await session.get("https://a/list")
             assert caught.value.failure == "unreachable"
             assert driver.contexts[0].pages[0].closed
-
-    run(main)
-
-
-@pytest.mark.parametrize(
-    ("error", "failure"),
-    [
-        (PlaywrightTimeoutError("Timed out"), "timeout"),
-        (PlaywrightError("Browser request failed"), "unreachable"),
-    ],
-)
-@pytest.mark.parametrize("download", [False, True])
-def test_playwright_errors_become_fetch_errors(
-    driver: FakeBrowser, error: PlaywrightError, failure: Failure, *, download: bool
-) -> None:
-    driver.error = error
-    clock = FakeClock()
-
-    async def main() -> None:
-        async with (
-            Fetcher(clock=clock.clock, sleep=clock.sleep) as fetcher,
-            fetcher.session(True, url="https://a/list") as session,
-        ):
-            operation = (
-                session.download("https://a/file.pdf", page_url="https://a/notice")
-                if download
-                else session.get("https://a/notice")
-            )
-            with pytest.raises(FetchError) as caught:
-                await operation
-            assert caught.value.failure == failure
-            driver.error = None
-            assert (await session.get("https://a/retry")).status == 200
-            assert clock.now == INTERVAL
-
-    run(main)
-
-
-@pytest.mark.parametrize("stage", ["start", "context", "configure"])
-@pytest.mark.parametrize(
-    ("error", "failure"),
-    [
-        (PlaywrightTimeoutError("Timed out"), "timeout"),
-        (PlaywrightError("Browser initialization failed"), "unreachable"),
-    ],
-)
-def test_initialization_errors_include_the_source_url(
-    monkeypatch: pytest.MonkeyPatch,
-    driver: FakeBrowser,
-    stage: str,
-    error: PlaywrightError,
-    failure: Failure,
-) -> None:
-    async def fail(*_args: object, **_options: object) -> None:
-        raise error
-
-    if stage == "start":
-        monkeypatch.setattr(Browser, "_start", fail)
-    elif stage == "context":
-        monkeypatch.setattr(FakeBrowser, "new_context", fail)
-    else:
-        monkeypatch.setattr(FakeContext, "route", fail)
-
-    async def main() -> None:
-        async with Fetcher() as fetcher:
-            with pytest.raises(FetchError) as caught:
-                async with fetcher.session(True, url="https://a/list"):
-                    pass
-            assert caught.value.failure == failure
-            assert caught.value.url == "https://a/list"
-            assert all(context.closed for context in driver.contexts)
 
     run(main)
