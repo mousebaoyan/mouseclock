@@ -21,6 +21,11 @@ type Program = {
 export const STATUS_FILTERS = ["open", "upcoming", "closed", "all"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number] | null;
 
+// "other" picks the schools with no tier.
+function tierMatches(filter: string, tiers: string[]) {
+  return filter === "other" ? tiers.length === 0 : tiers.includes(filter);
+}
+
 function statusMatches(filter: StatusFilter, status: Status | null) {
   if (filter === null) return status !== "closed";
   return filter === "all" || status === filter;
@@ -54,10 +59,9 @@ function choices(values: string[]) {
 // The programs `filters` pick, as of `now` in Unix seconds. The API gives them by deadline.
 export function tableView<P extends Program>(programs: P[], filters: Filters, now: number) {
   const q = filters.q.toLowerCase();
-  const matched = programs.filter((p) => {
-    if (!statusMatches(filters.status, statusOf(p, now))) return false;
+  const picked = programs.filter((p) => {
     if (filters.kinds.length > 0 && !filters.kinds.includes(p.kind)) return false;
-    if (filters.tiers.length > 0 && !filters.tiers.some((t) => p.school.tiers.includes(t)))
+    if (filters.tiers.length > 0 && !filters.tiers.some((t) => tierMatches(t, p.school.tiers)))
       return false;
     if (filters.region && p.college.region !== filters.region) return false;
     if (filters.direction && !p.college.directions.includes(filters.direction)) return false;
@@ -68,6 +72,15 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
       )
     );
   });
+  const statuses = picked.map((p) => statusOf(p, now));
+  // How many each status choice would show, beside it.
+  const counts = Object.fromEntries(
+    [null, ...STATUS_FILTERS].map((filter) => [
+      filter ?? "",
+      statuses.filter((status) => statusMatches(filter, status)).length,
+    ]),
+  );
+  const matched = picked.filter((_, i) => statusMatches(filters.status, statuses[i]));
   // Newest first; those listed without a date last.
   if (filters.sort === "published") {
     matched.sort((a, b) =>
@@ -79,6 +92,7 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
   return {
     programs: matched.slice((page - 1) * filters.perPage, page * filters.perPage),
     total: matched.length,
+    counts,
     page,
     regions: choices(programs.map((p) => p.college.region)),
     directions: choices(programs.flatMap((p) => p.college.directions)),
@@ -96,6 +110,11 @@ export function tablePage<P extends Program>(
   return {
     ...tableView(table.programs, filters, now),
     preview: table.preview,
+    // The band of the page counts down to these, whatever the filters: the API gives the
+    // cohort by deadline.
+    soonest: table.programs
+      .filter((p) => p.apply_deadline !== null && statusOf(p, now) === "open")
+      .slice(0, 4),
     cohort: Number(cohortOf(params, date)),
     filters,
     thisYear: beijingYear(date),

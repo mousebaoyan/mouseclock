@@ -47,6 +47,17 @@ export default defineConfig(({ mode }) => {
       babel({ include: /\/app\/.+\.tsx?$/, plugins: ["babel-plugin-react-compiler"] }),
     ],
     resolve: { tsconfigPaths: true },
+    // Found only when a page first imports them, which would reload the page and, in the
+    // meantime, load a second copy of React.
+    optimizeDeps: {
+      include: [
+        "@base-ui/react/checkbox",
+        "@base-ui/react/collapsible",
+        "@base-ui/react/dialog",
+        "@base-ui/react/menu",
+        "@base-ui/react/select",
+      ],
+    },
     // The oldest browsers we support, as mousehole does: QQ's built-in browser on older phones
     // (design §10). Vite's default starts at iOS 16.4.
     environments: {

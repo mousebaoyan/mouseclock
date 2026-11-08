@@ -1,23 +1,27 @@
 import type { InferResponseType } from "hono/client";
 import type { ReactNode } from "react";
 import { data, Form, Link, redirect, useRouteLoaderData, useSearchParams } from "react-router";
-import { cn } from "~/cn";
-import { formText } from "../admin.server.ts";
-import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { CrawlTime, linkClass, panelClass } from "../components/admin.tsx";
+import { FormMessage } from "~/components/form";
+import { ExternalLink, Quote } from "~/components/icons";
+import { Facts, Page, Panel } from "~/components/page";
 import {
   EditForm,
   EditHistory,
   EditLink,
   type Edit,
   type EditField,
-} from "../components/program-edit.tsx";
-import { KindTag, RoleTag, StatusTag, Tag, TierTags } from "../components/tags.tsx";
-import { Button } from "../components/ui/button.tsx";
+} from "~/components/program-edit";
+import { ApplyDeadline, ApplyStart, Countdown, Missing, WindowBar } from "~/components/program";
+import { KindTag, RoleTag, StatusTag, Tag } from "~/components/tags";
+import { DateTime } from "~/components/time";
+import { Button, buttonVariants } from "~/components/ui/button";
+import { Reveal } from "~/components/ui/reveal";
+import { formText } from "../admin.server.ts";
+import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { DEGREES, fieldLabel, MODES } from "../fields.ts";
 import { editValues, FormError } from "../program-edit.server.ts";
 import type { loader as rootLoader } from "../root.tsx";
-import { beijingYear, countdown, formatApply, formatWindow, statusOf, useNow } from "../time.ts";
+import { beijingYear, formatApply, formatWindow, statusOf, useNow } from "../time.ts";
 import type { Route } from "./+types/program-detail.ts";
 
 type ProgramApi = ReturnType<typeof createApi>["programs"][":id"];
@@ -40,7 +44,7 @@ function stated(row: FieldRow) {
 
 export function meta({ loaderData }: Route.MetaArgs) {
   const { program } = loaderData;
-  return [{ title: `${program.school.name} · ${program.name} · 鼠钟` }];
+  return [{ title: `${program.name} · ${program.school.name} · 鼠钟` }];
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
@@ -82,7 +86,7 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     return redirect(`/programs/${params.id}`);
   }
   if (intent !== "verify" && intent !== "revert" && intent !== "revoke") {
-    throw data("未知操作", { status: 400 });
+    throw data("不支持的操作", { status: 400 });
   }
   const res = await (intent === "verify"
     ? api.programs[":id"].verify.$post({ param })
@@ -98,181 +102,230 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
   const { program, versions, edits, thisYear } = loaderData;
   const { school, college, notice, verified } = program;
   const now = useNow(loaderData.now);
-  const left = countdown(program, now);
   const can = useRouteLoaderData<typeof rootLoader>("root")?.me?.can;
   const [search] = useSearchParams();
   const editing = can?.edit ? search.get("edit") : null;
   const rows = rowsOf(program.fields, thisYear, Boolean(can?.edit));
+  const apply = program.fields.apply;
+  const applyValue = apply
+    ? { start: apply.start?.value, end: apply.end?.value, rolling: apply.rolling?.value }
+    : null;
   const formError = (field: string) =>
     actionData?.intent === "edit" && actionData.field === field ? actionData.error : undefined;
   return (
-    <main className="mx-auto max-w-4xl space-y-6 px-3 py-6 sm:px-5">
-      <p className="text-sm">
-        <Link to="/" className={linkClass}>
-          总表
-        </Link>
-        <span className="text-muted-foreground"> / {program.name}</span>
-      </p>
-      <header>
-        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
-          <span className="font-medium text-brand-strong">{school.name}</span>
-          <TierTags tiers={school.tiers} />
-          <Link to={`/colleges/${college.id}`} className={linkClass}>
-            {college.name}
-          </Link>
-          <span className="text-muted-foreground">{college.region}</span>
-        </p>
-        <h1 className="mt-2 text-2xl font-semibold text-pretty">{program.name}</h1>
-        <p className="mt-2.5 flex flex-wrap items-center gap-2 text-sm">
+    <Page
+      title={program.name}
+      crumbs={[
+        { to: "/", label: "项目总表" },
+        { to: `/colleges/${college.id}`, label: `${school.name}${college.name}` },
+      ]}
+      description={
+        <span className="flex flex-wrap items-center gap-2">
           <KindTag kind={program.kind} />
           <StatusTag status={statusOf(program, now)} />
           {verified && <Tag color="green">已核对</Tag>}
-          <span className="text-muted-foreground">
-            {program.cohort} 届{left && ` · ${left}`}
-          </span>
-          {can?.edit && editing !== "program" && <EditLink field="program" />}
-        </p>
-        {verified && (
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {verified.by} 核对于 <CrawlTime value={verified.at} />
-          </p>
-        )}
-        {editing === "program" && (
-          <EditForm field="program" program={program} error={formError("program")} />
-        )}
-        {can?.edit && !verified && (
-          <Form method="post" preventScrollReset className="mt-3 flex flex-wrap items-center gap-2">
-            <input type="hidden" name="intent" value="verify" />
-            <Button size="sm" variant="outline">
-              标记已核对
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              对照原文核对过全部字段后再标记；之后有新版本或有人修改，标记会取消。
-            </span>
-          </Form>
-        )}
-        {actionData?.intent === "verify" && (
-          <p role="alert" className="mt-2 text-sm text-destructive">
-            {actionData.error}
-          </p>
-        )}
-      </header>
-
-      <section className="rounded-xl border border-brand/40 bg-brand/5 p-4 sm:p-5">
-        <p className="text-xs font-medium text-brand-strong">原文</p>
-        <a
-          href={notice.url}
-          target="_blank"
-          rel="nofollow noopener"
-          className={cn(linkClass, "mt-1 block text-base font-medium text-pretty")}
-        >
-          {notice.title}
-        </a>
-        <p className="mt-1 text-xs break-all text-muted-foreground">
-          {notice.published_on && `${notice.published_on} 发布 · `}
-          {notice.url}
-        </p>
-        {notice.removed && (
-          <p className="mt-2 text-sm text-warning">原文已删除，下面各版的快照还能看。</p>
-        )}
-      </section>
-
-      <section className={panelClass}>
-        <h2 className="text-lg font-semibold">项目信息</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          由通知原文整理，每一项都能展开看原文里的句子和它来自哪一版。
-        </p>
-        {rows.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">通知里还没有整理出信息。</p>
-        ) : (
-          <dl className="mt-2 divide-y divide-border">
-            {rows.map((row) => (
-              <div key={row.field} className="py-3.5 sm:grid sm:grid-cols-[7rem_1fr] sm:gap-4">
-                <dt className="text-sm text-muted-foreground">{row.label}</dt>
-                <dd className="mt-1 min-w-0 text-sm sm:mt-0">
-                  {editing === row.field ? (
-                    <EditForm field={row.field} program={program} error={formError(row.field)} />
-                  ) : (
-                    <>
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          {stated(row) ? (
-                            row.value
-                          ) : (
-                            <span className="text-muted-foreground">未说明</span>
-                          )}
-                        </div>
-                        {can?.edit && <EditLink field={row.field} />}
-                      </div>
-                      {stated(row) && <Evidence parts={row.parts} versions={versions} />}
-                    </>
-                  )}
-                </dd>
-              </div>
-            ))}
-          </dl>
-        )}
-      </section>
-
-      <section className={panelClass}>
-        <h2 className="text-lg font-semibold">版本</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          每条相关的通知是一版。快照是抓取时存下的原文，原文删了也能看。
-        </p>
-        <ol className="mt-2 divide-y divide-border">
-          {versions.map((version) => (
-            <li key={version.number} className="py-3.5 text-sm">
-              <p className="flex flex-wrap items-center gap-2">
-                <span className="font-medium">第 {version.number} 版</span>
-                <RoleTag role={version.role} />
-                {version.notice.removed && <Tag color="gray">原文已删除</Tag>}
-              </p>
-              <a
-                href={version.notice.url}
-                target="_blank"
-                rel="nofollow noopener"
-                className={cn(linkClass, "mt-1.5 block text-pretty")}
-              >
-                {version.notice.title}
-              </a>
-              {version.changes.length > 0 && (
-                <p className="mt-1 text-muted-foreground">
-                  更新了：{version.changes.map(fieldLabel).join("、")}
-                </p>
-              )}
-              <p className="mt-1 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-                {version.notice.published_on && <span>{version.notice.published_on} 发布</span>}
-                <span>
-                  <CrawlTime value={version.snapshot.fetched_at} /> 抓取
-                </span>
-                <Link to={`/snapshots/${version.snapshot.id}`} className={linkClass}>
-                  看快照
-                  {version.attachments.length > 0 && `和 ${version.attachments.length} 个附件`}
+          <span>{program.cohort} 届</span>
+        </span>
+      }
+      actions={
+        <>
+          {can?.edit && editing !== "program" && (
+            <Link
+              to="?edit=program"
+              replace
+              preventScrollReset
+              className={buttonVariants({ variant: "outline" })}
+            >
+              修改基本信息
+            </Link>
+          )}
+          <a href={notice.url} target="_blank" rel="nofollow noopener" className={buttonVariants()}>
+            查看通知原文
+            <ExternalLink />
+          </a>
+        </>
+      }
+    >
+      {editing === "program" && (
+        <EditForm field="program" program={program} error={formError("program")} />
+      )}
+      <Facts
+        items={[
+          {
+            label: "学校与学院",
+            value: (
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                {school.name}
+                <Link to={`/colleges/${college.id}`} className="link font-normal">
+                  {college.name}
                 </Link>
+              </span>
+            ),
+          },
+          {
+            label: "报名开始",
+            value: <ApplyStart apply={applyValue} thisYear={thisYear} />,
+          },
+          {
+            label: "报名截止",
+            value: <ApplyDeadline apply={applyValue} thisYear={thisYear} />,
+          },
+          {
+            label: "报名状态",
+            value: (
+              <span className="flex flex-wrap items-center gap-2">
+                <StatusTag status={statusOf(program, now)} />
+                <Countdown program={program} now={now} />
+                <WindowBar program={program} now={now} />
+              </span>
+            ),
+          },
+        ]}
+      />
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+        <div className="min-w-0 space-y-5">
+          <Panel title="项目信息" description="根据通知原文整理，每项均可展开查看原文依据。" flush>
+            {rows.length === 0 ? (
+              <p className="px-4 py-4 text-[13px] text-muted-foreground sm:px-5">
+                尚未从通知中整理出项目信息。
               </p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section id="edits" className={panelClass}>
-        <h2 className="text-lg font-semibold">修改记录</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          人改过的字段，之后的通知不会覆盖；每次修改都能撤销，撤销后回到修改前的来源。
-        </p>
-        <EditHistory
-          edits={edits}
-          thisYear={thisYear}
-          canEdit={Boolean(can?.edit)}
-          canAdmin={Boolean(can?.admin)}
-          error={
-            actionData?.intent === "revert" || actionData?.intent === "revoke"
-              ? actionData.error
-              : undefined
-          }
-        />
-      </section>
-    </main>
+            ) : (
+              <dl className="divide-y">
+                {rows.map((row) => (
+                  <div
+                    key={row.field}
+                    className="px-4 py-3.5 sm:grid sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-4 sm:px-5"
+                  >
+                    <dt className="text-[13px] text-muted-foreground sm:pt-px">{row.label}</dt>
+                    <dd className="mt-1 min-w-0 text-sm sm:mt-0">
+                      {editing === row.field ? (
+                        <EditForm
+                          field={row.field}
+                          program={program}
+                          error={formError(row.field)}
+                        />
+                      ) : (
+                        <>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0 leading-relaxed">
+                              {stated(row) ? row.value : <Missing />}
+                            </div>
+                            {can?.edit && <EditLink field={row.field} />}
+                          </div>
+                          {stated(row) && <Evidence parts={row.parts} versions={versions} />}
+                        </>
+                      )}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            )}
+          </Panel>
+          <Panel
+            id="edits"
+            title="修改记录"
+            description="人工修改过的字段不会被后续通知覆盖；每次修改均可撤销，撤销后恢复为修改前的内容。"
+          >
+            <EditHistory
+              edits={edits}
+              thisYear={thisYear}
+              canEdit={Boolean(can?.edit)}
+              canAdmin={Boolean(can?.admin)}
+              error={
+                actionData?.intent === "revert" || actionData?.intent === "revoke"
+                  ? actionData.error
+                  : undefined
+              }
+            />
+          </Panel>
+        </div>
+        <aside className="space-y-5">
+          <Panel title="通知原文">
+            <a
+              href={notice.url}
+              target="_blank"
+              rel="nofollow noopener"
+              className="link font-medium text-pretty"
+            >
+              {notice.title}
+            </a>
+            <p className="mt-1.5 text-xs break-all text-muted-foreground">{notice.url}</p>
+            {notice.published_on && (
+              <p className="mt-2 text-[13px] text-muted-foreground">
+                发布日期：{notice.published_on}
+              </p>
+            )}
+            {notice.removed && (
+              <p className="mt-3 rounded-md bg-warning/8 px-3 py-2 text-[13px] text-warning">
+                原文已被删除，可通过各版本的快照查看。
+              </p>
+            )}
+          </Panel>
+          {can?.edit && (
+            <Panel title="核对">
+              {verified ? (
+                <p className="text-[13px] text-muted-foreground">
+                  {verified.by} 已于 <DateTime value={verified.at} /> 核对全部字段。
+                </p>
+              ) : (
+                <Form method="post" preventScrollReset className="space-y-3">
+                  <input type="hidden" name="intent" value="verify" />
+                  <p className="text-[13px] text-muted-foreground">
+                    请对照原文核对全部字段后再标记。出现新版本或有人修改后，标记将自动取消。
+                  </p>
+                  <Button size="sm" variant="outline">
+                    标记为已核对
+                  </Button>
+                  {actionData?.intent === "verify" && <FormMessage error={actionData.error} />}
+                </Form>
+              )}
+            </Panel>
+          )}
+          <Panel
+            title="版本记录"
+            description="每条相关通知为一个版本，快照为抓取时保存的原文。"
+            flush
+          >
+            <ol className="divide-y">
+              {versions.map((version) => (
+                <li key={version.number} className="px-4 py-3 text-sm sm:px-5">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">第 {version.number} 版</span>
+                    <RoleTag role={version.role} />
+                    {version.notice.removed && <Tag color="gray">原文已删除</Tag>}
+                  </p>
+                  <a
+                    href={version.notice.url}
+                    target="_blank"
+                    rel="nofollow noopener"
+                    className="link mt-1 block text-[13px] text-pretty"
+                  >
+                    {version.notice.title}
+                  </a>
+                  {version.changes.length > 0 && (
+                    <p className="mt-1 text-[13px] text-muted-foreground">
+                      更新字段：{version.changes.map(fieldLabel).join("、")}
+                    </p>
+                  )}
+                  <p className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {version.notice.published_on && (
+                      <span>发布于 {version.notice.published_on}</span>
+                    )}
+                    <span>
+                      抓取于 <DateTime value={version.snapshot.fetched_at} />
+                    </span>
+                    <Link to={`/snapshots/${version.snapshot.id}`} className="link">
+                      查看快照
+                      {version.attachments.length > 0 && `及 ${version.attachments.length} 个附件`}
+                    </Link>
+                  </p>
+                </li>
+              ))}
+            </ol>
+          </Panel>
+        </aside>
+      </div>
+    </Page>
   );
 }
 
@@ -288,21 +341,21 @@ function Evidence({ parts, versions }: { parts: FieldRow["parts"]; versions: Ver
     else if (label) group.labels.push(label);
   }
   return (
-    <details className="mt-1.5">
-      <summary className="w-fit cursor-pointer text-xs text-muted-foreground select-none hover:text-foreground">
-        原文依据
-      </summary>
-      <ul className="mt-2 space-y-3">
+    <Reveal label="原文依据" icon={<Quote className="size-3.5" />} className="mt-1.5">
+      <div className="space-y-2.5 rounded-md border bg-muted/50 p-3">
         {groups.map(({ key, labels, part }) => {
           const from = part.version;
           const files = from && versions.find((item) => item.number === from.number)?.attachments;
           return (
-            <li key={key} className="space-y-1.5">
+            <div key={key} className="space-y-1.5">
               {groups.length > 1 && (
                 <p className="text-xs font-medium text-muted-foreground">{labels.join("、")}</p>
               )}
               {part.evidence.map(({ quote, attachment }) => (
-                <blockquote key={quote} className="border-l-2 border-brand/50 pl-3 text-pretty">
+                <blockquote
+                  key={quote}
+                  className="border-l-2 border-primary/50 pl-3 text-[13px] leading-relaxed text-pretty"
+                >
                   {quote}
                   {attachment !== undefined && (
                     <span className="text-muted-foreground">
@@ -317,31 +370,31 @@ function Evidence({ parts, versions }: { parts: FieldRow["parts"]; versions: Ver
               <p className="text-xs text-muted-foreground">
                 {from ? (
                   <>
-                    来自第 {from.number} 版：
-                    <Link to={`/snapshots/${from.snapshot_id}`} className={linkClass}>
+                    出自第 {from.number} 版：
+                    <Link to={`/snapshots/${from.snapshot_id}`} className="link">
                       {from.notice.title}
                     </Link>
                   </>
                 ) : (
                   <>
-                    人工修改，见
-                    <a href="#edits" className={linkClass}>
+                    来自人工修改，详见
+                    <a href="#edits" className="link">
                       修改记录
                     </a>
                   </>
                 )}
               </p>
-            </li>
+            </div>
           );
         })}
-      </ul>
-    </details>
+      </div>
+    </Reveal>
   );
 }
 
 function List({ items }: { items: string[] }) {
   return (
-    <ul className="list-disc space-y-0.5 pl-5">
+    <ul className="list-disc space-y-0.5 pl-4.5 marker:text-subtle-foreground">
       {items.map((item) => (
         <li key={item}>{item}</li>
       ))}
@@ -365,9 +418,14 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
     if (editor || stated(row)) rows.push(row);
   };
   const { apply, apply_url, event, dates, degrees, quota } = fields;
-  const list = (field: (typeof LISTS)[number], label: string) => {
+  const list = (field: (typeof LISTS)[number]) => {
     const value = fields[field];
-    add({ field, label, value: value && <List items={value.value} />, parts: [[null, value]] });
+    add({
+      field,
+      label: fieldLabel(field),
+      value: value && <List items={value.value} />,
+      parts: [[null, value]],
+    });
   };
   add({
     field: "apply",
@@ -386,14 +444,9 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
   });
   add({
     field: "apply_url",
-    label: "报名入口",
+    label: fieldLabel("apply_url"),
     value: apply_url && (
-      <a
-        href={apply_url.value}
-        target="_blank"
-        rel="nofollow noopener"
-        className={cn(linkClass, "break-all")}
-      >
+      <a href={apply_url.value} target="_blank" rel="nofollow noopener" className="link break-all">
         {apply_url.value.replace(/^mailto:/, "")}
       </a>
     ),
@@ -401,7 +454,7 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
   });
   add({
     field: "event",
-    label: "活动时间",
+    label: "活动安排",
     value:
       event &&
       [
@@ -410,7 +463,7 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
         event.place?.value,
       ]
         .filter(Boolean)
-        .join(" · "),
+        .join("，"),
     parts: [
       ["开始", event?.start],
       ["结束", event?.end],
@@ -420,7 +473,7 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
   });
   add({
     field: "dates",
-    label: "其他时间",
+    label: "其他时间安排",
     value: dates && (
       <ul className="space-y-0.5">
         {dates.map((date) => (
@@ -434,16 +487,16 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
   });
   add({
     field: "degrees",
-    label: "招收类型",
+    label: fieldLabel("degrees"),
     value: degrees && degrees.value.map((degree) => DEGREES[degree]).join("、"),
     parts: [[null, degrees]],
   });
-  list("majors", "招收专业");
-  list("requirements", "报名要求");
-  list("materials", "要交的材料");
-  list("assessment", "考核方式");
-  add({ field: "quota", label: "名额", value: quota?.value, parts: [[null, quota]] });
-  list("benefits", "待遇");
-  list("contacts", "联系方式");
+  list("majors");
+  list("requirements");
+  list("materials");
+  list("assessment");
+  add({ field: "quota", label: fieldLabel("quota"), value: quota?.value, parts: [[null, quota]] });
+  list("benefits");
+  list("contacts");
   return rows;
 }

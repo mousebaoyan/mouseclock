@@ -10,20 +10,23 @@ import {
   type SourceDetail,
   type SourceProbe,
 } from "../admin.server.ts";
-import {
-  AdminPage,
-  CrawlTime,
-  Field,
-  FormMessage,
-  inputClass,
-  linkClass,
-  panelClass,
-} from "~/components/admin";
 import { failureText, RunResult } from "~/components/crawl";
+import { Field, FormMessage } from "~/components/form";
+import { Check, Search } from "~/components/icons";
+import { Page, Panel } from "~/components/page";
 import { Pagination } from "~/components/pagination";
+import { Tag } from "~/components/tags";
+import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
+import { Select } from "~/components/ui/select";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
 import { beijingDate } from "~/time";
 import type { Route } from "./+types/admin-sources.ts";
+
+export function meta() {
+  return [{ title: "来源管理 · 鼠钟" }];
+}
 
 export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   sources: SourcesPage;
@@ -107,7 +110,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       config = JSON.parse(draft.config);
     } catch (error) {
       if (!(error instanceof SyntaxError)) throw error;
-      return data({ error: "抓取配置不是合法 JSON，请检查引号和逗号", draft }, { status: 400 });
+      return data({ error: "抓取配置不是有效的 JSON，请检查引号与逗号。", draft }, { status: 400 });
     }
   }
   // Trying the page before saving it (design §7.2): the result shows under the form.
@@ -161,218 +164,249 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
       : source);
   const config = tried ? (adopt ? tried.suggested_config : tried.config) : source?.config;
   const formKey = `source-${source?.id ?? "new"}-${tried?.id ?? ""}-${adopt}`;
+  const selectCollege = (id: number) =>
+    `?college_id=${id}${source ? `&edit=${source.id}` : ""}#source-form`;
   return (
-    <AdminPage
+    <Page
       title="来源管理"
-      description="一个来源是官网的一个通知列表页，保存后将按计划自动抓取。"
+      description="每个来源对应学院官网的一个通知列表页，保存后按计划自动抓取。"
     >
-      <FormMessage error={actionData?.error} saved={saved} />
-      <section className={panelClass}>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-lg font-semibold">
-            已接入来源
-            {college && (
-              <span className="ml-2 text-sm font-normal text-muted-foreground">
-                {college.school_name} · {college.name}
+      <FormMessage error={actionData?.error} saved={saved && "已保存，并已记入操作日志。"} />
+      <Panel
+        title={
+          college ? (
+            <>
+              已接入来源
+              <span className="ml-2 font-normal text-muted-foreground">
+                {college.school_name}
+                {college.name}
               </span>
-            )}
-          </h2>
-          {college && (
-            <Link to="/admin/sources" className={linkClass}>
+            </>
+          ) : (
+            "已接入来源"
+          )
+        }
+        actions={
+          college && (
+            <Link
+              to="/admin/sources"
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
               查看全部来源
             </Link>
-          )}
-        </div>
-        <Form method="get" aria-label="搜索" className="my-4 flex flex-wrap gap-2">
+          )
+        }
+        flush
+      >
+        <Form
+          method="get"
+          aria-label="筛选来源"
+          className="flex flex-wrap gap-2 border-b p-3 sm:px-5"
+        >
           {college && <input type="hidden" name="college_id" value={college.id} />}
-          <input
-            name="q"
-            aria-label="搜索来源"
-            defaultValue={q}
-            placeholder="学校、学院、栏目或网址"
-            className={`${inputClass} min-w-40 flex-1 sm:w-auto`}
-          />
-          <select
+          <label className="relative min-w-0 flex-[1_1_16rem]">
+            <span className="sr-only">搜索来源</span>
+            <Search className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle-foreground" />
+            <input
+              type="search"
+              name="q"
+              defaultValue={q}
+              placeholder="学校、学院、栏目名称或网址"
+              className="field pl-9"
+            />
+          </label>
+          <Select
             name="availability"
             aria-label="来源状态"
             defaultValue={availability}
-            className={`${inputClass} sm:w-40`}
-          >
-            <option value="">全部状态</option>
-            <option value="available">可抓取</option>
-            <option value="unavailable">暂时抓不了</option>
-          </select>
+            options={[
+              { value: "", label: "全部状态" },
+              { value: "available", label: "正常" },
+              { value: "unavailable", label: "暂停抓取" },
+            ]}
+            className="w-32"
+          />
           <Button variant="outline">筛选</Button>
         </Form>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-170 text-left text-sm">
-            <thead className="border-b border-border text-muted-foreground">
+        {sources.items.length === 0 ? (
+          <p className="px-4 py-8 text-center text-[13px] text-muted-foreground">
+            没有符合条件的来源，可在下方接入新来源。
+          </p>
+        ) : (
+          <Table bare>
+            <thead>
               <tr>
-                <th className="py-3 pr-4 font-medium">学院 / 来源</th>
-                <th className="py-3 pr-4 font-medium">抓取方式 / 状态</th>
-                <th className="py-3 pr-4 font-medium">上次抓取（北京时间）</th>
-                <th className="py-3 font-medium">操作</th>
+                <Th>来源</Th>
+                <Th className="w-px">抓取方式</Th>
+                <Th className="w-px">状态</Th>
+                <Th>上次抓取</Th>
+                <Th className="w-px">操作</Th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-border">
+            <tbody>
               {sources.items.map((s) => (
-                <tr key={s.id}>
-                  <td className="max-w-75 py-4 pr-4 align-top">
+                <Tr key={s.id} className={source?.id === s.id ? "bg-primary-soft" : undefined}>
+                  <Td className="max-w-80">
                     <p className="font-medium">
-                      {s.school_name} · {s.college_name}
+                      {s.school_name}
+                      <span className="ml-1">{s.college_name}</span>
                     </p>
                     <a
                       href={s.url}
                       target="_blank"
                       rel="noreferrer"
-                      className={`${linkClass} mt-1 block break-all`}
+                      title={s.url}
+                      className="mt-0.5 block truncate text-xs text-muted-foreground hover:text-primary"
                     >
-                      {s.section || "未填写栏目名"}
+                      {s.section || "未填写栏目名称"}　{s.url}
                     </a>
-                    <p className="mt-1 truncate text-xs text-muted-foreground" title={s.url}>
-                      {s.url}
-                    </p>
-                  </td>
-                  <td className="max-w-60 py-4 pr-4 align-top">
-                    <p>{s.browser ? "浏览器" : "普通请求"}</p>
-                    <p className={`mt-1 ${s.unavailable_reason ? "text-warning" : "text-success"}`}>
-                      {s.unavailable_reason ? "暂时抓不了" : "可抓取"}
-                    </p>
-                    {s.unavailable_reason && (
-                      <p className="mt-1 text-xs break-words text-muted-foreground">
-                        {s.unavailable_reason}
-                      </p>
-                    )}
-                  </td>
-                  <td className="py-4 pr-4 align-top">
-                    {s.last_run ? (
-                      <div className="space-y-1">
-                        <Link
-                          to={`/crawl?date=${beijingDate(s.last_run.started_at)}&source_id=${s.id}`}
-                          className={`${linkClass} block`}
-                        >
-                          <CrawlTime value={s.last_run.finished_at} />
-                        </Link>
-                        <p>
-                          <RunResult run={s.last_run} />
-                        </p>
-                      </div>
+                  </Td>
+                  <Td center className="whitespace-nowrap text-muted-foreground">
+                    {s.browser ? "浏览器渲染" : "直接请求"}
+                  </Td>
+                  <Td center className="whitespace-nowrap">
+                    {s.unavailable_reason ? (
+                      <span title={s.unavailable_reason}>
+                        <Tag color="amber">暂停抓取</Tag>
+                      </span>
                     ) : (
-                      <span className="text-muted-foreground">还没抓取</span>
+                      <Tag color="green">正常</Tag>
                     )}
-                  </td>
-                  <td className="py-4 align-top">
+                  </Td>
+                  <Td>
+                    {s.last_run ? (
+                      <Link
+                        to={`/crawl?date=${beijingDate(s.last_run.started_at)}&source_id=${s.id}`}
+                        className="group block"
+                      >
+                        <RunResult run={s.last_run} className="text-[13px]" />
+                        <span className="mt-0.5 block text-xs text-muted-foreground group-hover:text-primary">
+                          <DateTime value={s.last_run.finished_at} />
+                        </span>
+                      </Link>
+                    ) : (
+                      <span className="text-subtle-foreground">尚未抓取</span>
+                    )}
+                  </Td>
+                  <Td center>
                     <Link
                       to={`?edit=${s.id}&college_id=${s.college_id}#source-form`}
-                      className={linkClass}
+                      className={buttonVariants({ variant: "ghost", size: "xs" })}
                     >
                       编辑
                     </Link>
-                  </td>
-                </tr>
+                  </Td>
+                </Tr>
               ))}
             </tbody>
-          </table>
-        </div>
-        {sources.items.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            没有符合条件的来源，请在下方接入。
-          </p>
+          </Table>
         )}
-        <Pagination total={sources.total} page={sources.page} perPage={sources.per_page} />
-      </section>
-      <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]" id="source-form">
-        <section className={panelClass}>
-          <h2 className="text-lg font-semibold">
-            {source ? "选择所属学院" : "接入来源：选择学院"}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            还没有院校？先到{" "}
-            <Link to="/admin/colleges" className={linkClass}>
-              院校清单
-            </Link>{" "}
-            添加。
-          </p>
-          <Form method="get" className="my-4 flex gap-2" aria-label="搜索">
+        <div className="px-4 pb-4 empty:hidden sm:px-5">
+          <Pagination total={sources.total} page={sources.page} perPage={sources.per_page} />
+        </div>
+      </Panel>
+      <div
+        id="source-form"
+        className="grid scroll-mt-20 items-start gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]"
+      >
+        <Panel
+          title="选择学院"
+          description={
+            <>
+              尚未添加院校的，请先到
+              <Link to="/admin/colleges" className="link mx-0.5">
+                院校管理
+              </Link>
+              添加。
+            </>
+          }
+          flush
+        >
+          <Form method="get" className="flex gap-2 border-b p-3" aria-label="查找学院">
             {source && <input type="hidden" name="edit" value={source.id} />}
             {college && <input type="hidden" name="college_id" value={college.id} />}
-            <input
-              name="college_q"
-              aria-label="查找所属学院"
-              defaultValue={collegeQ}
-              placeholder="学校名、简称或学院名"
-              className={inputClass}
-            />
+            <label className="relative min-w-0 flex-1">
+              <span className="sr-only">查找学院</span>
+              <Search className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle-foreground" />
+              <input
+                type="search"
+                name="college_q"
+                defaultValue={collegeQ}
+                placeholder="学校名称、简称或学院名称"
+                className="field pl-9"
+              />
+            </label>
             <Button variant="outline">查找</Button>
           </Form>
-          <ul className="max-h-104 divide-y divide-border overflow-y-auto">
-            {colleges.items.map((c) => (
-              <li key={c.id} className="flex items-center justify-between gap-2 py-3 text-sm">
-                <div>
-                  <p className="font-medium">{c.school_name}</p>
-                  <p className="mt-1 text-muted-foreground">
-                    {c.name} · {c.region}
-                  </p>
-                </div>
-                <Link
-                  to={`?college_id=${c.id}${source ? `&edit=${source.id}` : ""}#source-form`}
-                  className={buttonVariants({
-                    variant: college?.id === c.id ? "secondary" : "outline",
-                    size: "sm",
-                  })}
-                >
-                  {college?.id === c.id ? "已选择" : "选择"}
-                </Link>
-              </li>
-            ))}
-          </ul>
-          {colleges.items.length === 0 && (
-            <p className="py-6 text-sm text-muted-foreground">没有找到学院。</p>
+          {colleges.items.length === 0 ? (
+            <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">未找到学院。</p>
+          ) : (
+            <ul className="max-h-104 divide-y overflow-y-auto">
+              {colleges.items.map((c) => (
+                <li key={c.id}>
+                  <Link
+                    to={selectCollege(c.id)}
+                    aria-current={college?.id === c.id ? "true" : undefined}
+                    className="flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-2.5 text-sm hover:bg-muted/50 aria-[current]:border-primary aria-[current]:bg-primary-soft"
+                  >
+                    <span className="min-w-0">
+                      <span className="block font-medium">{c.school_name}</span>
+                      <span className="block text-[13px] text-muted-foreground">
+                        {c.name}　{c.region}
+                      </span>
+                    </span>
+                    {college?.id === c.id && <Check className="shrink-0 text-primary" />}
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
-          <Pagination
-            total={colleges.total}
-            page={colleges.page}
-            perPage={colleges.per_page}
-            prefix="college_"
-          />
-        </section>
-        <section className={panelClass}>
-          <h2 className="text-lg font-semibold">{source ? "编辑来源" : "接入新来源"}</h2>
+          <div className="px-3 pb-3 empty:hidden">
+            <Pagination
+              total={colleges.total}
+              page={colleges.page}
+              perPage={colleges.per_page}
+              prefix="college_"
+            />
+          </div>
+        </Panel>
+        <Panel
+          title={source ? "编辑来源" : "接入新来源"}
+          description={college ? `${college.school_name}${college.name}` : undefined}
+        >
           {college ? (
             <>
-              <p className="mt-2 mb-4 text-sm text-muted-foreground">
-                {college.school_name} · {college.name}
-              </p>
               <Form method="post" className="space-y-4" key={formKey}>
                 {source && <input type="hidden" name="id" value={source.id} />}
                 <input type="hidden" name="college_id" value={college.id} />
-                <Field label="通知列表页网址">
-                  <input
-                    type="url"
-                    name="url"
-                    required
-                    maxLength={2000}
-                    defaultValue={fields?.url ?? ""}
-                    placeholder="https://学院官网/通知公告"
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="栏目名" hint="填写官网上的栏目名，帮助初筛判断通知。">
-                  <input
-                    name="section"
-                    maxLength={200}
-                    defaultValue={fields?.section ?? ""}
-                    placeholder="如通知公告、研究生招生"
-                    className={inputClass}
-                  />
-                </Field>
-                <label className="flex items-center gap-2 text-sm">
-                  <input name="browser" type="checkbox" defaultChecked={fields?.browser ?? false} />
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_14rem]">
+                  <Field label="通知列表页网址">
+                    <input
+                      type="url"
+                      name="url"
+                      required
+                      maxLength={2000}
+                      defaultValue={fields?.url ?? ""}
+                      placeholder="https://"
+                      className="field"
+                    />
+                  </Field>
+                  <Field label="栏目名称">
+                    <input
+                      name="section"
+                      maxLength={200}
+                      defaultValue={fields?.section ?? ""}
+                      placeholder="例如：通知公告"
+                      className="field"
+                    />
+                  </Field>
+                </div>
+                <Checkbox name="browser" value="on" defaultChecked={fields?.browser ?? false}>
                   需要浏览器执行 JavaScript
-                </label>
+                </Checkbox>
                 <Field
                   label="抓取配置（JSON）"
-                  hint="留空使用通用抓取。配置须为 JSON 对象，具体字段由抓取节点定义。"
+                  hint="留空则使用通用抓取。配置须为 JSON 对象，字段由抓取节点定义。"
                 >
                   <textarea
                     name="config"
@@ -380,24 +414,24 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                     spellCheck={false}
                     defaultValue={draft?.config ?? (config ? JSON.stringify(config, null, 2) : "")}
                     placeholder="{}"
-                    className={`${inputClass} font-mono`}
+                    className="field h-auto py-2 font-mono text-xs leading-relaxed"
                   />
                 </Field>
                 <Field
-                  label="暂时抓不了的原因"
-                  hint="填写后暂停后续抓取；清空并保存即可恢复。正在进行的抓取会继续完成。"
+                  label="暂停抓取的原因"
+                  hint="填写后暂停后续抓取，清空并保存即可恢复；正在进行的抓取会继续完成。"
                 >
                   <textarea
                     name="unavailable_reason"
                     rows={2}
                     maxLength={1000}
                     defaultValue={fields?.unavailable_reason ?? ""}
-                    placeholder="如需要登录、有验证码；可抓取时留空"
-                    className={inputClass}
+                    placeholder="例如：需要登录、有验证码。可正常抓取时留空。"
+                    className="field h-auto py-2"
                   />
                 </Field>
                 <div className="flex flex-wrap gap-2">
-                  <Button disabled={busy}>{busy ? "保存中…" : "保存来源"}</Button>
+                  <Button disabled={busy}>{busy ? "正在保存…" : "保存来源"}</Button>
                   <Button variant="outline" name="intent" value="probe" disabled={busy}>
                     试抓
                   </Button>
@@ -419,11 +453,13 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
               )}
             </>
           ) : (
-            <p className="mt-4 text-sm text-muted-foreground">先在左侧选择一个学院。</p>
+            <p className="py-6 text-center text-[13px] text-muted-foreground">
+              请先在左侧选择学院。
+            </p>
           )}
-        </section>
+        </Panel>
       </div>
-    </AdminPage>
+    </Page>
   );
 }
 
@@ -438,32 +474,34 @@ function WaitingForCrawler() {
     return () => clearInterval(timer);
   }, [revalidate]);
   return (
-    <p className="text-muted-foreground">
-      等抓取节点来领……它每分钟来一次，结果出来这里会自己刷新。
+    <p className="flex items-center gap-2 text-[13px] text-muted-foreground">
+      <span aria-hidden="true" className="size-2 shrink-0 animate-pulse rounded-full bg-primary" />
+      等待抓取节点领取任务。抓取节点每分钟领取一次任务，结果返回后本页将自动刷新。
     </p>
   );
 }
 
 function ProbeResult({ probe, adoptTo }: { probe: SourceProbe; adoptTo: string }) {
   return (
-    <section id="probe" className="mt-5 space-y-3 border-t border-border pt-4 text-sm">
-      <h3 className="font-semibold">
-        试抓 <span className="font-normal break-all text-muted-foreground">{probe.url}</span>
+    <section id="probe" className="mt-5 scroll-mt-20 space-y-3 rounded-lg border bg-muted/40 p-4">
+      <h3 className="text-sm font-semibold">
+        试抓结果
+        <span className="ml-2 font-normal break-all text-muted-foreground">{probe.url}</span>
       </h3>
       {probe.finished_at === null ? (
         <WaitingForCrawler />
       ) : probe.failure ? (
-        <p className="text-destructive">没抓成，{failureText(probe.failure, probe.detail)}</p>
+        <FormMessage error={`试抓失败：${failureText(probe.failure, probe.detail)}`} />
       ) : (
         <>
-          <p>抓到 {probe.items.length} 条：</p>
-          <ul className="max-h-72 space-y-1 overflow-y-auto">
+          <p className="text-[13px]">共抓取到 {probe.items.length} 条通知：</p>
+          <ul className="max-h-72 divide-y overflow-y-auto rounded-md border bg-card text-[13px]">
             {probe.items.map((item) => (
-              <li key={item.url} className="flex gap-2">
-                <span className="shrink-0 text-muted-foreground tabular-nums">
-                  {item.published_on ?? "没有日期"}
+              <li key={item.url} className="flex gap-3 px-3 py-2">
+                <span className="w-20 shrink-0 text-muted-foreground tabular-nums">
+                  {item.published_on ?? "无日期"}
                 </span>
-                <a href={item.url} target="_blank" rel="nofollow noopener" className={linkClass}>
+                <a href={item.url} target="_blank" rel="nofollow noopener" className="link">
                   {item.title}
                 </a>
               </li>
@@ -471,16 +509,16 @@ function ProbeResult({ probe, adoptTo }: { probe: SourceProbe; adoptTo: string }
           </ul>
           {probe.suggested_config ? (
             <>
-              <p className="text-muted-foreground">生成的配置：</p>
-              <pre className="overflow-x-auto rounded-lg bg-muted p-3 text-xs">
+              <p className="text-[13px] text-muted-foreground">建议配置：</p>
+              <pre className="overflow-x-auto rounded-md border bg-card p-3 text-xs">
                 {JSON.stringify(probe.suggested_config, null, 2)}
               </pre>
             </>
           ) : (
-            <p className="text-muted-foreground">不用配置，通用抓取就行。</p>
+            <p className="text-[13px] text-muted-foreground">无需配置，使用通用抓取即可。</p>
           )}
           <Link to={adoptTo} className={buttonVariants({ size: "sm" })}>
-            采用，填进上面的表单
+            采用此配置
           </Link>
         </>
       )}

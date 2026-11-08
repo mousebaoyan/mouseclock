@@ -210,6 +210,7 @@ test("detail exposes source summaries and failure reasons without crawler config
     school: {
       id: seeded.schoolId,
       name: "测试大学",
+      tiers: ["985", "double_first_class"],
     },
     name: "计算机学院",
     kind: "college",

@@ -154,7 +154,7 @@ export const PublicProgramCohort = z.object({
 });
 export const PublicCollegeDetail = z.object({
   id: Int,
-  school: School.pick({ id: true, name: true }),
+  school: School.pick({ id: true, name: true, tiers: true }),
   name: z.string(),
   kind: z.string(),
   region: z.string(),

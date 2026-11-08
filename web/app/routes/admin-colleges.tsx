@@ -8,19 +8,20 @@ import {
   type CollegesPage,
   type CollegeDetail,
 } from "../admin.server.ts";
-import {
-  AdminPage,
-  Field,
-  FormMessage,
-  inputClass,
-  KINDS,
-  linkClass,
-  panelClass,
-} from "~/components/admin";
+import { Field, FormMessage } from "~/components/form";
+import { Search } from "~/components/icons";
+import { Page, Panel } from "~/components/page";
 import { Pagination } from "~/components/pagination";
-import { TierTags, TIERS } from "~/components/tags";
+import { COLLEGE_KINDS, TierTags, TIERS } from "~/components/tags";
 import { Button, buttonVariants } from "~/components/ui/button";
+import { Checkbox } from "~/components/ui/checkbox";
+import { Select } from "~/components/ui/select";
+import { Table, Td, Th, Tr } from "~/components/ui/table";
 import type { Route } from "./+types/admin-colleges.ts";
+
+export function meta() {
+  return [{ title: "院校管理 · 鼠钟" }];
+}
 
 export async function loader({ request, context }: Route.LoaderArgs): Promise<{
   schools: SchoolsPage;
@@ -133,7 +134,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       `/admin/colleges?school_id=${result.school_id}&edit_college=${result.id}&saved=1`,
     );
   }
-  throw data("未知操作", { status: 400 });
+  throw data("不支持的操作", { status: 400 });
 }
 
 export default function Colleges({ loaderData, actionData }: Route.ComponentProps) {
@@ -147,244 +148,292 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
     school && !schools.items.some((s) => s.id === school.id)
       ? [school, ...schools.items]
       : schools.items;
+  const schoolForm = (
+    <Panel title={editSchool && school ? `编辑学校：${school.name}` : "新增学校"}>
+      <Form method="post" className="space-y-4" key={`school-${editSchool ? school?.id : "new"}`}>
+        <input type="hidden" name="intent" value="school" />
+        {editSchool && school && <input type="hidden" name="id" value={school.id} />}
+        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+          <Field label="学校名称">
+            <input
+              name="name"
+              required
+              maxLength={200}
+              defaultValue={schoolValues?.name ?? ""}
+              className="field"
+            />
+          </Field>
+          <Field label="简称">
+            <input
+              name="short_name"
+              maxLength={100}
+              defaultValue={schoolValues?.short_name ?? ""}
+              className="field"
+            />
+          </Field>
+        </div>
+        <fieldset>
+          <legend className="mb-2 text-[13px] font-medium">层次（可多选）</legend>
+          <div className="flex flex-wrap gap-5">
+            {TIERS.map((t) => (
+              <Checkbox
+                key={t.value}
+                name="tiers"
+                value={t.value}
+                defaultChecked={schoolValues?.tiers.includes(t.value)}
+              >
+                {t.label}
+              </Checkbox>
+            ))}
+          </div>
+        </fieldset>
+        <div className="flex gap-2">
+          <Button disabled={busy}>{busy ? "正在保存…" : "保存学校"}</Button>
+          {editSchool && (
+            <Link
+              to={school ? `?school_id=${school.id}` : "?"}
+              className={buttonVariants({ variant: "outline" })}
+            >
+              取消
+            </Link>
+          )}
+        </div>
+      </Form>
+    </Panel>
+  );
   return (
-    <AdminPage
-      title="院校清单"
-      description="先添加学校，再维护它的学院、研究所或研究生院。尚未接入来源的学院也可以保留在清单中。"
+    <Page
+      title="院校管理"
+      description="先添加学校，再维护其下的学院、研究所或研究生院。尚未接入来源的学院也可保留在清单中。"
     >
-      <FormMessage error={actionData?.error} saved={saved} />
-      <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
-        <section className={panelClass}>
-          <h2 className="text-lg font-semibold">学校</h2>
-          <Form method="get" className="my-4 flex gap-2" aria-label="搜索">
+      <FormMessage error={actionData?.error} saved={saved && "已保存，并已记入操作日志。"} />
+      <div className="grid items-start gap-5 lg:grid-cols-[22rem_minmax(0,1fr)]">
+        <Panel
+          title="学校"
+          actions={
+            <Link to="?" className={buttonVariants({ variant: "outline", size: "sm" })}>
+              新增学校
+            </Link>
+          }
+          flush
+        >
+          <Form method="get" className="flex gap-2 border-b p-3" aria-label="搜索学校">
             {college && <input type="hidden" name="edit_college" value={college.id} />}
             {school && <input type="hidden" name="school_id" value={school.id} />}
-            <input
-              name="q"
-              aria-label="搜索学校"
-              defaultValue={q}
-              placeholder="学校名称或简称"
-              className={inputClass}
-            />
+            <label className="relative min-w-0 flex-1">
+              <span className="sr-only">搜索学校</span>
+              <Search className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-subtle-foreground" />
+              <input
+                type="search"
+                name="q"
+                defaultValue={q}
+                placeholder="学校名称或简称"
+                className="field pl-9"
+              />
+            </label>
             <Button variant="outline">搜索</Button>
           </Form>
-          <ul className="divide-y divide-border">
-            {schools.items.map((s) => (
-              <li
-                key={s.id}
-                className={`flex flex-wrap items-center justify-between gap-2 py-3 ${school?.id === s.id ? "text-brand-strong" : ""}`}
-              >
-                <div>
-                  <p className="font-medium">
-                    {s.name}{" "}
-                    <span className="text-sm font-normal text-muted-foreground">
-                      {s.short_name}
-                    </span>
-                  </p>
-                  <p className="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
-                    {s.tiers.length > 0 ? <TierTags tiers={s.tiers} /> : "未标注层次"}
-                  </p>
-                </div>
-                <div className="flex gap-3 text-sm">
-                  <Link to={`?school_id=${s.id}`} preventScrollReset className={linkClass}>
-                    管理学院
-                  </Link>
+          {schools.items.length === 0 ? (
+            <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">
+              未找到学校，可新增学校。
+            </p>
+          ) : (
+            <ul className="divide-y">
+              {schools.items.map((s) => (
+                <li key={s.id}>
                   <Link
-                    to={`?school_id=${s.id}&edit_school=1`}
+                    to={`?school_id=${s.id}`}
                     preventScrollReset
-                    className={linkClass}
+                    aria-current={school?.id === s.id ? "true" : undefined}
+                    className="flex items-center justify-between gap-3 border-l-2 border-transparent px-4 py-2.5 hover:bg-muted/50 aria-[current]:border-primary aria-[current]:bg-primary-soft"
                   >
-                    编辑学校
+                    <span className="min-w-0">
+                      <span className="block font-medium">{s.name}</span>
+                      {s.short_name && (
+                        <span className="block text-xs text-muted-foreground">{s.short_name}</span>
+                      )}
+                    </span>
+                    <span className="flex shrink-0 gap-1">
+                      <TierTags tiers={s.tiers} />
+                    </span>
                   </Link>
-                </div>
-              </li>
-            ))}
-          </ul>
-          {schools.items.length === 0 && (
-            <p className="py-6 text-sm text-muted-foreground">没有找到学校，可以在右侧新增。</p>
-          )}
-          <Pagination
-            total={schools.total}
-            page={schools.page}
-            perPage={schools.per_page}
-            prefix="school_"
-          />
-        </section>
-        <section className={panelClass}>
-          <h2 className="mb-4 text-lg font-semibold">
-            {editSchool && school ? `编辑学校：${school.name}` : "新增学校"}
-          </h2>
-          <Form
-            method="post"
-            className="space-y-4"
-            key={`school-${editSchool ? school?.id : "new"}`}
-          >
-            <input type="hidden" name="intent" value="school" />
-            {editSchool && school && <input type="hidden" name="id" value={school.id} />}
-            <Field label="学校名称">
-              <input
-                name="name"
-                required
-                maxLength={200}
-                defaultValue={schoolValues?.name ?? ""}
-                className={inputClass}
-              />
-            </Field>
-            <Field label="简称">
-              <input
-                name="short_name"
-                maxLength={100}
-                defaultValue={schoolValues?.short_name ?? ""}
-                className={inputClass}
-              />
-            </Field>
-            <fieldset>
-              <legend className="mb-2 text-sm font-medium">层次（可多选）</legend>
-              <div className="flex flex-wrap gap-4">
-                {TIERS.map((t) => (
-                  <label key={t.value} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      name="tiers"
-                      value={t.value}
-                      defaultChecked={schoolValues?.tiers.includes(t.value)}
-                    />
-                    {t.label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            <div className="flex gap-2">
-              <Button disabled={busy}>{busy ? "保存中…" : "保存学校"}</Button>
-              {editSchool && (
-                <Link
-                  to={school ? `?school_id=${school.id}` : "?"}
-                  className={buttonVariants({ variant: "ghost" })}
-                >
-                  取消
-                </Link>
-              )}
-            </div>
-          </Form>
-        </section>
-      </div>
-      {school ? (
-        <div className="grid gap-5 lg:grid-cols-[1.3fr_1fr]">
-          <section className={panelClass}>
-            <h2 className="text-lg font-semibold">{school.name}的学院</h2>
-            <ul className="mt-3 divide-y divide-border">
-              {colleges?.items.map((c) => (
-                <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 py-4">
-                  <div>
-                    <p className="font-medium">{c.name}</p>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {KINDS.find((k) => k.value === c.kind)?.label} · {c.region}
-                      {c.directions.length > 0 && ` · ${c.directions.join("、")}`}
-                    </p>
-                  </div>
-                  <div className="flex gap-3 text-sm">
-                    <Link to={`?school_id=${school.id}&edit_college=${c.id}`} className={linkClass}>
-                      编辑
-                    </Link>
-                    <Link to={`/admin/sources?college_id=${c.id}`} className={linkClass}>
-                      管理来源
-                    </Link>
-                  </div>
                 </li>
               ))}
             </ul>
-            {colleges?.items.length === 0 && (
-              <p className="py-6 text-sm text-muted-foreground">还没有学院，在右侧添加第一个。</p>
-            )}
-            {colleges && (
-              <Pagination total={colleges.total} page={colleges.page} perPage={colleges.per_page} />
-            )}
-          </section>
-          <section className={panelClass}>
-            <h2 className="mb-4 text-lg font-semibold">
-              {college ? `编辑学院：${college.name}` : "新增学院"}
-            </h2>
-            <Form
-              method="post"
-              className="space-y-4"
-              key={`college-${college?.id ?? "new"}-${school.id}`}
-            >
-              <input type="hidden" name="intent" value="college" />
-              {college && <input type="hidden" name="id" value={college.id} />}
-              <Field label="所属学校" hint="找不到目标学校时，可用上方搜索学校。">
-                <select
-                  name="school_id"
-                  defaultValue={collegeValues?.school_id ?? school.id}
-                  className={inputClass}
-                >
-                  {schoolOptions.map((s) => (
-                    <option key={s.id} value={s.id}>
-                      {s.name}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="学院名称">
-                <input
-                  name="name"
-                  required
-                  maxLength={200}
-                  defaultValue={collegeValues?.name ?? ""}
-                  className={inputClass}
-                />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="种类">
-                  <select
-                    name="kind"
-                    defaultValue={collegeValues?.kind ?? "college"}
-                    className={inputClass}
-                  >
-                    {KINDS.map((k) => (
-                      <option key={k.value} value={k.value}>
-                        {k.label}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="就读地区">
-                  <input
-                    name="region"
-                    required
-                    maxLength={100}
-                    defaultValue={collegeValues?.region ?? ""}
-                    placeholder="如广东深圳"
-                    className={inputClass}
-                  />
-                </Field>
-              </div>
-              <Field label="方向" hint="多个方向用逗号或顿号分隔。">
-                <input
-                  name="directions"
-                  defaultValue={collegeDraft?.directions ?? college?.directions.join("、") ?? ""}
-                  placeholder="计算机、人工智能"
-                  className={inputClass}
-                />
-              </Field>
-              <div className="flex gap-2">
-                <Button disabled={busy}>{busy ? "保存中…" : "保存学院"}</Button>
-                {college && (
+          )}
+          <div className="px-3 pb-3 empty:hidden">
+            <Pagination
+              total={schools.total}
+              page={schools.page}
+              perPage={schools.per_page}
+              prefix="school_"
+            />
+          </div>
+        </Panel>
+        <div className="min-w-0 space-y-5">
+          {!school || editSchool ? (
+            schoolForm
+          ) : (
+            <>
+              <Panel
+                title={
+                  <span className="flex flex-wrap items-center gap-2">
+                    {school.name}
+                    <TierTags tiers={school.tiers} />
+                  </span>
+                }
+                description={school.short_name && `简称：${school.short_name}`}
+                actions={
                   <Link
-                    to={`?school_id=${school.id}`}
-                    className={buttonVariants({ variant: "ghost" })}
+                    to={`?school_id=${school.id}&edit_school=1`}
+                    preventScrollReset
+                    className={buttonVariants({ variant: "outline", size: "sm" })}
                   >
-                    取消
+                    编辑学校
                   </Link>
+                }
+                flush
+              >
+                {colleges?.items.length === 0 ? (
+                  <p className="px-4 py-6 text-center text-[13px] text-muted-foreground sm:px-5">
+                    该校尚无学院，请在下方添加。
+                  </p>
+                ) : (
+                  <Table bare>
+                    <thead>
+                      <tr>
+                        <Th>学院</Th>
+                        <Th className="w-px">类型</Th>
+                        <Th className="w-px">地区</Th>
+                        <Th>招生方向</Th>
+                        <Th className="w-px">操作</Th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {colleges?.items.map((c) => (
+                        <Tr
+                          key={c.id}
+                          className={college?.id === c.id ? "bg-primary-soft" : undefined}
+                        >
+                          <Td className="font-medium">{c.name}</Td>
+                          <Td center className="whitespace-nowrap text-muted-foreground">
+                            {COLLEGE_KINDS[c.kind] ?? c.kind}
+                          </Td>
+                          <Td center className="whitespace-nowrap">
+                            {c.region}
+                          </Td>
+                          <Td className="text-muted-foreground">
+                            {c.directions.length > 0 ? c.directions.join("、") : "未注明"}
+                          </Td>
+                          <Td center className="whitespace-nowrap">
+                            <Link
+                              to={`?school_id=${school.id}&edit_college=${c.id}`}
+                              className={buttonVariants({ variant: "ghost", size: "xs" })}
+                            >
+                              编辑
+                            </Link>
+                            <Link
+                              to={`/admin/sources?college_id=${c.id}`}
+                              className={buttonVariants({ variant: "ghost", size: "xs" })}
+                            >
+                              来源
+                            </Link>
+                          </Td>
+                        </Tr>
+                      ))}
+                    </tbody>
+                  </Table>
                 )}
-              </div>
-            </Form>
-          </section>
+                {colleges && (
+                  <div className="px-4 pb-4 empty:hidden sm:px-5">
+                    <Pagination
+                      total={colleges.total}
+                      page={colleges.page}
+                      perPage={colleges.per_page}
+                    />
+                  </div>
+                )}
+              </Panel>
+              <Panel title={college ? `编辑学院：${college.name}` : "新增学院"}>
+                <Form
+                  method="post"
+                  className="space-y-4"
+                  key={`college-${college?.id ?? "new"}-${school.id}`}
+                >
+                  <input type="hidden" name="intent" value="college" />
+                  {college && <input type="hidden" name="id" value={college.id} />}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <span className="block text-[13px] font-medium">所属学校</span>
+                      <Select
+                        name="school_id"
+                        aria-label="所属学校"
+                        defaultValue={String(collegeValues?.school_id ?? school.id)}
+                        options={schoolOptions.map((s) => ({ value: String(s.id), label: s.name }))}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        找不到目标学校时，可在左侧搜索。
+                      </p>
+                    </div>
+                    <Field label="学院名称">
+                      <input
+                        name="name"
+                        required
+                        maxLength={200}
+                        defaultValue={collegeValues?.name ?? ""}
+                        className="field"
+                      />
+                    </Field>
+                    <div className="space-y-1.5">
+                      <span className="block text-[13px] font-medium">单位类型</span>
+                      <Select
+                        name="kind"
+                        aria-label="单位类型"
+                        defaultValue={collegeValues?.kind ?? "college"}
+                        options={Object.entries(COLLEGE_KINDS).map(([value, label = value]) => ({
+                          value,
+                          label,
+                        }))}
+                      />
+                    </div>
+                    <Field label="所在地区">
+                      <input
+                        name="region"
+                        required
+                        maxLength={100}
+                        defaultValue={collegeValues?.region ?? ""}
+                        placeholder="例如：广东"
+                        className="field"
+                      />
+                    </Field>
+                  </div>
+                  <Field label="招生方向" hint="多个方向以逗号或顿号分隔。">
+                    <input
+                      name="directions"
+                      defaultValue={
+                        collegeDraft?.directions ?? college?.directions.join("、") ?? ""
+                      }
+                      placeholder="计算机、人工智能"
+                      className="field"
+                    />
+                  </Field>
+                  <div className="flex gap-2">
+                    <Button disabled={busy}>{busy ? "正在保存…" : "保存学院"}</Button>
+                    {college && (
+                      <Link
+                        to={`?school_id=${school.id}`}
+                        className={buttonVariants({ variant: "outline" })}
+                      >
+                        取消
+                      </Link>
+                    )}
+                  </div>
+                </Form>
+              </Panel>
+            </>
+          )}
         </div>
-      ) : (
-        <p className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-          在学校列表中点「管理学院」，即可维护该校的学院并接入来源。
-        </p>
-      )}
-    </AdminPage>
+      </div>
+    </Page>
   );
 }

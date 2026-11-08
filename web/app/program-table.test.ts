@@ -70,6 +70,26 @@ test("filters narrow down together; tiers and kinds take any of those ticked", (
   expect(ids("kind=summer_camp&kind=pre_recommendation&region=北京", programs)).toEqual([2]);
 });
 
+test("the tier 其他 picks the schools with no tier, alongside any others ticked", () => {
+  const programs = [program(1, { tiers: ["985"] }), program(2), program(3, { tiers: ["211"] })];
+  expect(ids("tier=other", programs)).toEqual([2]);
+  expect(ids("tier=other&tier=985", programs)).toEqual([1, 2]);
+});
+
+test("each status choice counts what it would show under the other filters", () => {
+  const programs = [
+    program(1, { deadline: 500 }),
+    program(2, { start: 1500 }),
+    program(3),
+    program(4, { deadline: null }),
+    program(5, { kind: "pre_recommendation" }),
+  ];
+  const view = (params: string) =>
+    tableView(programs, readFilters(new URLSearchParams(params)), NOW).counts;
+  expect(view("status=closed")).toEqual({ "": 4, open: 2, upcoming: 1, closed: 1, all: 5 });
+  expect(view("kind=summer_camp")).toEqual({ "": 3, open: 1, upcoming: 1, closed: 1, all: 4 });
+});
+
 test("search looks through the school, its short name, the college and the program", () => {
   const programs = [program(1, { school: "北京邮电大学", short: "北邮" }), program(2), program(3)];
   expect(ids("q=北邮", programs)).toEqual([1]);

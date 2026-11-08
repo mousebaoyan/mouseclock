@@ -2,7 +2,10 @@ import type { InferResponseType } from "hono/client";
 import { data, Form, Link, redirect, useNavigation } from "react-router";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { CrawlTime, Field, FormMessage, inputClass, panelClass } from "../components/admin.tsx";
+import { Field, FormMessage } from "../components/form.tsx";
+import { Page, Panel } from "../components/page.tsx";
+import { DateTime } from "../components/time.tsx";
+import { Table, Td, Th, Tr } from "../components/ui/table.tsx";
 import { Tag } from "../components/tags.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import type { Route } from "./+types/admin-settings.ts";
@@ -42,7 +45,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     }
     return redirect("/admin/settings?saved=1");
   }
-  throw data("未知操作", { status: 400 });
+  throw data("不支持的操作", { status: 400 });
 }
 
 export default function Settings({ loaderData, actionData }: Route.ComponentProps) {
@@ -51,106 +54,131 @@ export default function Settings({ loaderData, actionData }: Route.ComponentProp
   const made = actionData && "token" in actionData ? actionData : null;
   const error = actionData && "error" in actionData ? actionData.error : undefined;
   return (
-    <main className="mx-auto max-w-4xl space-y-6 px-3 py-6 sm:px-5">
-      <header>
-        <p className="mb-2 text-sm font-medium text-brand-strong">站长</p>
-        <h1 className="text-2xl font-semibold">系统设置</h1>
-      </header>
-
-      <section className={`${panelClass} space-y-4`}>
-        <div>
-          <h2 className="text-lg font-semibold">抓取节点令牌</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            抓取节点用它调网站的接口（接口
-            §6）。每个抓取节点一个，换机器或者泄露了就作废，重新生成。
-          </p>
-        </div>
-        <FormMessage error={error} saved={saved && !made} />
-        {made && (
-          <div className="space-y-2 rounded-lg border border-success/30 bg-success/5 p-3 text-sm">
-            <p className="text-success">
-              「{made.name}
-              」的令牌生成了。它只显示这一次，现在复制下来填进抓取节点的配置；忘了就只能作废、重新生成。
-            </p>
-            <input
-              readOnly
-              value={made.token}
-              aria-label="新令牌"
-              onFocus={(event) => event.currentTarget.select()}
-              className={`${inputClass} font-mono`}
-            />
-          </div>
-        )}
-        {/* A new key once a token is made, so the name typed for it is cleared. */}
-        <Form key={made?.token} method="post" className="flex flex-wrap items-end gap-2">
-          <input type="hidden" name="intent" value="create" />
-          <div className="min-w-48 flex-1">
-            <Field label="名字" hint="用在哪个抓取节点，比如「上海」">
+    <Page title="系统设置" description="仅站长可见。">
+      <Panel
+        title="抓取节点令牌"
+        description="抓取节点使用令牌调用网站接口（接口文档 §6）。每个抓取节点使用一个令牌；更换机器或令牌泄露时，请作废后重新生成。"
+      >
+        <div className="space-y-4">
+          <FormMessage error={error} saved={saved && !made && "已保存，并已记入操作日志。"} />
+          {made && (
+            <div className="space-y-2 rounded-md border border-success/25 bg-success/5 p-3 text-[13px]">
+              <p className="text-success">
+                已生成「{made.name}
+                」的令牌。令牌仅显示这一次，请立即复制并填入抓取节点的配置；遗失后只能作废并重新生成。
+              </p>
+              <input
+                readOnly
+                value={made.token}
+                aria-label="新令牌"
+                onFocus={(event) => event.currentTarget.select()}
+                className="field font-mono text-xs"
+              />
+            </div>
+          )}
+          {/* A new key once a token is made, so the name typed for it is cleared. */}
+          <Form key={made?.token} method="post" className="flex flex-wrap items-start gap-2">
+            <input type="hidden" name="intent" value="create" />
+            <Field
+              label="令牌名称"
+              hint="标明用于哪个抓取节点，例如「上海」。"
+              className="min-w-48 flex-1"
+            >
               <input
                 name="name"
                 required
                 maxLength={100}
                 defaultValue={made ? "" : actionData?.name}
-                className={inputClass}
+                className="field"
               />
             </Field>
-          </div>
-          <Button disabled={busy} className="mb-6">
-            生成令牌
-          </Button>
-        </Form>
-
+            <Button disabled={busy} className="mt-6.5">
+              生成令牌
+            </Button>
+          </Form>
+        </div>
+      </Panel>
+      <Panel title="已有令牌" flush>
         {tokens.length === 0 ? (
-          <p className="text-sm text-muted-foreground">还没有令牌。</p>
+          <p className="px-4 py-6 text-center text-[13px] text-muted-foreground">暂无令牌。</p>
         ) : (
-          <ul className="divide-y divide-border text-sm">
-            {tokens.map((token) => (
-              <li key={token.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-3">
-                <span className="font-medium">{token.name}</span>
-                {token.revoked_at !== null && <Tag color="red">已作废</Tag>}
-                <span className="text-xs text-muted-foreground">
-                  生成于 <CrawlTime value={token.created_at} /> · 上次来领活{" "}
-                  {token.last_seen_at === null ? (
-                    "还没有"
-                  ) : (
-                    <CrawlTime value={token.last_seen_at} />
-                  )}
-                  {token.revoked_at !== null && (
-                    <>
-                      {" "}
-                      · 作废于 <CrawlTime value={token.revoked_at} />
-                    </>
-                  )}
-                </span>
-                {token.revoked_at === null &&
-                  (revoking === token.id ? (
-                    <Form method="post" className="ml-auto flex flex-wrap items-center gap-2">
-                      <input type="hidden" name="intent" value="revoke" />
-                      <input type="hidden" name="id" value={token.id} />
-                      <span className="text-destructive">作废后用它的抓取节点马上就连不上了。</span>
-                      <Button size="sm" variant="destructive" disabled={busy}>
-                        确认作废
-                      </Button>
+          <Table bare>
+            <thead>
+              <tr>
+                <Th>名称</Th>
+                <Th className="w-px">状态</Th>
+                <Th className="w-px">生成时间</Th>
+                <Th className="w-px">最近领取任务</Th>
+                <Th className="w-px">操作</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {tokens.map((token) => (
+                <Tr key={token.id}>
+                  <Td className="font-medium">{token.name}</Td>
+                  <Td center className="whitespace-nowrap">
+                    {token.revoked_at === null ? (
+                      <Tag color="green">使用中</Tag>
+                    ) : (
+                      <span title="作废时间">
+                        <Tag color="gray">已作废</Tag>
+                      </span>
+                    )}
+                  </Td>
+                  <Td center className="whitespace-nowrap text-muted-foreground">
+                    <DateTime value={token.created_at} />
+                  </Td>
+                  <Td center className="whitespace-nowrap text-muted-foreground">
+                    {token.last_seen_at === null ? (
+                      "尚未领取"
+                    ) : (
+                      <DateTime value={token.last_seen_at} />
+                    )}
+                  </Td>
+                  <Td center className="whitespace-nowrap">
+                    {token.revoked_at !== null ? (
+                      <span className="text-xs text-subtle-foreground">
+                        作废于 <DateTime value={token.revoked_at} />
+                      </span>
+                    ) : revoking === token.id ? (
+                      <Form method="post" className="flex items-center justify-center gap-1.5">
+                        <input type="hidden" name="intent" value="revoke" />
+                        <input type="hidden" name="id" value={token.id} />
+                        <Button size="xs" variant="destructive" disabled={busy}>
+                          确认作废
+                        </Button>
+                        <Link
+                          to="/admin/settings"
+                          className={buttonVariants({ variant: "outline", size: "xs" })}
+                        >
+                          取消
+                        </Link>
+                      </Form>
+                    ) : (
                       <Link
-                        to="/admin/settings"
-                        className={buttonVariants({ variant: "ghost", size: "sm" })}
+                        to={`?revoke=${token.id}`}
+                        title="作废后，使用该令牌的抓取节点将立即无法连接。"
+                        className={buttonVariants({
+                          variant: "ghost",
+                          size: "xs",
+                          className: "text-destructive hover:text-destructive",
+                        })}
                       >
-                        取消
+                        作废
                       </Link>
-                    </Form>
-                  ) : (
-                    <Link
-                      to={`?revoke=${token.id}`}
-                      className={`${buttonVariants({ variant: "ghost", size: "sm" })} ml-auto`}
-                    >
-                      作废
-                    </Link>
-                  ))}
-              </li>
-            ))}
-          </ul>
+                    )}
+                  </Td>
+                </Tr>
+              ))}
+            </tbody>
+          </Table>
         )}
-      </section>
-    </main>
+        {tokens.some((token) => token.id === revoking && token.revoked_at === null) && (
+          <p className="border-t px-4 py-2.5 text-[13px] text-destructive sm:px-5">
+            作废后，使用该令牌的抓取节点将立即无法连接。
+          </p>
+        )}
+      </Panel>
+    </Page>
   );
 }

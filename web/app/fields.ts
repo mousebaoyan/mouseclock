@@ -25,11 +25,11 @@ const LABELS: Partial<Record<string, string>> = {
   "event:place": "活动地点",
   degrees: "招收类型",
   majors: "招收专业",
-  requirements: "报名要求",
-  materials: "要交的材料",
+  requirements: "申请条件",
+  materials: "申请材料",
   assessment: "考核方式",
-  quota: "名额",
-  benefits: "待遇",
+  quota: "招收名额",
+  benefits: "相关待遇",
   contacts: "联系方式",
 };
 
@@ -40,7 +40,7 @@ export function fieldLabel(key: string) {
 
 // A value an edit changed, as the page shows the field.
 export function formatValue(key: string, value: StoredValue | null, thisYear: number) {
-  if (value === null) return "空";
+  if (value === null) return "（空）";
   if (typeof value === "boolean") return value ? "是" : "否";
   if (typeof value === "number") return `${value} 届`;
   if (typeof value === "string") {

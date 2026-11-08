@@ -1,10 +1,12 @@
-import { Link, useSearchParams } from "react-router";
+import type { ReactNode } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { cn } from "~/cn";
-import { buttonVariants } from "~/components/ui/button";
+import { ChevronLeft, ChevronRight } from "~/components/icons";
+import { Select } from "~/components/ui/select";
 import { PER_PAGE } from "../../server/platform/paging.ts";
 
-// Pages of any list, as links that keep the rest of the address: they work before scripts load,
-// and a page can be shared. `prefix` tells apart two lists on one page, such as "school_".
+// Pages of any list, as links that keep the rest of the address, so a page can be shared.
+// `prefix` tells apart two lists on one page, such as "school_".
 export function Pagination({
   total,
   page,
@@ -17,6 +19,7 @@ export function Pagination({
   prefix?: string;
 }) {
   const [search] = useSearchParams();
+  const navigate = useNavigate();
   // A short list needs no pages, unless the address asks for one past its end.
   if (total <= PER_PAGE[0] && page === 1) return null;
   const pages = Math.ceil(total / perPage);
@@ -28,57 +31,75 @@ export function Pagination({
     if (to.perPage) params.set(`${prefix}per_page`, String(to.perPage));
     return `?${params}`;
   }
-  const step = buttonVariants({ variant: "ghost", size: "sm", className: "tabular-nums" });
+  const step =
+    "inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-[13px] tabular-nums";
   return (
     <nav
       aria-label="分页"
-      className="mt-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm"
+      className="mt-4 flex flex-wrap items-center justify-between gap-x-6 gap-y-3 text-[13px] text-muted-foreground"
     >
-      <div className="flex flex-wrap items-center gap-0.5">
-        {page > 1 && (
-          <Link to={href({ page: page - 1 })} className={step}>
-            上一页
-          </Link>
-        )}
+      <span>共 {total} 条</span>
+      <div className="flex items-center gap-1 max-sm:order-last max-sm:w-full max-sm:justify-center">
+        <PageStep to={page > 1 ? href({ page: page - 1 }) : null} label="上一页">
+          <ChevronLeft />
+        </PageStep>
         {numbers(page, pages).map((n, i) =>
           n === null ? (
-            <span key={`gap${i}`} className="px-1 text-muted-foreground">
+            <span key={`gap${i}`} className="px-1">
               …
             </span>
           ) : n === page ? (
             <span
               key={n}
               aria-current="page"
-              className={buttonVariants({ size: "sm", className: "tabular-nums" })}
+              className={cn(step, "border border-primary bg-primary-soft font-medium text-primary")}
             >
               {n}
             </span>
           ) : (
-            <Link key={n} to={href({ page: n })} className={step}>
+            <Link
+              key={n}
+              to={href({ page: n })}
+              className={cn(step, "text-foreground hover:bg-accent")}
+            >
               {n}
             </Link>
           ),
         )}
-        {page < pages && (
-          <Link to={href({ page: page + 1 })} className={step}>
-            下一页
-          </Link>
-        )}
+        <PageStep to={page < pages ? href({ page: page + 1 }) : null} label="下一页">
+          <ChevronRight />
+        </PageStep>
       </div>
-      <div className="flex items-center gap-0.5 text-muted-foreground">
-        <span className="mr-1.5">共 {total} 条，每页</span>
-        {PER_PAGE.map((n) => (
-          <Link
-            key={n}
-            to={href({ page: 1, perPage: n })}
-            aria-current={n === perPage ? "true" : undefined}
-            className={cn(step, n === perPage && "bg-secondary font-medium text-foreground")}
-          >
-            {n}
-          </Link>
-        ))}
-      </div>
+      <Select
+        aria-label="每页条数"
+        value={String(perPage)}
+        onValueChange={(value) => void navigate(href({ page: 1, perPage: Number(value) }))}
+        options={PER_PAGE.map((n) => ({ value: String(n), label: `每页 ${n} 条` }))}
+        className="h-8 w-auto text-[13px]"
+      />
     </nav>
+  );
+}
+
+function PageStep({
+  to,
+  label,
+  children,
+}: {
+  to: string | null;
+  label: string;
+  children: ReactNode;
+}) {
+  const className =
+    "inline-flex size-8 items-center justify-center rounded-md text-foreground hover:bg-accent";
+  return to ? (
+    <Link to={to} aria-label={label} className={className}>
+      {children}
+    </Link>
+  ) : (
+    <span aria-hidden="true" className={cn(className, "opacity-35 hover:bg-transparent")}>
+      {children}
+    </span>
   );
 }
 

@@ -204,6 +204,7 @@ export async function getPublicCollege(id: number) {
       "colleges.directions",
       "schools.id as school_id",
       "schools.name as school_name",
+      "schools.tiers as school_tiers",
     ])
     .where("colleges.id", "=", id)
     .executeTakeFirst();
@@ -244,6 +245,7 @@ export async function getPublicCollege(id: number) {
     school: {
       id: college.school_id,
       name: college.school_name,
+      tiers: college.school_tiers,
     },
     name: college.name,
     kind: college.kind,
