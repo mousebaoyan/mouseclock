@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { Int, UnixSeconds } from "../../platform/http.ts";
 
 // The shapes of programs and their fields (design §8.2): what extraction submits, what the
 // database stores in program_fields and program_versions, and what pages show. Keys left out
@@ -145,4 +146,44 @@ export type FieldKey = keyof ExtractedFields;
 export type FieldValue<K extends FieldKey> = NonNullable<ExtractedFields[K]>["value"];
 
 export const ProgramName = z.string().trim().min(1).max(200);
-export const Cohort = z.number().int().min(2000).max(2100).openapi({ description: "届" });
+const COHORTS = { min: 2000, max: 2100 };
+export const Cohort = z
+  .number()
+  .int()
+  .min(COHORTS.min)
+  .max(COHORTS.max)
+  .openapi({ description: "届" });
+
+// The cohort as a query string gives it.
+export const ProgramTableQuery = z.object({
+  cohort: z.coerce.number().int().min(COHORTS.min).max(COHORTS.max).openapi({ description: "届" }),
+});
+
+// A row of the table (design §10): only what the table shows, filters and sorts by. `apply` is
+// what the page shows; the two instants are for status, countdowns and sorting.
+export const TableProgram = z
+  .object({
+    id: Int,
+    school: z.object({ name: z.string(), short_name: z.string(), tiers: z.array(z.string()) }),
+    college: z.object({
+      id: Int,
+      name: z.string(),
+      region: z.string(),
+      directions: z.array(z.string()),
+    }),
+    kind: Kind,
+    name: z.string(),
+    apply: z.union([ApplyValue, z.null()]),
+    apply_start: UnixSeconds.nullable(),
+    apply_deadline: UnixSeconds.nullable(),
+    notice: z
+      .object({ url: z.string(), published_on: IsoDate.nullable() })
+      .openapi({ description: "原文：最近一个报名版本的通知，没有就用最近一个版本的" }),
+  })
+  .openapi("TableProgram");
+export const ProgramTable = z
+  .object({
+    preview: z.boolean().openapi({ description: "没登录或账号已冻结，只有截止最近的几条" }),
+    programs: z.array(TableProgram),
+  })
+  .openapi("ProgramTable");

@@ -6,7 +6,8 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
-import type { ApplyValue, Kind } from "../programs/schemas.ts";
+import type { Kind } from "../programs/schemas.ts";
+import { applyOf } from "../programs/service.ts";
 import {
   PAGE_SIZE,
   type SchoolInput,
@@ -240,14 +241,7 @@ export async function getPublicCollege(id: number) {
       .selectFrom("programs")
       .select(["id", "cohort", "name", "apply_start", "apply_deadline"])
       .select(sql<Kind>`programs.kind`.as("kind"))
-      .select(
-        sql<ApplyValue | null>`(
-          select jsonb_object_agg(substring(field.key from 7), field.value)
-          from program_fields as field
-          where field.program_id = programs.id
-            and field.key in ('apply:start', 'apply:end', 'apply:rolling')
-        )`.as("apply"),
-      )
+      .select(applyOf("programs.id").as("apply"))
       .where("college_id", "=", id)
       .where("deleted_at", "is", null)
       .orderBy("cohort", "desc")

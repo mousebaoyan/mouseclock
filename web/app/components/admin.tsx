@@ -1,6 +1,7 @@
 import { cloneElement, useId, type ReactElement, type ReactNode } from "react";
 import { Link, NavLink, useSearchParams } from "react-router";
 import { buttonVariants } from "~/components/ui/button";
+import type { Kind } from "../../server/modules/programs/schemas.ts";
 
 export const inputClass =
   "w-full rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/25";
@@ -17,6 +18,12 @@ export const KINDS = [
   { value: "institute", label: "研究所" },
   { value: "graduate_school", label: "研究生院" },
 ];
+export const PROGRAM_KINDS: Record<Kind, string> = {
+  winter_camp: "冬令营",
+  summer_camp: "夏令营",
+  pre_recommendation: "预推免",
+  september_round: "九推",
+};
 
 export function AdminPage({
   title,

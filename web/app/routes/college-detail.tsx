@@ -1,10 +1,8 @@
 import type { InferResponseType } from "hono/client";
-import { useEffect, useState } from "react";
 import { Link } from "react-router";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import type { ApplyValue, Kind } from "../../server/modules/programs/schemas.ts";
-import { formatWindow, beijingYear, STATUS_LABELS, statusOf } from "../time.ts";
-import { KINDS } from "../components/admin.tsx";
+import { beijingYear, formatApply, STATUS_LABELS, statusOf, useNow } from "../time.ts";
+import { KINDS, PROGRAM_KINDS } from "../components/admin.tsx";
 import type { Route } from "./+types/college-detail.ts";
 
 type CollegeDetail = InferResponseType<
@@ -12,12 +10,6 @@ type CollegeDetail = InferResponseType<
   200
 >;
 
-const KIND_LABELS: Record<Kind, string> = {
-  winter_camp: "冬令营",
-  summer_camp: "夏令营",
-  pre_recommendation: "预推免",
-  september_round: "九推",
-};
 export function meta({ loaderData }: Route.MetaArgs) {
   return [
     {
@@ -33,21 +25,10 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return { college, thisYear: beijingYear(new Date()), now: Math.floor(Date.now() / 1000) };
 }
 
-function applyText(apply: ApplyValue | null, year: number) {
-  if (!apply) return "未说明";
-  const window = formatWindow(apply, year);
-  if (window) return apply.rolling ? `${window}（额满即止）` : window;
-  return apply.rolling ? "额满即止" : "未说明";
-}
-
 export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
   const { college, thisYear } = loaderData;
   const { school } = college;
-  const [now, setNow] = useState(loaderData.now);
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Math.floor(Date.now() / 1000)), 60_000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow(loaderData.now);
   return (
     <main className="mx-auto max-w-6xl space-y-6 px-3 py-6 sm:px-5">
       <p className="text-sm">
@@ -121,7 +102,7 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
                         <div>
                           <p className="font-medium">{program.name}</p>
                           <p className="mt-1 text-sm text-muted-foreground">
-                            {KIND_LABELS[program.kind]}
+                            {PROGRAM_KINDS[program.kind]}
                           </p>
                         </div>
                         <span className="rounded-full bg-secondary px-2.5 py-1 text-xs">
@@ -130,7 +111,7 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
                       </div>
                       <p className="mt-3 text-sm">
                         <span className="text-muted-foreground">报名时间：</span>
-                        {applyText(program.apply, thisYear)}
+                        {formatApply(program.apply, thisYear)}
                       </p>
                     </li>
                   );

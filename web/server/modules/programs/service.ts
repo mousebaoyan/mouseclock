@@ -1,8 +1,89 @@
 import { isDeepStrictEqual } from "node:util";
 import { sql, type Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
-import type { Evidence, ExtractedFields, Kind, TimeValue } from "./schemas.ts";
+import { db } from "../../platform/db.ts";
+import { unix } from "../../platform/http.ts";
+import type { ApplyValue, Evidence, ExtractedFields, Kind, TimeValue } from "./schemas.ts";
 import { deadlineOf, startOf } from "./time.ts";
+
+// The apply field put back together from its parts, null when the notice gave none. `program`
+// is the column holding the program's id, such as "programs.id".
+export function applyOf(program: string) {
+  return sql<ApplyValue | null>`(
+    select jsonb_object_agg(split_part(field.key, ':', 2), field.value)
+    from program_fields as field
+    where field.program_id = ${sql.ref(program)} and field.key like 'apply:%'
+  )`;
+}
+
+// Guests and frozen accounts see a preview of the table (design §6.2).
+const PREVIEW_SIZE = 5;
+
+// One cohort's programs for the table (design §10), by deadline. The link is to the notice of
+// the latest call, or of the latest version if no call was found; every program is made with
+// its first version.
+export async function listPrograms(cohort: number, preview: boolean) {
+  let query = db
+    .selectFrom("programs as p")
+    .innerJoin("colleges as c", "c.id", "p.college_id")
+    .innerJoin("schools as s", "s.id", "c.school_id")
+    .innerJoinLateral(
+      (eb) =>
+        eb
+          .selectFrom("program_versions as v")
+          .innerJoin("snapshots as sn", "sn.id", "v.snapshot_id")
+          .innerJoin("notices as n", "n.id", "sn.notice_id")
+          .select(["n.url", "n.published_on"])
+          .whereRef("v.program_id", "=", "p.id")
+          .orderBy(sql`v.role = 'call'`, "desc")
+          .orderBy("v.number", "desc")
+          .limit(1)
+          .as("notice"),
+      (join) => join.onTrue(),
+    )
+    .select([
+      "p.id",
+      "p.name",
+      "p.apply_start",
+      "p.apply_deadline",
+      sql<Kind>`p.kind`.as("kind"),
+      applyOf("p.id").as("apply"),
+      "s.name as school_name",
+      "s.short_name as school_short_name",
+      "s.tiers as school_tiers",
+      "c.id as college_id",
+      "c.name as college_name",
+      "c.region as college_region",
+      "c.directions as college_directions",
+      "notice.url as notice_url",
+      "notice.published_on as notice_published_on",
+    ])
+    .where("p.cohort", "=", cohort)
+    .where("p.deleted_at", "is", null)
+    .orderBy("p.apply_deadline", (order) => order.asc().nullsLast())
+    .orderBy("p.id");
+  if (preview) query = query.where("p.apply_deadline", ">", new Date()).limit(PREVIEW_SIZE);
+  const rows = await query.execute();
+  return {
+    preview,
+    programs: rows.map((row) => ({
+      id: row.id,
+      school: { name: row.school_name, short_name: row.school_short_name, tiers: row.school_tiers },
+      college: {
+        id: row.college_id,
+        name: row.college_name,
+        region: row.college_region,
+        directions: row.college_directions,
+      },
+      kind: row.kind,
+      name: row.name,
+      apply: row.apply,
+      apply_start: row.apply_start ? unix(row.apply_start) : null,
+      apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
+      notice: { url: row.notice_url, published_on: row.notice_published_on },
+    })),
+  };
+}
 
 // A field as program_fields keeps it. The fields made of parts are kept a row per part, keyed by
 // the field and the part: `apply:end`, `event:mode`, and `dates:` with the label of each other
