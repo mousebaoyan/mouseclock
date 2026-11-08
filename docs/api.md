@@ -40,8 +40,9 @@
 | 分组 | 接口 | 说明 |
 | --- | --- | --- |
 | 项目 | `GET /programs?cohort=` | 总表：一届的全部项目，按截止时间排好，只带总表用得上的字段；筛选、排序、搜索和分页在浏览器里做（[总体设计 §14](design.md#14-性能与资源)）。登录后的响应带 `ETag`，数据没变时返回 `304`；访客只拿到预览 |
-| | `GET /programs/{id}` | 详情：字段和证据、状态、订阅人数 |
-| | `GET /programs/{id}/versions` | 版本和快照 |
+| | `GET /programs/{id}` | 详情：原文、字段和证据、已核对；分部分的字段（报名时间、活动时间、其他时间）每部分各带证据和来自哪一版。订阅人数二期加 |
+| | `GET /programs/{id}/versions` | 版本：各版的通知、作用、改了哪些字段、快照和附件，最新的在前 |
+| | `GET /snapshots/{id}`、`GET /snapshots/{id}/attachments/{position}` | 快照：净化过的正文和附件列表；下载附件 |
 | | `GET /programs/{id}/edits` | 修改记录 |
 | 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页 |
 | 订阅和关注 | `PUT`、`DELETE /programs/{id}/subscription` | 订阅、取消；超过 10 个返回 `409 subscription_limit` |

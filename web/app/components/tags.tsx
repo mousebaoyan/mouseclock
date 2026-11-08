@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
-import type { Kind } from "../../server/modules/programs/schemas.ts";
+import type { Kind, Role } from "../../server/modules/programs/schemas.ts";
 import { STATUS_LABELS, type Status } from "../time.ts";
 
 // Tags tell tiers, kinds and statuses apart at a glance, as mousehole's chips do: text in a hue
@@ -100,4 +100,15 @@ export function StatusTag({ status }: { status: Status | null }) {
   ) : (
     <Tag color="gray">未说明</Tag>
   );
+}
+
+// What a notice was to a program (design §8.2).
+const ROLES: Record<Role, { label: string; color: TagColor }> = {
+  call: { label: "报名", color: "blue" },
+  update: { label: "补充", color: "amber" },
+  result: { label: "名单", color: "violet" },
+};
+
+export function RoleTag({ role }: { role: Role }) {
+  return <Tag color={ROLES[role].color}>{ROLES[role].label}</Tag>;
 }
