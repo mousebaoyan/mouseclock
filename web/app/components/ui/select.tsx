@@ -145,12 +145,8 @@ export function Select({
 
   return (
     <div className="relative min-w-0">
-      <button
-        {...list.triggerProps}
-        aria-label={label}
-        disabled={disabled}
-        className={cn(TRIGGER, className)}
-      >
+      <button {...list.triggerProps} disabled={disabled} className={cn(TRIGGER, className)}>
+        <TriggerLabel label={label} />
         <span className="truncate">{chosen?.label}</span>
         <TriggerIcon />
       </button>
@@ -245,9 +241,9 @@ export function MultiSelect({
     <div className="relative min-w-0">
       <button
         {...list.triggerProps}
-        aria-label={label}
         className={cn(TRIGGER, picked.length > 0 && "border-primary/50 text-primary", className)}
       >
+        <TriggerLabel label={label} />
         <span className="truncate">
           {labels.length === 0
             ? all
@@ -369,6 +365,11 @@ function Tool({ onClick, children }: { onClick: () => void; children: ReactNode 
       {children}
     </button>
   );
+}
+
+// What the dropdown is for, read out before what is picked, as "地区：广东、广西".
+function TriggerLabel({ label }: { label: string }) {
+  return <span className="sr-only">{label}：</span>;
 }
 
 // Turns over while the list is open.

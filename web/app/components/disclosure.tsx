@@ -90,7 +90,7 @@ export function Popup({
       ref={panel}
       style={place}
       className={cn(
-        "pop-in fixed z-50 flex flex-col overflow-hidden rounded-lg border bg-popover text-sm shadow-pop",
+        "pop-in fixed z-50 flex max-w-[calc(100vw-1rem)] flex-col overflow-hidden rounded-lg border bg-popover text-sm shadow-pop",
         className,
       )}
     >
