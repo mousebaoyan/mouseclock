@@ -49,6 +49,8 @@ const endpoints: [string, string, object?][] = [
   ],
   ["GET", "sources/1"],
   ["PATCH", "sources/1", { unavailable_reason: "需要登录" }],
+  ["POST", "source-probes", { url: "https://some.example/list", browser: false, config: null }],
+  ["GET", "source-probes/1"],
 ];
 
 test("every management endpoint refuses guests, non-admins and restricted admins", async () => {
@@ -600,4 +602,75 @@ test("what admins fill in wrongly is turned down naming the field and the fix", 
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: { code: "invalid_request", message } });
   }
+});
+
+test("an admin probes a list page, sees what the crawler found and adopts its config", async () => {
+  const actor: Actor = { user_id: adminId, via: "web" };
+  const school = await createSchool(actor, { name: "试抓大学", short_name: "", tiers: [] });
+  const college = await createCollege(actor, {
+    school_id: school.id,
+    name: "计算机学院",
+    kind: "college",
+    region: "北京",
+    directions: [],
+  });
+  const url = "https://probe.example/tzgg.htm";
+  const made = await api.admin["source-probes"].$post(
+    { json: { url, browser: true, config: null } },
+    admin,
+  );
+  if (made.status !== 201) throw new Error(`status ${made.status}`);
+  const { id } = await made.json();
+  const probe = () =>
+    api.admin["source-probes"][":id"]
+      .$get({ param: { id: String(id) } }, admin)
+      .then(async (res) => {
+        if (res.status !== 200) throw new Error(`status ${res.status}`);
+        return res.json();
+      });
+  expect(await probe()).toMatchObject({ url, browser: true, finished_at: null, items: [] });
+
+  const crawler = {
+    headers: { authorization: `Bearer ${await createCrawlerToken("probe-test")}` },
+  };
+  const config = { list: "ul.news li", title: "a", date: "span" };
+  const items = [
+    { url: "https://probe.example/1.htm", title: "夏令营通知", published_on: "2026-06-01" },
+  ];
+  const reported = await api.crawler.probes[":id"].$post(
+    { param: { id: String(id) }, json: { items, suggested_config: config, usage: [] } },
+    crawler,
+  );
+  expect(reported.status).toBe(204);
+  const result = await probe();
+  expect(result).toMatchObject({ items, suggested_config: config, failure: null });
+  expect(result.finished_at).not.toBeNull();
+
+  // Adopting is saving a source with what the probe suggested.
+  const source = await createSource(actor, {
+    college_id: college,
+    url,
+    section: "通知公告",
+    browser: false,
+    config: null,
+    unavailable_reason: null,
+  });
+  const adopted = await api.admin.sources[":id"].$patch(
+    { param: { id: String(source) }, json: { browser: true, config: result.suggested_config } },
+    admin,
+  );
+  expect(await adopted.json()).toMatchObject({ browser: true, config });
+
+  const log = await db
+    .selectFrom("audit_log")
+    .select(["action", "detail"])
+    .where("target_type", "=", "source_probe")
+    .where("target_id", "=", id)
+    .executeTakeFirstOrThrow();
+  expect(log).toMatchObject({ action: "create", detail: { via: "web", url, browser: true } });
+  const missing = await api.admin["source-probes"][":id"].$get(
+    { param: { id: String(id + 1000) } },
+    admin,
+  );
+  expect(missing.status).toBe(404);
 });

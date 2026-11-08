@@ -11,29 +11,17 @@ import {
 } from "../../platform/http.ts";
 import { IsoDate } from "../programs/schemas.ts";
 import { crawlDay } from "./dashboard.ts";
-import { Failure, NoticeFailure } from "./routes.ts";
+import { RunSummary } from "../sources/schemas.ts";
+import { NoticeFailure } from "./routes.ts";
 import { PURPOSES } from "./service.ts";
 
 // The crawl dashboard (design §7.5), for members.
 
 const Tokens = z.object({ input_tokens: Int, output_tokens: Int });
 
-const CrawlRun = z
-  .object({
-    id: Int,
-    started_at: UnixSeconds,
-    finished_at: UnixSeconds,
-    failure: Failure.nullable().openapi({ description: "为空是读到了列表" }),
-    detail: z.string(),
-    listed: Int,
-    new_count: Int,
-    useful_count: Int,
-    notice_failures: z.array(NoticeFailure).openapi({ description: "没抓成的通知，最多列 20 条" }),
-    notice_failure_count: Int,
-  })
-  .openapi("CrawlRun");
-
-export const RunSummary = CrawlRun.omit({ notice_failures: true }).openapi("RunSummary");
+const CrawlRun = RunSummary.extend({
+  notice_failures: z.array(NoticeFailure).openapi({ description: "没抓成的通知，最多列 20 条" }),
+}).openapi("CrawlRun");
 
 const CrawlDay = Page(
   z.object({

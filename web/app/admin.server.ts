@@ -9,6 +9,7 @@ export type CollegesPage = InferResponseType<AdminApi["colleges"]["$get"], 200>;
 export type CollegeDetail = InferResponseType<AdminApi["colleges"][":id"]["$get"], 200>;
 export type SourcesPage = InferResponseType<AdminApi["sources"]["$get"], 200>;
 export type SourceDetail = InferResponseType<AdminApi["sources"][":id"]["$get"], 200>;
+export type SourceProbe = InferResponseType<AdminApi["source-probes"][":id"]["$get"], 200>;
 
 export function formText(form: FormData, name: string) {
   const value = form.get(name);

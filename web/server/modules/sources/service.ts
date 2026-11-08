@@ -18,6 +18,8 @@ import {
   type PageQuery,
   type CollegeQuery,
   type SourceQuery,
+  type ProbeInput,
+  type Failure,
   type PublicSchool,
   type PublicProgramCohort,
 } from "./schemas.ts";
@@ -338,6 +340,36 @@ export async function listSources({
   return pageOf(query.orderBy("sources.id"), paging);
 }
 
+// Each source's latest round, for the sources page (design §7.5).
+export async function latestRuns(sourceIds: number[]) {
+  if (sourceIds.length === 0) return [];
+  const rows = await db
+    .selectFrom("crawl_runs")
+    .select([
+      "id",
+      "source_id",
+      "started_at",
+      "finished_at",
+      sql<Failure | null>`failure`.as("failure"),
+      "detail",
+      "listed",
+      "new_count",
+      "useful_count",
+    ])
+    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"))
+    .where("source_id", "in", sourceIds)
+    .distinctOn("source_id")
+    .orderBy("source_id")
+    .orderBy("finished_at", "desc")
+    .orderBy("id", "desc")
+    .execute();
+  return rows.map(({ started_at, finished_at, ...run }) => ({
+    ...run,
+    started_at: unix(started_at),
+    finished_at: unix(finished_at),
+  }));
+}
+
 export async function getSource(id: number) {
   const row = await db
     .selectFrom("sources")
@@ -413,6 +445,50 @@ export async function updateSource(actor: Actor, id: number, values: z.infer<typ
   });
 }
 
+// The crawler picks it up the next time it asks for work (leaseProbes) and reports back
+// (finishProbe); adopting what it suggests is saving a source with it (design §7.2).
+export async function createProbe(actor: Actor, values: z.infer<typeof ProbeInput>) {
+  return db.transaction().execute(async (trx) => {
+    const { id } = await trx
+      .insertInto("source_probes")
+      .values({
+        ...values,
+        config: values.config === null ? null : JSON.stringify(values.config),
+        requested_by: actor.user_id,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "create",
+      target_type: "source_probe",
+      target_id: id,
+      detail: { via: actor.via, ...values },
+    });
+    return id;
+  });
+}
+
+export async function getProbe(id: number) {
+  const row = await db
+    .selectFrom("source_probes")
+    .select(["id", "url", "browser", "created_at", "finished_at", "detail"])
+    .select([
+      sql<Record<string, unknown> | null>`config`.as("config"),
+      sql<{ url: string; title: string; published_on?: string }[]>`items`.as("items"),
+      sql<Record<string, unknown> | null>`suggested_config`.as("suggested_config"),
+      sql<Failure | null>`failure`.as("failure"),
+    ])
+    .where("id", "=", id)
+    .executeTakeFirst();
+  if (!row) throw new AppError(404, "not_found", "试抓不存在");
+  return {
+    ...row,
+    created_at: unix(row.created_at),
+    finished_at: row.finished_at && unix(row.finished_at),
+  };
+}
+
 // The sources module owns scheduling state too; ingest calls it inside its own transaction,
 // for probes as well as sources.
 export async function leaseSources(
@@ -477,7 +553,7 @@ export async function finishProbe(
   result: {
     items: { url: string; title: string; published_on?: string }[];
     suggested_config?: Record<string, unknown>;
-    failure?: string;
+    failure?: Failure;
     detail?: string;
   },
 ) {
