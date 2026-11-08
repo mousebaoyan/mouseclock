@@ -4,6 +4,7 @@ import { sql } from "kysely";
 import { accountsRoutes, authenticate, autoLogin, loginRoutes } from "./modules/accounts/routes.ts";
 import { dashboardRoutes } from "./modules/ingest/dashboard-routes.ts";
 import { reviewItemsRoutes } from "./modules/ingest/review-routes.ts";
+import { tokenRoutes } from "./modules/ingest/token-routes.ts";
 import { ingestRoutes } from "./modules/ingest/routes.ts";
 import { programsRoutes } from "./modules/programs/routes.ts";
 import { reviewRoutes } from "./modules/review/routes.ts";
@@ -18,6 +19,7 @@ const api = createRouter()
   .route("/", ingestRoutes)
   .route("/", dashboardRoutes)
   .route("/", reviewItemsRoutes)
+  .route("/", tokenRoutes)
   .route("/", programsRoutes)
   .route("/", reviewRoutes)
   .route("/", sourcesRoutes);
