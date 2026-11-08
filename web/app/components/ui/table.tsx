@@ -25,7 +25,8 @@ export function Table({
 }) {
   return (
     <div
-      className={cn(!bare && "overflow-hidden rounded-xl border bg-card shadow-card", className)}
+      // Should a table be too wide, it scrolls rather than hide its last columns.
+      className={cn(!bare && "overflow-x-auto rounded-xl border bg-card shadow-card", className)}
     >
       <table
         className="grid text-sm [&_tbody,&_thead,&_tr]:contents"

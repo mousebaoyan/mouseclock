@@ -18,7 +18,6 @@ import { currentCohort, formatTime, STATUS_LABELS, useNow } from "../time.ts";
 import type { Route } from "./+types/home.ts";
 
 type TableData = InferResponseType<ReturnType<typeof createApi>["programs"]["$get"], 200>;
-type Program = TableData["programs"][number];
 
 export function meta() {
   return [{ title: SITE_NAME }, { name: "description", content: SITE_DESCRIPTION }];
@@ -53,6 +52,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 }
 
 type Data = Route.ComponentProps["loaderData"];
+type Program = Data["programs"][number];
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { cohort, preview, programs, total, page, filters, thisYear } = loaderData;

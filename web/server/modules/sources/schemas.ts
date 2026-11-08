@@ -31,10 +31,15 @@ export const ListedItem = z
   })
   .openapi("ListedItem");
 export const Config = z.record(z.string(), z.unknown(), { error: "抓取配置要是 JSON 对象" });
+// Lists count each item once: the filters count a college once for each of its directions.
+const unique = (items: string[]) => new Set(items).size === items.length;
 // What admins fill in, named for validation messages (named in platform/http.ts).
 export const SchoolInput = z.strictObject({
   name: z.string(named("学校名称")).trim().min(1).max(200),
-  short_names: z.array(z.string(named("简称")).trim().min(1).max(100), named("简称")).max(20),
+  short_names: z
+    .array(z.string(named("简称")).trim().min(1).max(100), named("简称"))
+    .max(20)
+    .refine(unique, "简称有重复"),
   tier: z.enum(["c9", "985", "211", "double_first_class"], named("层次")).nullable(),
 });
 export const CollegeInput = z.strictObject({
@@ -42,7 +47,10 @@ export const CollegeInput = z.strictObject({
   name: z.string(named("学院名称")).trim().min(1).max(200),
   kind: z.enum(["college", "institute", "graduate_school"], named("学院类型")),
   region: z.string(named("地区")).trim().min(1).max(100),
-  directions: z.array(z.string(named("方向")).trim().min(1).max(100), named("方向")).max(30),
+  directions: z
+    .array(z.string(named("方向")).trim().min(1).max(100), named("方向"))
+    .max(30)
+    .refine(unique, "方向有重复"),
 });
 export const SourceInput = z.strictObject({
   college_id: Int.positive(),

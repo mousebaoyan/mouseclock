@@ -4,7 +4,7 @@ import { cn } from "~/cn";
 import { Check } from "~/components/icons";
 import type { Kind, Role } from "../../server/modules/programs/schemas.ts";
 import { TIERS } from "../tiers.ts";
-import { STATUS_LABELS, type Status } from "../time.ts";
+import type { Status } from "../time.ts";
 
 // Tags tell tiers, kinds and statuses apart at a glance: text in a hue on a light wash of it
 // (app.css). A filter's chip takes the same hue, with a border of it once picked.
@@ -79,7 +79,6 @@ export function Chip({
       to={to}
       replace
       preventScrollReset
-      aria-pressed={on}
       className={cn(
         "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-[13px] whitespace-nowrap",
         on
@@ -87,7 +86,7 @@ export function Chip({
           : "border-border bg-card text-foreground/80 hover:border-input hover:text-foreground",
       )}
     >
-      {on && <Check className="-ml-0.5 size-3.5" />}
+      {on && <Check aria-label="已选" className="-ml-0.5 size-3.5" />}
       {children}
       {count !== undefined && (
         <span className="ml-0.5 text-xs font-normal tabular-nums opacity-60">{count}</span>
@@ -124,15 +123,6 @@ export const STATUS_COLORS: Record<Status, TagColor> = {
   open: "green",
   closed: "gray",
 };
-
-// Null: the notice gave no times.
-export function StatusTag({ status }: { status: Status | null }) {
-  return status ? (
-    <Tag color={STATUS_COLORS[status]}>{STATUS_LABELS[status]}</Tag>
-  ) : (
-    <Tag color="gray">未注明</Tag>
-  );
-}
 
 // What a notice was to a program (design §8.2).
 const ROLES: Record<Role, { label: string; color: TagColor }> = {

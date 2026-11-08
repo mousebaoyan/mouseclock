@@ -315,7 +315,7 @@ function Evidence({ parts, versions }: { parts: FieldRow["parts"]; versions: Ver
     else if (label) group.labels.push(label);
   }
   return (
-    <Reveal label="原文依据" icon={<Quote className="size-3.5" />} className="mt-1.5">
+    <Reveal label="原文证据" icon={<Quote className="size-3.5" />} className="mt-1.5">
       <div className="space-y-2.5 rounded-md border bg-muted/50 p-3">
         {groups.map(({ key, labels, part }) => {
           const from = part.version;

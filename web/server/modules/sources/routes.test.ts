@@ -565,6 +565,7 @@ test("what admins fill in wrongly is turned down naming the field and the fix", 
     ["PATCH", "schools/1", { name: " " }, "学校名称不能为空"],
     ["PATCH", "sources/1", { url: "x.example/list" }, "网址要写完整，以 http:// 或 https:// 开头"],
     ["POST", "colleges", { ...college, directions: ["计算机", " "] }, "方向不能为空"],
+    ["POST", "colleges", { ...college, directions: ["计算机", "计算机"] }, "方向有重复"],
     [
       "POST",
       "colleges",

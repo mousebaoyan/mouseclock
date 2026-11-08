@@ -461,7 +461,7 @@ type ListedSource = SourcesPage["items"][number];
 function SourceName({ source }: { source: ListedSource }) {
   return (
     <>
-      <span className="font-medium whitespace-nowrap">
+      <span className="font-medium">
         {source.school_name}
         <span className="ml-1">{source.college_name}</span>
       </span>

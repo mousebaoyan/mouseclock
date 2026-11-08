@@ -41,7 +41,7 @@ const REASONS: Record<Reason, { label: string; color: TagColor; hint: string }> 
     hint: "报名截止早于通知发布日期，可能抽取有误，请对照原文确认",
   },
   evidence_not_found: {
-    label: "依据无法核实",
+    label: "证据未找到",
     color: "violet",
     hint: "抽取给出的原文句子在快照中找不到，请对照原文确认",
   },

@@ -7,7 +7,6 @@ const VARIANTS = {
   outline: "btn-outline",
   ghost: "btn-ghost",
   destructive: "btn-destructive",
-  "destructive-outline": "btn-destructive-outline",
   link: "btn-link",
 };
 

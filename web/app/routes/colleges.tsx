@@ -6,12 +6,11 @@ import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { Missing } from "~/components/program";
 import { COLLEGE_KINDS, TierTag } from "~/components/tags";
-import { TIER_FILTERS, TIERS } from "~/tiers";
+import { TIER_FILTERS } from "~/tiers";
 import { MultiSelect, Select } from "~/components/ui/select";
 import { Table, Td, Tr } from "~/components/ui/table";
-import { PER_PAGE } from "../../server/platform/paging.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { anyOf, choices, tally } from "../facets.ts";
+import { collegeView, regionsOf, SORTS } from "../college-list.ts";
 import type { Route } from "./+types/colleges.ts";
 
 type CollegeList = InferResponseType<ReturnType<typeof createApi>["colleges"]["$get"], 200>;
@@ -22,81 +21,10 @@ export function meta() {
   return [{ title: "院校清单 · 鼠钟" }, { name: "description", content: "鼠钟收录的学校与学院" }];
 }
 
-const SORTS = [
-  { value: "", label: "按学校名称" },
-  { value: "tier", label: "按院校层次" },
-  { value: "region", label: "按所在地区" },
-];
-
-const collator = new Intl.Collator("zh-CN");
-
-// A school's place among the tiers, highest first; schools with none come last.
-function rank(school: School) {
-  const at = TIERS.findIndex((tier) => tier.value === school.tier);
-  return at === -1 ? TIERS.length : at;
-}
-
-// Colleges of a school are almost always in its city.
-function regionOf(school: School) {
-  return school.colleges[0].region;
-}
-
-// The schools the address asks for, filtered and sorted here: the whole list is small, and the
-// page only gets the schools it shows.
+// The schools the address asks for (college-list.ts).
 export async function loader({ request, context }: Route.LoaderArgs) {
   const { schools } = await readApi<CollegeList>(await context.get(apiContext).colleges.$get());
-  const params = new URL(request.url).searchParams;
-  const q = params.get("q")?.trim().toLowerCase() ?? "";
-  const tiers = params.getAll("tier");
-  const regions = params.getAll("region");
-  const directions = params.getAll("direction");
-  const sort = SORTS.find((item) => item.value === params.get("sort"))?.value ?? "";
-  const perPage = PER_PAGE.find((n) => String(n) === params.get("per_page")) ?? PER_PAGE[0];
-  // The schools, each with the colleges, that every filter but `skip` lets through. The short
-  // names are only for search, and stay here.
-  const narrowed = (skip?: "tier" | "region" | "direction") =>
-    schools
-      .filter((school) => skip === "tier" || anyOf(tiers, [school.tier ?? "other"]))
-      .map(({ short_names, ...school }) => {
-        const named = [school.name, ...short_names].some((text) => text.toLowerCase().includes(q));
-        // A search for a school keeps all its colleges; one for a college keeps those it names.
-        const colleges = school.colleges.filter(
-          (college) =>
-            (skip === "region" || anyOf(regions, [college.region])) &&
-            (skip === "direction" || anyOf(directions, college.directions)) &&
-            (named || college.name.toLowerCase().includes(q)),
-        );
-        return { ...school, colleges };
-      })
-      .filter((school) => school.colleges.length > 0);
-  const matched = narrowed();
-  matched.sort(
-    (a, b) =>
-      (sort === "tier" ? rank(a) - rank(b) : 0) ||
-      (sort === "region" ? collator.compare(regionOf(a), regionOf(b)) : 0) ||
-      collator.compare(a.name, b.name),
-  );
-  const pages = Math.max(1, Math.ceil(matched.length / perPage));
-  const page = Math.min(Math.max(1, Number(params.get("page")) || 1), pages);
-  const all = schools.flatMap((school) => school.colleges);
-  return {
-    schools: matched.slice((page - 1) * perPage, page * perPage),
-    total: matched.length,
-    colleges: matched.reduce((sum, school) => sum + school.colleges.length, 0),
-    page,
-    perPage,
-    filters: { q: params.get("q") ?? "", tiers, regions, directions, sort },
-    // A tier counts schools, a region or direction colleges: what each belongs to.
-    counts: {
-      tier: tally(narrowed("tier").map((school) => school.tier ?? "other")),
-      region: tally(narrowed("region").flatMap((school) => school.colleges.map((c) => c.region))),
-      direction: tally(
-        narrowed("direction").flatMap((school) => school.colleges.flatMap((c) => c.directions)),
-      ),
-    },
-    regions: choices(all.map((college) => college.region)),
-    directions: choices(all.flatMap((college) => college.directions)),
-  };
+  return collegeView(schools, new URL(request.url).searchParams);
 }
 
 export default function Colleges({ loaderData }: Route.ComponentProps) {
@@ -178,7 +106,7 @@ function SchoolLabel({ school }: { school: School }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 lg:block">
       <p className="text-base font-semibold">{school.name}</p>
-      <p className="text-[13px] text-muted-foreground lg:mt-0.5">{regionOf(school)}</p>
+      <p className="text-[13px] text-muted-foreground lg:mt-0.5">{regionsOf(school).join("、")}</p>
       {school.tier && (
         <p className="lg:mt-2">
           <TierTag tier={school.tier} />
@@ -239,15 +167,15 @@ function Schools({ schools }: { schools: School[] }) {
                   </Link>
                 }
                 meta={
-                  // Only what sets a college apart: most are colleges, in their school's city.
+                  // Only what sets a college apart: most are colleges, in their school's one city.
                   (college.kind !== "college" ||
-                    college.region !== regionOf(school) ||
+                    regionsOf(school).length > 1 ||
                     college.directions.length > 0) && (
                     <>
                       {college.kind !== "college" && (
                         <span>{COLLEGE_KINDS[college.kind] ?? college.kind}</span>
                       )}
-                      {college.region !== regionOf(school) && <span>{college.region}</span>}
+                      {regionsOf(school).length > 1 && <span>{college.region}</span>}
                       {college.directions.length > 0 && (
                         <span>招生方向：{college.directions.join("、")}</span>
                       )}

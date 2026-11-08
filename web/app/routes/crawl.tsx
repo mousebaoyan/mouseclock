@@ -216,7 +216,7 @@ function CrawlerSeen({ seenAt, now }: { seenAt: number | null; now: number }) {
 function SourceName({ source }: { source: Source }) {
   return (
     <>
-      <span className="font-medium whitespace-nowrap">
+      <span className="font-medium">
         {source.school}
         <span className="ml-1">{source.college}</span>
       </span>
@@ -287,7 +287,7 @@ function SourceRows({ source }: { source: Source }) {
           <Section source={source} />
         </Td>
         <Td nowrap>{latest && <ClockTime value={latest.started_at} />}</Td>
-        <Td nowrap>{latest && <RunResult run={latest} />}</Td>
+        <Td>{latest && <RunResult run={latest} />}</Td>
         <Td nowrap>{total(source, "new_count")}</Td>
         <Td nowrap>{total(source, "useful_count")}</Td>
         <Td nowrap>

@@ -181,9 +181,6 @@
   .btn-destructive {
     @apply bg-destructive text-white hover:bg-[color-mix(in_oklab,var(--destructive),black_10%)];
   }
-  .btn-destructive-outline {
-    @apply border-input bg-card text-destructive hover:border-destructive/40 hover:bg-destructive/5;
-  }
   .btn-link {
     @apply h-auto! border-0 px-0! text-primary underline-offset-4 hover:underline;
   }
