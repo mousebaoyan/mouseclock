@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { Int, IntParam, PageParams, UnixSeconds } from "../../platform/http.ts";
+import { Int, IntParam, named, PageParams, UnixSeconds } from "../../platform/http.ts";
 import { ApplyValue, Kind } from "../programs/schemas.ts";
 
 export const PageQuery = PageParams.extend({ q: z.string().trim().max(200).default("") });
@@ -8,27 +8,29 @@ export const SourceQuery = PageQuery.extend({
   college_id: IntParam.positive().optional(),
   availability: z.enum(["available", "unavailable"]).optional(),
 });
-export const Config = z.record(z.string(), z.unknown());
-const Name = z.string().trim().min(1).max(200);
+export const Config = z.record(z.string(), z.unknown(), { error: "抓取配置要是 JSON 对象" });
+// What admins fill in, named for validation messages (named in platform/http.ts).
 export const SchoolInput = z.strictObject({
-  name: Name,
-  short_name: z.string().trim().max(100),
-  tiers: z.array(z.enum(["c9", "985", "211", "double_first_class"])).max(4),
+  name: z.string(named("学校名称")).trim().min(1).max(200),
+  short_name: z.string(named("简称")).trim().max(100),
+  tiers: z
+    .array(z.enum(["c9", "985", "211", "double_first_class"], named("层次")), named("层次"))
+    .max(4),
 });
 export const CollegeInput = z.strictObject({
   school_id: Int.positive(),
-  name: Name,
-  kind: z.enum(["college", "institute", "graduate_school"]),
-  region: z.string().trim().min(1).max(100),
-  directions: z.array(z.string().trim().min(1).max(100)).max(30),
+  name: z.string(named("学院名称")).trim().min(1).max(200),
+  kind: z.enum(["college", "institute", "graduate_school"], named("学院类型")),
+  region: z.string(named("地区")).trim().min(1).max(100),
+  directions: z.array(z.string(named("方向")).trim().min(1).max(100), named("方向")).max(30),
 });
 export const SourceInput = z.strictObject({
   college_id: Int.positive(),
-  url: z.url({ protocol: /^https?$/ }).max(2000),
-  section: z.string().trim().max(200),
+  url: z.url({ protocol: /^https?$/, ...named("网址") }).max(2000),
+  section: z.string(named("栏目名")).trim().max(200),
   browser: z.boolean(),
   config: Config.nullable(),
-  unavailable_reason: z.string().trim().min(1).max(1000).nullable(),
+  unavailable_reason: z.string(named("暂时抓不了的原因")).trim().min(1).max(1000).nullable(),
 });
 const hasFields = (value: object) => Object.keys(value).length > 0;
 export const SchoolPatch = SchoolInput.partial().refine(hasFields, "请填写要修改的字段");

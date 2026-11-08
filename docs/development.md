@@ -48,6 +48,7 @@ crawler/                抓取节点
 - 抓取节点交的请求里，没有的值不写这个键，不传 `null`：Zod 用 `.optional()`，抓取节点用 Pydantic 的 `model_dump(mode="json", exclude_none=True)`。网站返回的空值写成 `null`；引用了命名 schema 的可空字段写成 `z.union([Schema, z.null()])`，`.nullable()` 会把空值并进那个 schema 本身。
 - 网站里依赖只能单向：页面 → 接口 → 服务 → 数据库。网页、API 和 MCP 都调用服务导出的函数，不各写一套规则。
 - 页面的 loader 和 action 用 `context.get(apiContext)` 拿到的 hc 客户端调接口，用它带类型的方法（`$get`、`$post`、`$patch`），不手拼请求，也不再校验接口的返回。权限和校验以接口为准：页面不另判权限；表单的值用接口的同一个 Zod schema 转成有类型的值再提交，这和接口是同一套规则；接口返回的错误抛给 ErrorBoundary，或者显示在表单上。
+- 要人填的字段在 schema 上用 `named("中文名")` 起名（`platform/http.ts`），校验不通过时接口和表单的提示就会写明是哪一项、怎么改，比如「学校名称不能为空」「网址要写完整，以 http:// 或 https:// 开头」。抓取节点交来的字段没人看提示，不用起名。
 - 页面上同一种东西用同一个组件：列表的分页用 `components/pagination.tsx`，每页条数可选；学校的层次、项目的类型和状态用 `components/tags.tsx` 的彩色标签，颜色在 `app.css`。
 - 模块之间只通过对方服务导出的函数协作，每张表只由一个模块写入；读别的模块的表不受限制，查询里可以直接 join。模块之间不循环依赖：A 调了 B 的服务，B 就不再调 A 的。
 - 审核页上的东西分属两个模块：抽取拿不准的条目归 `ingest`，处理时要归并、改版本；修改申请、争议和最近修改归 `review`。页面分别调两边的接口。

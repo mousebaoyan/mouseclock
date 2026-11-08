@@ -538,3 +538,66 @@ test("school lists are searchable and paginated; owners may manage too", async (
   const odd = await api.admin.schools.$get({ query: { per_page: "30" } }, options);
   expect(odd.status).toBe(400);
 });
+
+test("what admins fill in wrongly is turned down naming the field and the fix", async () => {
+  const source = { college_id: 1, section: "", browser: false, config: null };
+  const college = { school_id: 1, name: "计算机学院", kind: "college", region: "北京" };
+  for (const [method, path, body, message] of [
+    ["POST", "schools", { name: " ", short_name: "", tiers: [] }, "学校名称不能为空"],
+    [
+      "POST",
+      "schools",
+      { name: "大".repeat(201), short_name: "", tiers: [] },
+      "学校名称最多 200 个字",
+    ],
+    ["POST", "schools", { short_name: "", tiers: [] }, "请填写学校名称"],
+    [
+      "POST",
+      "schools",
+      { name: "某大学", short_name: "", tiers: ["c10"] },
+      "层次只能从给出的选项里选",
+    ],
+    ["POST", "schools", { name: "某大学", short_name: "", tiers: "985" }, "层次的格式不对"],
+    ["PATCH", "schools/1", { name: " " }, "学校名称不能为空"],
+    ["PATCH", "sources/1", { url: "x.example/list" }, "网址要写完整，以 http:// 或 https:// 开头"],
+    ["POST", "colleges", { ...college, directions: ["计算机", " "] }, "方向不能为空"],
+    [
+      "POST",
+      "colleges",
+      { ...college, kind: "lab", directions: [] },
+      "学院类型只能从给出的选项里选",
+    ],
+    [
+      "POST",
+      "sources",
+      { ...source, url: "ftp://x.example/list", unavailable_reason: null },
+      "网址要写完整，以 http:// 或 https:// 开头",
+    ],
+    [
+      "POST",
+      "sources",
+      { ...source, url: "https://", unavailable_reason: null },
+      "网址要写完整，以 http:// 或 https:// 开头",
+    ],
+    [
+      "POST",
+      "sources",
+      { ...source, url: "https://x.example/list", config: [], unavailable_reason: null },
+      "抓取配置要是 JSON 对象",
+    ],
+    [
+      "POST",
+      "sources",
+      { ...source, url: "https://x.example/list", unavailable_reason: " " },
+      "暂时抓不了的原因不能为空",
+    ],
+  ] as const) {
+    const res = await app.request(`/api/v1/admin/${path}`, {
+      method,
+      headers: { ...admin.headers, "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: { code: "invalid_request", message } });
+  }
+});
