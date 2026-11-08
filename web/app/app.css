@@ -34,6 +34,15 @@
   --color-link: var(--link);
   --color-success: var(--success);
   --color-warning: var(--warning);
+  --color-tag-red: var(--tag-red);
+  --color-tag-orange: var(--tag-orange);
+  --color-tag-amber: var(--tag-amber);
+  --color-tag-green: var(--tag-green);
+  --color-tag-teal: var(--tag-teal);
+  --color-tag-sky: var(--tag-sky);
+  --color-tag-blue: var(--tag-blue);
+  --color-tag-violet: var(--tag-violet);
+  --color-tag-pink: var(--tag-pink);
   --text-2xs: 0.6875rem;
   --text-2xs--line-height: 1.4;
   --text-meta: 0.8125rem;
@@ -73,6 +82,16 @@
   --link: #23716a;
   --success: #2d7a4c;
   --warning: #9a5a0c;
+  /* Tags tell tiers, kinds and statuses apart at a glance: text in the hue on a light wash of it. */
+  --tag-red: #c03a2b;
+  --tag-orange: #c2560c;
+  --tag-amber: #94670a;
+  --tag-green: #2d7a4c;
+  --tag-teal: #1f7a70;
+  --tag-sky: #0f6fa8;
+  --tag-blue: #3557b8;
+  --tag-violet: #6d48c2;
+  --tag-pink: #b8396f;
 }
 
 :root[data-theme="dark"] {
@@ -100,6 +119,15 @@
   --link: #7cc4b8;
   --success: #6fcf97;
   --warning: #e9b860;
+  --tag-red: #f28b82;
+  --tag-orange: #f5a36a;
+  --tag-amber: #e9c46a;
+  --tag-green: #6fcf97;
+  --tag-teal: #6fd1c4;
+  --tag-sky: #7cc7f2;
+  --tag-blue: #93b4f7;
+  --tag-violet: #bba4f5;
+  --tag-pink: #f293bd;
 }
 
 @layer base {

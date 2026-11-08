@@ -16,8 +16,8 @@ import {
   inputClass,
   linkClass,
   panelClass,
-  Pagination,
 } from "~/components/admin";
+import { Pagination } from "~/components/pagination";
 import { Button, buttonVariants } from "~/components/ui/button";
 import type { Route } from "./+types/admin-sources.ts";
 
@@ -47,7 +47,13 @@ export async function loader({ request, context }: Route.LoaderArgs): Promise<{
       })
       .then((res) => readApi<SourcesPage>(res)),
     api.colleges
-      .$get({ query: { q: collegeQ, page: params.get("college_page") ?? "1" } })
+      .$get({
+        query: {
+          q: collegeQ,
+          page: params.get("college_page") ?? undefined,
+          per_page: params.get("college_per_page") ?? undefined,
+        },
+      })
       .then((res) => readApi<CollegesPage>(res)),
     editId
       ? api.sources[":id"].$get({ param: { id: editId } }).then((res) => readApi<SourceDetail>(res))
@@ -236,7 +242,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
             没有符合条件的来源，请在下方接入。
           </p>
         )}
-        <Pagination page={sources.page} nextPage={sources.next_page} />
+        <Pagination total={sources.total} page={sources.page} perPage={sources.per_page} />
       </section>
       <div className="grid gap-5 lg:grid-cols-[1fr_1.2fr]" id="source-form">
         <section className={panelClass}>
@@ -286,7 +292,12 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
           {colleges.items.length === 0 && (
             <p className="py-6 text-sm text-muted-foreground">没有找到学院。</p>
           )}
-          <Pagination page={colleges.page} nextPage={colleges.next_page} name="college_page" />
+          <Pagination
+            total={colleges.total}
+            page={colleges.page}
+            perPage={colleges.per_page}
+            prefix="college_"
+          />
         </section>
         <section className={panelClass}>
           <h2 className="text-lg font-semibold">{source ? "编辑来源" : "接入新来源"}</h2>

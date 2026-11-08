@@ -1,7 +1,8 @@
 import type { InferResponseType } from "hono/client";
 import { Link } from "react-router";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { KINDS, TIERS } from "../components/admin.tsx";
+import { KINDS } from "../components/admin.tsx";
+import { TierTags } from "../components/tags.tsx";
 import type { Route } from "./+types/colleges.ts";
 
 type CollegeList = InferResponseType<ReturnType<typeof createApi>["colleges"]["$get"], 200>;
@@ -40,10 +41,8 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
                 {school.short_name && (
                   <span className="text-sm text-muted-foreground">{school.short_name}</span>
                 )}
-                <span className="text-xs text-muted-foreground">
-                  {school.tiers
-                    .map((tier) => TIERS.find((item) => item.value === tier)?.label)
-                    .join(" · ") || "未标注层次"}
+                <span className="flex flex-wrap gap-1 text-xs text-muted-foreground">
+                  {school.tiers.length > 0 ? <TierTags tiers={school.tiers} /> : "未标注层次"}
                 </span>
               </div>
               <ul className="divide-y divide-border">

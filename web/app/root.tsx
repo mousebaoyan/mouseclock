@@ -7,6 +7,7 @@ import {
   Scripts,
   ScrollRestoration,
   useNavigation,
+  type ShouldRevalidateFunctionArgs,
   useRouteLoaderData,
 } from "react-router";
 import type { Route } from "./+types/root.ts";
@@ -22,6 +23,18 @@ const themeScript = `try{document.documentElement.dataset.theme=localStorage.get
 export async function loader({ context }: Route.LoaderArgs) {
   const res = await context.get(apiContext).me.$get();
   return { me: res.status === 200 ? await res.json() : null };
+}
+
+// Changing only the address's query, such as the table's filters and pages, doesn't ask for /me
+// again; going to another page or sending a form does, as mousehole's changes reach us hourly.
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  const sameQueryOnly = formMethod === undefined && currentUrl.pathname === nextUrl.pathname;
+  return !sameQueryOnly && defaultShouldRevalidate;
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {

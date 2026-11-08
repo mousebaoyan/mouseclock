@@ -3,8 +3,9 @@ import type { DB, Json } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import type { ApplyValue, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
+import type { ExtractedFields, Kind, Role } from "../programs/schemas.ts";
 import {
+  applyOf,
   applyStored,
   createProgram,
   toStoredFields,
@@ -318,15 +319,14 @@ async function extractionContext(
   const programs = await trx
     .selectFrom("programs as p")
     .innerJoin("colleges as c", "c.id", "p.college_id")
-    .select(["p.id", "p.college_id", "p.cohort", "p.name", sql<Kind>`p.kind`.as("kind")])
-    .select((eb) =>
-      eb
-        .selectFrom("program_fields as f")
-        .select(sql<ApplyValue>`jsonb_object_agg(split_part(f.key, ':', 2), f.value)`.as("apply"))
-        .whereRef("f.program_id", "=", "p.id")
-        .where("f.key", "like", "apply:%")
-        .as("apply"),
-    )
+    .select([
+      "p.id",
+      "p.college_id",
+      "p.cohort",
+      "p.name",
+      sql<Kind>`p.kind`.as("kind"),
+      applyOf("p.id").as("apply"),
+    ])
     .where("c.school_id", "=", school_id)
     .where("p.deleted_at", "is", null)
     .where("p.cohort", ">=", year)

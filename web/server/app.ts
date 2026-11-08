@@ -3,6 +3,7 @@ import { csrf } from "hono/csrf";
 import { sql } from "kysely";
 import { accountsRoutes, authenticate, autoLogin, loginRoutes } from "./modules/accounts/routes.ts";
 import { ingestRoutes } from "./modules/ingest/routes.ts";
+import { programsRoutes } from "./modules/programs/routes.ts";
 import { sourcesRoutes } from "./modules/sources/routes.ts";
 import { db } from "./platform/db.ts";
 import { env } from "./platform/env.ts";
@@ -12,6 +13,7 @@ import { SITE_NAME } from "./platform/site.ts";
 const api = createRouter()
   .route("/", accountsRoutes)
   .route("/", ingestRoutes)
+  .route("/", programsRoutes)
   .route("/", sourcesRoutes);
 
 export type ApiType = typeof api;

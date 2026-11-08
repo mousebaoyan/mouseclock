@@ -529,7 +529,12 @@ test("school lists are searchable and paginated; owners may manage too", async (
   if (first.status !== 200) throw new Error("List failed");
   const page = await first.json();
   expect(page.items).toHaveLength(20);
-  expect(page.next_page).toBe(2);
+  expect(page).toMatchObject({ total: 21, page: 1, per_page: 20 });
   const second = await api.admin.schools.$get({ query: { q: "分页", page: "2" } }, options);
-  expect(await second.json()).toMatchObject({ items: [{ name: "分页大学20" }], next_page: null });
+  expect(await second.json()).toMatchObject({ items: [{ name: "分页大学20" }], total: 21 });
+  const wider = await api.admin.schools.$get({ query: { q: "分页", per_page: "50" } }, options);
+  if (wider.status !== 200) throw new Error("List failed");
+  expect((await wider.json()).items).toHaveLength(21);
+  const odd = await api.admin.schools.$get({ query: { per_page: "30" } }, options);
+  expect(odd.status).toBe(400);
 });
