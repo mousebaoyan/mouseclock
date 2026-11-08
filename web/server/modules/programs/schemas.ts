@@ -89,11 +89,14 @@ export const ApplyValue = z
   .openapi("ApplyValue");
 export type ApplyValue = z.infer<typeof ApplyValue>;
 
+const Mode = z.enum(["online", "offline", "hybrid"]);
+const Degrees = z.array(z.enum(["master", "direct_phd"])).min(1);
+
 export const EventValue = z
   .strictObject({
     start: TimeValue.optional(),
     end: TimeValue.optional(),
-    mode: z.enum(["online", "offline", "hybrid"]).optional(),
+    mode: Mode.optional(),
     place: Text.optional(),
   })
   .refine((v) => hasTime(v) || v.mode !== undefined || v.place !== undefined, "活动时间是空的")
@@ -126,12 +129,7 @@ export const ExtractedFields = z
     apply_url: entry(z.url({ protocol: /^(?:https?|mailto)$/ }).max(2000)),
     event: entry(EventValue),
     dates: entry(z.array(DateItem).min(1).max(30)),
-    degrees: entry(
-      z
-        .array(z.enum(["master", "direct_phd"]))
-        .min(1)
-        .refine((v) => new Set(v).size === v.length, "招收类型有重复"),
-    ),
+    degrees: entry(Degrees.refine((v) => new Set(v).size === v.length, "招收类型有重复")),
     majors: entry(Texts),
     requirements: entry(Texts),
     materials: entry(Texts),
@@ -187,3 +185,121 @@ export const ProgramTable = z
     programs: z.array(TableProgram),
   })
   .openapi("ProgramTable");
+
+const Notice = z.object({
+  title: z.string(),
+  url: z.string(),
+  published_on: IsoDate.nullable(),
+  removed: z.boolean().openapi({ description: "原文已删除，快照照样能看" }),
+});
+
+const FieldVersion = z
+  .object({ number: Int, snapshot_id: Int, notice: Notice.pick({ title: true, url: true }) })
+  .openapi("FieldVersion");
+
+// A field, or a part of one, as program_fields keeps it: its own evidence, and the version it
+// came from. Parts can come from different versions, as a deadline put back does.
+function part<S extends z.ZodType>(value: S) {
+  return z.object({
+    value,
+    evidence: z.array(Evidence),
+    confidence: z.number().nullable(),
+    version: z.union([FieldVersion, z.null()]).openapi({ description: "为空是人改的" }),
+  });
+}
+
+// One of the other dates, which has a start, an end or both (§8.2).
+const DateWindow = z.union([
+  z.object({ start: TimeValue, end: TimeValue.optional() }),
+  z.object({ end: TimeValue }),
+]);
+export type DateWindow = z.infer<typeof DateWindow>;
+
+// The fields of design §8.2 put back together, each part with what supports it.
+export const ProgramFields = z
+  .object({
+    apply: z
+      .object({
+        start: part(TimeValue).optional(),
+        end: part(TimeValue).optional(),
+        rolling: part(z.literal(true)).optional(),
+      })
+      .optional(),
+    apply_url: part(z.string()).optional(),
+    event: z
+      .object({
+        start: part(TimeValue).optional(),
+        end: part(TimeValue).optional(),
+        mode: part(Mode).optional(),
+        place: part(z.string()).optional(),
+      })
+      .optional(),
+    dates: z
+      .array(part(DateWindow).extend({ label: z.string() }))
+      .optional()
+      .openapi({ description: "按时间先后" }),
+    degrees: part(Degrees).optional(),
+    majors: part(Texts).optional(),
+    requirements: part(Texts).optional(),
+    materials: part(Texts).optional(),
+    assessment: part(Texts).optional(),
+    quota: part(Text).optional(),
+    benefits: part(Texts).optional(),
+    contacts: part(Texts).optional(),
+  })
+  .openapi("ProgramFields");
+export type ProgramFields = z.infer<typeof ProgramFields>;
+
+export const ProgramDetail = z
+  .object({
+    id: Int,
+    school: z.object({ name: z.string(), short_name: z.string(), tiers: z.array(z.string()) }),
+    college: z.object({ id: Int, name: z.string(), region: z.string() }),
+    cohort: Int,
+    kind: Kind,
+    name: z.string(),
+    apply_start: UnixSeconds.nullable(),
+    apply_deadline: UnixSeconds.nullable(),
+    verified: z.union([
+      z.object({ by: z.string(), at: UnixSeconds }).openapi("Verified"),
+      z.null(),
+    ]),
+    notice: Notice.openapi({ description: "原文，选法同总表" }),
+    fields: ProgramFields,
+  })
+  .openapi("ProgramDetail");
+
+export const Attachment = z
+  .object({
+    position: Int,
+    name: z.string(),
+    content_type: z.string(),
+    size: Int.nullable().openapi({ description: "字节数；为空是抓取节点还没传上文件" }),
+  })
+  .openapi("Attachment");
+export type Attachment = z.infer<typeof Attachment>;
+
+export const ProgramVersions = z
+  .object({
+    versions: z.array(
+      z.object({
+        number: Int,
+        role: Role,
+        changes: z.array(z.string()).openapi({ description: "改了的字段，键同 program_fields" }),
+        notice: Notice,
+        snapshot: z.object({ id: Int, fetched_at: UnixSeconds }),
+        attachments: z.array(Attachment),
+      }),
+    ),
+  })
+  .openapi("ProgramVersions");
+
+export const SnapshotDetail = z
+  .object({
+    id: Int,
+    fetched_at: UnixSeconds,
+    notice: Notice,
+    html: z.string().openapi({ description: "按白名单净化过，不含脚本、样式和图片" }),
+    attachments: z.array(Attachment),
+  })
+  .openapi("SnapshotDetail");

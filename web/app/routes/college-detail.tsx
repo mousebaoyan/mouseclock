@@ -2,7 +2,7 @@ import type { InferResponseType } from "hono/client";
 import { Link } from "react-router";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { beijingYear, formatApply, statusOf, useNow } from "../time.ts";
-import { KINDS } from "../components/admin.tsx";
+import { KINDS, linkClass } from "../components/admin.tsx";
 import { KindTag, StatusTag } from "../components/tags.tsx";
 import type { Route } from "./+types/college-detail.ts";
 
@@ -100,7 +100,12 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
                     <li key={program.id} className="py-4 first:pt-3 last:pb-1">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <p className="font-medium">{program.name}</p>
+                          <Link
+                            to={`/programs/${program.id}`}
+                            className={`${linkClass} font-medium`}
+                          >
+                            {program.name}
+                          </Link>
                           <p className="mt-1.5">
                             <KindTag kind={program.kind} />
                           </p>

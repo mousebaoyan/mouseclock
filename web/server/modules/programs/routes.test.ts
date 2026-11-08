@@ -5,7 +5,7 @@ import { fakeUsers, type FakeUser } from "../../../test/fake-mousehole.ts";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
 import { login } from "../accounts/service.ts";
-import type { ApplyValue, Role } from "./schemas.ts";
+import type { ApplyValue, ExtractedFields, Role } from "./schemas.ts";
 import { applyStored, createProgram, toStoredFields } from "./service.ts";
 
 const api = testClient(app).api.v1;
@@ -65,7 +65,7 @@ async function program(
   }: {
     cohort?: number;
     apply?: ApplyValue;
-    notices?: { role: Role; published_on?: string }[];
+    notices?: { role: Role; published_on?: string; fields?: ExtractedFields }[];
   },
 ) {
   return db.transaction().execute(async (trx) => {
@@ -75,13 +75,13 @@ async function program(
       kind: "summer_camp",
       name: "夏令营",
     });
-    for (const [i, { role, published_on = "2026-05-01" }] of notices.entries()) {
+    for (const [i, { role, published_on = "2026-05-01", fields }] of notices.entries()) {
       const notice = await trx
         .insertInto("notices")
         .values({
           source_id: sourceId,
           url: `https://college.example/notices/${id}-${i}`,
-          title: "通知",
+          title: `通知 ${i + 1}`,
           published_on,
         })
         .returning("id")
@@ -104,11 +104,10 @@ async function program(
         .returning("id")
         .executeTakeFirstOrThrow();
       if (i === 0 && apply) {
-        const fields = {
-          apply: { value: apply, evidence: [{ quote: "报名时间" }], confidence: 1 },
-        };
-        await applyStored(trx, id, version.id, toStoredFields(fields));
+        const first = { apply: { value: apply, evidence: [{ quote: "报名时间" }], confidence: 1 } };
+        await applyStored(trx, id, version.id, toStoredFields(first));
       }
+      if (fields) await applyStored(trx, id, version.id, toStoredFields(fields));
     }
     return id;
   });
@@ -260,4 +259,263 @@ test("a change committed after a later one still changes the tag", async () => {
   await slow;
   const after = await app.request(url, { headers: { ...member.headers, "if-none-match": etag } });
   expect(after.status).toBe(200);
+});
+
+const said = (quote: string, attachment?: number) => ({
+  evidence: [attachment === undefined ? { quote } : { quote, attachment }],
+  confidence: 0.9,
+});
+
+test("a program's page puts each field back together, every part with its evidence", async () => {
+  const seeded = await college();
+  const id = await program(seeded, {
+    notices: [
+      {
+        role: "call",
+        fields: {
+          apply: {
+            value: { start: { date: "2026-05-10" }, end: { date: "2026-06-01" } },
+            ...said("5 月 10 日至 6 月 1 日报名"),
+          },
+          event: { value: { start: { month: "2026-07" }, mode: "offline" }, ...said("7 月线下") },
+          dates: {
+            value: [
+              { label: "公布名单", end: { month: "2026-06", part: "late" } },
+              { label: "材料截止", end: { date: "2026-06-03" } },
+            ],
+            ...said("材料 6 月 3 日前寄到，名单 6 月下旬公布"),
+          },
+          majors: { value: ["计算机科学与技术"], ...said("招收计算机科学与技术", 0) },
+        },
+      },
+      {
+        role: "update",
+        fields: { apply: { value: { end: { date: "2026-06-05" } }, ...said("延长至 6 月 5 日") } },
+      },
+    ],
+  });
+  const { id: user } = await db
+    .selectFrom("users")
+    .select("id")
+    .where("display_name", "=", "鼠鼠")
+    .executeTakeFirstOrThrow();
+  const edit = await db
+    .insertInto("edits")
+    .values({
+      program_id: id,
+      field: "quota",
+      new_value: JSON.stringify("20 人"),
+      reason: "原文写了名额",
+      basis: "https://college.example/notices/1",
+      user_id: user,
+      via: "web",
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  await db
+    .insertInto("program_fields")
+    .values({
+      program_id: id,
+      key: "quota",
+      value: JSON.stringify("20 人"),
+      evidence: JSON.stringify([]),
+      edit_id: edit.id,
+    })
+    .execute();
+  await db
+    .updateTable("programs")
+    .set({ verified_by: user, verified_at: now })
+    .where("id", "=", id)
+    .execute();
+
+  const res = await api.programs[":id"].$get({ param: { id: String(id) } }, member);
+  if (res.status !== 200) throw new Error("Detail failed");
+  const snapshots = await db
+    .selectFrom("program_versions")
+    .select("snapshot_id")
+    .where("program_id", "=", id)
+    .orderBy("number")
+    .execute();
+  const [first, second] = snapshots.map(({ snapshot_id }, i) => ({
+    number: i + 1,
+    snapshot_id,
+    notice: { title: `通知 ${i + 1}`, url: `https://college.example/notices/${id}-${i}` },
+  }));
+  expect(await res.json()).toEqual({
+    id,
+    school: { name: "测试大学", short_name: "测试大", tiers: ["985"] },
+    college: { id: seeded.collegeId, name: "计算机学院", region: "北京" },
+    cohort: 2027,
+    kind: "summer_camp",
+    name: "夏令营",
+    apply_start: Date.parse("2026-05-09T16:00:00Z") / 1000,
+    apply_deadline: Date.parse("2026-06-05T16:00:00Z") / 1000,
+    verified: { by: "鼠鼠", at: now.getTime() / 1000 },
+    notice: { ...first.notice, published_on: "2026-05-01", removed: false },
+    fields: {
+      apply: {
+        start: {
+          value: { date: "2026-05-10" },
+          ...said("5 月 10 日至 6 月 1 日报名"),
+          version: first,
+        },
+        end: { value: { date: "2026-06-05" }, ...said("延长至 6 月 5 日"), version: second },
+      },
+      event: {
+        start: { value: { month: "2026-07" }, ...said("7 月线下"), version: first },
+        mode: { value: "offline", ...said("7 月线下"), version: first },
+      },
+      dates: [
+        {
+          label: "材料截止",
+          value: { end: { date: "2026-06-03" } },
+          ...said("材料 6 月 3 日前寄到，名单 6 月下旬公布"),
+          version: first,
+        },
+        {
+          label: "公布名单",
+          value: { end: { month: "2026-06", part: "late" } },
+          ...said("材料 6 月 3 日前寄到，名单 6 月下旬公布"),
+          version: first,
+        },
+      ],
+      majors: { value: ["计算机科学与技术"], ...said("招收计算机科学与技术", 0), version: first },
+      quota: { value: "20 人", evidence: [], confidence: null, version: null },
+    },
+  });
+});
+
+test("versions list their notices, what each changed and the attachments", async () => {
+  const seeded = await college();
+  const id = await program(seeded, {
+    apply: until("2026-06-01"),
+    notices: [{ role: "call" }, { role: "update" }],
+  });
+  const versions = await db
+    .selectFrom("program_versions")
+    .select(["number", "snapshot_id"])
+    .where("program_id", "=", id)
+    .orderBy("number")
+    .execute();
+  await db
+    .updateTable("program_versions")
+    .set({ changes: ["apply:end"] })
+    .where("program_id", "=", id)
+    .where("number", "=", 2)
+    .execute();
+  const snapshot = versions[1].snapshot_id;
+  await db
+    .insertInto("attachments")
+    .values(
+      [0, 1].map((position) => ({
+        snapshot_id: snapshot,
+        position,
+        name: `附件${position}.pdf`,
+        url: `https://college.example/files/${position}.pdf`,
+        content_type: "application/pdf",
+        text: "",
+        data: position === 0 ? Buffer.from("%PDF") : null,
+      })),
+    )
+    .execute();
+
+  const res = await api.programs[":id"].versions.$get({ param: { id: String(id) } }, member);
+  if (res.status !== 200) throw new Error("Versions failed");
+  const { versions: listed } = await res.json();
+  expect(listed).toEqual([
+    {
+      number: 2,
+      role: "update",
+      changes: ["apply:end"],
+      notice: {
+        title: "通知 2",
+        url: `https://college.example/notices/${id}-1`,
+        published_on: "2026-05-01",
+        removed: false,
+      },
+      snapshot: { id: snapshot, fetched_at: now.getTime() / 1000 },
+      attachments: [
+        { position: 0, name: "附件0.pdf", content_type: "application/pdf", size: 4 },
+        { position: 1, name: "附件1.pdf", content_type: "application/pdf", size: null },
+      ],
+    },
+    expect.objectContaining({ number: 1, role: "call", attachments: [] }),
+  ]);
+
+  const file = await api.snapshots[":id"].attachments[":position"].$get(
+    { param: { id: String(snapshot), position: "0" } },
+    member,
+  );
+  expect(file.status).toBe(200);
+  expect(file.headers.get("content-disposition")).toBe(
+    `attachment; filename*=UTF-8''${encodeURIComponent("附件0.pdf")}`,
+  );
+  expect(file.headers.get("x-content-type-options")).toBe("nosniff");
+  expect(await file.text()).toBe("%PDF");
+  const missing = await api.snapshots[":id"].attachments[":position"].$get(
+    { param: { id: String(snapshot), position: "1" } },
+    member,
+  );
+  expect(missing.status).toBe(404);
+});
+
+test("a snapshot shows the notice's words and links, nothing that runs or loads", async () => {
+  const seeded = await college();
+  const id = await program(seeded, {});
+  const { snapshot_id } = await db
+    .selectFrom("program_versions")
+    .select("snapshot_id")
+    .where("program_id", "=", id)
+    .executeTakeFirstOrThrow();
+  await db
+    .updateTable("snapshots")
+    .set({
+      html: [
+        "<html><head><title>标题</title><style>p{}</style></head><body>",
+        '<p class="hidden" style="color:red" onclick="steal()">报名<b>截止</b></p>',
+        "<script>steal()</script><img src=x onerror=steal()>",
+        '<a href="files/a.pdf?x=1&amp;y=2">申请表</a>',
+        '<a href="javascript:steal()">点我</a>',
+        `<a href='mailto:yz@college.example"onclick="steal()'>邮箱</a>`,
+        '<table><tr><td colspan="2">名额</td></tr></table>',
+        "</body></html>",
+      ].join(""),
+    })
+    .where("id", "=", snapshot_id)
+    .execute();
+
+  const res = await api.snapshots[":id"].$get({ param: { id: String(snapshot_id) } }, member);
+  if (res.status !== 200) throw new Error("Snapshot failed");
+  expect((await res.json()).html).toBe(
+    [
+      "<p>报名<b>截止</b></p>",
+      `<a href="https://college.example/notices/files/a.pdf?x=1&amp;y=2" target="_blank" rel="nofollow noopener noreferrer">申请表</a>`,
+      "<a>点我</a>",
+      `<a href="mailto:yz@college.example&quot;onclick=&quot;steal()" target="_blank" rel="nofollow noopener noreferrer">邮箱</a>`,
+      '<table><tr><td colspan="2">名额</td></tr></table>',
+    ].join(""),
+  );
+});
+
+test("guests and frozen accounts see no program's page, versions or snapshots", async () => {
+  const seeded = await college();
+  const id = await program(seeded, {});
+  const { snapshot_id } = await db
+    .selectFrom("program_versions")
+    .select("snapshot_id")
+    .where("program_id", "=", id)
+    .executeTakeFirstOrThrow();
+  for (const url of [
+    `/programs/${id}`,
+    `/programs/${id}/versions`,
+    `/snapshots/${snapshot_id}`,
+    `/snapshots/${snapshot_id}/attachments/0`,
+  ]) {
+    expect((await app.request(`/api/v1${url}`)).status).toBe(401);
+    expect((await app.request(`/api/v1${url}`, frozen)).status).toBe(403);
+  }
+  await db.updateTable("programs").set({ deleted_at: now }).where("id", "=", id).execute();
+  for (const url of [`/programs/${id}`, `/programs/${id}/versions`]) {
+    expect((await app.request(`/api/v1${url}`, member)).status).toBe(404);
+  }
 });

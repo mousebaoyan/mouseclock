@@ -359,7 +359,9 @@ function Row({ program, now, thisYear }: { program: Program; now: number; thisYe
         </p>
       </div>
       <div className="min-w-0 max-md:col-start-1 max-md:mt-1.5">
-        <p className="text-pretty">{program.name}</p>
+        <Link to={`/programs/${program.id}`} className={cn(linkClass, "block text-pretty")}>
+          {program.name}
+        </Link>
         <p className="mt-1">
           <KindTag kind={program.kind} />
         </p>
