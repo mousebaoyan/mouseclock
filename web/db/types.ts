@@ -170,8 +170,8 @@ export interface Schools {
   created_at: Generated<Timestamp>;
   id: Generated<number>;
   name: string;
-  short_name: Generated<string>;
-  tiers: Generated<string[]>;
+  short_names: Generated<string[]>;
+  tier: string | null;
 }
 
 export interface Sessions {

@@ -12,7 +12,7 @@ import {
   type EditField,
 } from "~/components/program-edit";
 import { ApplyDeadline, ApplyStart, Missing, ProgramStatus } from "~/components/program";
-import { KindTag, RoleTag, Tag } from "~/components/tags";
+import { KindTag, RoleTag, Tag, TierTag } from "~/components/tags";
 import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { Reveal } from "~/components/ui/reveal";
@@ -124,6 +124,7 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
       meta={
         <>
           <span className="text-foreground">{school.name}</span>
+          <TierTag tier={school.tier} />
           <Link to={`/colleges/${college.id}`} className="hover:text-primary">
             {college.name}
           </Link>

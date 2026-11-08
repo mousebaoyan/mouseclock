@@ -33,7 +33,7 @@ beforeEach(async () => {
 async function college() {
   const school = await db
     .insertInto("schools")
-    .values({ name: "测试大学", short_name: "测试大", tiers: ["985"] })
+    .values({ name: "测试大学", short_names: ["测试大"], tier: "985" })
     .returning("id")
     .executeTakeFirstOrThrow();
   const { id } = await db
@@ -134,7 +134,7 @@ test("members get the whole cohort with the table's fields, by deadline", async 
   expect(programs.map((item) => item.id)).toEqual([closed, open, rolling]);
   expect(programs[1]).toEqual({
     id: open,
-    school: { name: "测试大学", short_name: "测试大", tiers: ["985"] },
+    school: { name: "测试大学", short_names: ["测试大"], tier: "985" },
     college: { id: seeded.collegeId, name: "计算机学院", region: "北京", directions: ["计算机"] },
     kind: "summer_camp",
     name: "夏令营",
@@ -343,7 +343,7 @@ test("a program's page puts each field back together, every part with its eviden
   }));
   expect(await res.json()).toEqual({
     id,
-    school: { name: "测试大学", short_name: "测试大", tiers: ["985"] },
+    school: { name: "测试大学", tier: "985" },
     college: { id: seeded.collegeId, name: "计算机学院", region: "北京" },
     cohort: 2027,
     kind: "summer_camp",

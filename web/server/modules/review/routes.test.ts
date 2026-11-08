@@ -47,7 +47,7 @@ const field = <V>(value: V) => ({ value, evidence, confidence: 1 });
 async function program(fields: ExtractedFields) {
   const school = await db
     .insertInto("schools")
-    .values({ name: "测试大学", short_name: "测试大", tiers: [] })
+    .values({ name: "测试大学", short_names: ["测试大"], tier: null })
     .returning("id")
     .executeTakeFirstOrThrow();
   const college = await db

@@ -3,7 +3,7 @@ import { ExternalLink } from "~/components/icons";
 import { Empty, Page } from "~/components/page";
 import { buttonVariants } from "~/components/ui/button";
 import { ProgramCard, ProgramCards } from "~/components/program";
-import { COLLEGE_KINDS, Tag, TierTags } from "~/components/tags";
+import { COLLEGE_KINDS, Tag, TierTag } from "~/components/tags";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { beijingYear, useNow } from "../time.ts";
 import type { Route } from "./+types/college-detail.ts";
@@ -36,7 +36,7 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
       meta={
         <>
           <span className="text-foreground">{school.name}</span>
-          <TierTags tiers={school.tiers} />
+          <TierTag tier={school.tier} />
           <span>{college.region}</span>
           {college.kind !== "college" && <span>{COLLEGE_KINDS[college.kind] ?? college.kind}</span>}
           {college.directions.length > 0 && <span>招生方向：{college.directions.join("、")}</span>}

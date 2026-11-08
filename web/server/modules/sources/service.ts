@@ -41,21 +41,22 @@ async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
   }
 }
 
+const SCHOOL = ["id", "name", "short_names", "tier"] as const;
+
+// Whether the school's name or one of its short names has `q` in it.
+function schoolNamed(q: string) {
+  const pattern = `%${q}%`;
+  return sql<boolean>`(schools.name ILIKE ${pattern} OR EXISTS (SELECT FROM unnest(schools.short_names) AS short_name WHERE short_name ILIKE ${pattern}))`;
+}
+
 export async function listSchools({ q, ...paging }: z.infer<typeof PageQuery>) {
-  let query = db.selectFrom("schools").select(["id", "name", "short_name", "tiers"]);
-  if (q)
-    query = query.where((eb) =>
-      eb.or([eb("name", "ilike", `%${q}%`), eb("short_name", "ilike", `%${q}%`)]),
-    );
+  let query = db.selectFrom("schools").select(SCHOOL);
+  if (q) query = query.where(schoolNamed(q));
   return pageOf(query.orderBy("id"), paging);
 }
 
 export async function getSchool(id: number) {
-  const row = await db
-    .selectFrom("schools")
-    .select(["id", "name", "short_name", "tiers"])
-    .where("id", "=", id)
-    .executeTakeFirst();
+  const row = await db.selectFrom("schools").select(SCHOOL).where("id", "=", id).executeTakeFirst();
   if (!row) throw new AppError(404, "not_found", "学校不存在");
   return row;
 }
@@ -65,7 +66,7 @@ export async function createSchool(actor: Actor, values: z.infer<typeof SchoolIn
     const row = await trx
       .insertInto("schools")
       .values(values)
-      .returning(["id", "name", "short_name", "tiers"])
+      .returning(SCHOOL)
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -82,7 +83,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
   return write(async (trx) => {
     const before = await trx
       .selectFrom("schools")
-      .select(["id", "name", "short_name", "tiers"])
+      .select(SCHOOL)
       .where("id", "=", id)
       .forUpdate()
       .executeTakeFirst();
@@ -91,7 +92,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
       .updateTable("schools")
       .set(values)
       .where("id", "=", id)
-      .returning(["id", "name", "short_name", "tiers"])
+      .returning(SCHOOL)
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -119,13 +120,7 @@ export async function listColleges({ q, school_id, ...paging }: z.infer<typeof C
     ]);
   if (school_id !== undefined) query = query.where("school_id", "=", school_id);
   if (q)
-    query = query.where((eb) =>
-      eb.or([
-        eb("colleges.name", "ilike", `%${q}%`),
-        eb("schools.name", "ilike", `%${q}%`),
-        eb("schools.short_name", "ilike", `%${q}%`),
-      ]),
-    );
+    query = query.where((eb) => eb.or([eb("colleges.name", "ilike", `%${q}%`), schoolNamed(q)]));
   return pageOf(query.orderBy("colleges.id"), paging);
 }
 
@@ -155,8 +150,8 @@ export async function listPublicColleges() {
     .select([
       "schools.id as school_id",
       "schools.name as school_name",
-      "schools.short_name as school_short_name",
-      "schools.tiers as school_tiers",
+      "schools.short_names as school_short_names",
+      "schools.tier as school_tier",
       "colleges.id",
       "colleges.name",
       "colleges.kind",
@@ -175,8 +170,8 @@ export async function listPublicColleges() {
       school = {
         id: row.school_id,
         name: row.school_name,
-        short_name: row.school_short_name,
-        tiers: row.school_tiers,
+        short_names: row.school_short_names,
+        tier: row.school_tier,
         colleges: [],
       };
       schools.set(row.school_id, school);
@@ -204,7 +199,7 @@ export async function getPublicCollege(id: number) {
       "colleges.directions",
       "schools.id as school_id",
       "schools.name as school_name",
-      "schools.tiers as school_tiers",
+      "schools.tier as school_tier",
     ])
     .where("colleges.id", "=", id)
     .executeTakeFirst();
@@ -245,7 +240,7 @@ export async function getPublicCollege(id: number) {
     school: {
       id: college.school_id,
       name: college.school_name,
-      tiers: college.school_tiers,
+      tier: college.school_tier,
     },
     name: college.name,
     kind: college.kind,

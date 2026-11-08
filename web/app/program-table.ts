@@ -1,5 +1,4 @@
 import type { Kind } from "../server/modules/programs/schemas.ts";
-import { topTier } from "./tiers.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
 import { beijingYear, currentCohort, statusOf, type Status } from "./time.ts";
 
@@ -9,7 +8,7 @@ import { beijingYear, currentCohort, statusOf, type Status } from "./time.ts";
 
 type Program = {
   id: number;
-  school: { name: string; short_name: string; tiers: string[] };
+  school: { name: string; short_names: string[]; tier: string | null };
   college: { name: string; region: string; directions: string[] };
   kind: Kind;
   name: string;
@@ -57,12 +56,12 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
   const q = filters.q.toLowerCase();
   const picked = programs.filter((p) => {
     if (filters.kinds.length > 0 && !filters.kinds.includes(p.kind)) return false;
-    if (filters.tiers.length > 0 && !filters.tiers.includes(topTier(p.school.tiers))) return false;
+    if (filters.tiers.length > 0 && !filters.tiers.includes(p.school.tier ?? "other")) return false;
     if (filters.region && p.college.region !== filters.region) return false;
     if (filters.direction && !p.college.directions.includes(filters.direction)) return false;
     return (
       !q ||
-      [p.school.name, p.school.short_name, p.college.name, p.name].some((text) =>
+      [p.school.name, ...p.school.short_names, p.college.name, p.name].some((text) =>
         text.toLowerCase().includes(q),
       )
     );

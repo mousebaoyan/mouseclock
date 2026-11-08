@@ -112,22 +112,12 @@ function html(text: string) {
 }
 
 const SCHOOLS = [
-  {
-    name: "北辰大学",
-    short: "北辰",
-    tiers: ["c9", "985", "211", "double_first_class"],
-    region: "北京",
-  },
-  { name: "东湖大学", short: "东湖", tiers: ["985", "211", "double_first_class"], region: "湖北" },
-  { name: "南山理工大学", short: "南理工", tiers: ["211", "double_first_class"], region: "广东" },
-  { name: "西江师范大学", short: "西江师大", tiers: ["double_first_class"], region: "广西" },
-  { name: "临海科技大学", short: "临海科大", tiers: [], region: "浙江" },
-] satisfies {
-  name: string;
-  short: string;
-  tiers: z.infer<typeof SchoolInput>["tiers"];
-  region: string;
-}[];
+  { name: "北辰大学", short_names: ["北辰", "BCU"], tier: "c9", region: "北京" },
+  { name: "东湖大学", short_names: ["东湖", "DHU"], tier: "985", region: "湖北" },
+  { name: "南山理工大学", short_names: ["南理工", "南山理工"], tier: "211", region: "广东" },
+  { name: "西江师范大学", short_names: ["西江师大"], tier: "double_first_class", region: "广西" },
+  { name: "临海科技大学", short_names: ["临海科大"], tier: null, region: "浙江" },
+] satisfies (z.infer<typeof SchoolInput> & { region: string })[];
 const COLLEGES = [
   { name: "计算机学院", directions: ["计算机", "人工智能"] },
   { name: "软件学院", directions: ["软件"] },
@@ -216,8 +206,8 @@ let i = 0;
 for (const school of SCHOOLS) {
   const { id: schoolId } = await createSchool(actor, {
     name: school.name,
-    short_name: school.short,
-    tiers: school.tiers,
+    short_names: school.short_names,
+    tier: school.tier,
   });
   for (const college of COLLEGES.slice(0, 2 + (i % 2))) {
     const collegeId = await createCollege(actor, {

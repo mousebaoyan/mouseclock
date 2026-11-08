@@ -34,10 +34,8 @@ export const Config = z.record(z.string(), z.unknown(), { error: "抓取配置�
 // What admins fill in, named for validation messages (named in platform/http.ts).
 export const SchoolInput = z.strictObject({
   name: z.string(named("学校名称")).trim().min(1).max(200),
-  short_name: z.string(named("简称")).trim().max(100),
-  tiers: z
-    .array(z.enum(["c9", "985", "211", "double_first_class"], named("层次")), named("层次"))
-    .max(4),
+  short_names: z.array(z.string(named("简称")).trim().min(1).max(100), named("简称")).max(20),
+  tier: z.enum(["c9", "985", "211", "double_first_class"], named("层次")).nullable(),
 });
 export const CollegeInput = z.strictObject({
   school_id: Int.positive(),
@@ -64,8 +62,8 @@ export const SourcePatch = SourceInput.partial().refine(hasFields, "请填写要
 export const School = z.object({
   id: Int,
   name: z.string(),
-  short_name: z.string(),
-  tiers: z.array(z.string()),
+  short_names: z.array(z.string()),
+  tier: z.string().nullable(),
 });
 export const College = z.object({
   id: Int,
@@ -129,8 +127,8 @@ export const PublicCollege = z.object({
 export const PublicSchool = z.object({
   id: Int,
   name: z.string(),
-  short_name: z.string(),
-  tiers: z.array(z.string()),
+  short_names: z.array(z.string()).openapi({ description: "简称，只用来搜索" }),
+  tier: z.string().nullable(),
   colleges: z.array(PublicCollege),
 });
 export const PublicCollegeList = z.object({ schools: z.array(PublicSchool) });
@@ -154,7 +152,7 @@ export const PublicProgramCohort = z.object({
 });
 export const PublicCollegeDetail = z.object({
   id: Int,
-  school: School.pick({ id: true, name: true, tiers: true }),
+  school: School.pick({ id: true, name: true, tier: true }),
   name: z.string(),
   kind: z.string(),
   region: z.string(),

@@ -12,10 +12,9 @@ import { Field, FormMessage } from "~/components/form";
 import { Search } from "~/components/icons";
 import { Page, Panel } from "~/components/page";
 import { Pagination } from "~/components/pagination";
-import { COLLEGE_KINDS, TierTags } from "~/components/tags";
+import { COLLEGE_KINDS, TierTag } from "~/components/tags";
 import { TIERS } from "~/tiers";
 import { Button, buttonVariants } from "~/components/ui/button";
-import { Checkbox } from "~/components/ui/checkbox";
 import { Select } from "~/components/ui/select";
 import { List, Row } from "~/components/list";
 import { Missing } from "~/components/program";
@@ -92,8 +91,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   const draft = {
     intent,
     name: formText(form, "name"),
-    short_name: formText(form, "short_name"),
-    tiers: form.getAll("tiers").filter((value) => typeof value === "string"),
+    short_names: formText(form, "short_names"),
+    tier: formText(form, "tier"),
     school_id: formText(form, "school_id"),
     kind: formText(form, "kind"),
     region: formText(form, "region"),
@@ -102,8 +101,8 @@ export async function action({ request, context }: Route.ActionArgs) {
   if (intent === "school") {
     const school = SchoolInput.safeParse({
       name: draft.name,
-      short_name: draft.short_name,
-      tiers: draft.tiers,
+      short_names: listed(draft.short_names),
+      tier: draft.tier || null,
     });
     if (!school.success)
       return data({ error: school.error.issues[0].message, draft }, { status: 400 });
@@ -121,10 +120,7 @@ export async function action({ request, context }: Route.ActionArgs) {
       name: draft.name,
       kind: draft.kind,
       region: draft.region,
-      directions: draft.directions
-        .split(/[,，、\n]/)
-        .map((s) => s.trim())
-        .filter(Boolean),
+      directions: listed(draft.directions),
     });
     if (!college.success)
       return data({ error: college.error.issues[0].message, draft }, { status: 400 });
@@ -141,12 +137,24 @@ export async function action({ request, context }: Route.ActionArgs) {
   throw data("不支持的操作", { status: 400 });
 }
 
+// What an admin lists in one field, apart at commas and 顿号.
+function listed(text: string) {
+  return text
+    .split(/[,，、\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 export default function Colleges({ loaderData, actionData }: Route.ComponentProps) {
   const { schools, school, colleges, college, q, editSchool, saved } = loaderData;
   const busy = useNavigation().state !== "idle";
   const schoolDraft = actionData?.draft.intent === "school" ? actionData.draft : null;
   const collegeDraft = actionData?.draft.intent === "college" ? actionData.draft : null;
-  const schoolValues = schoolDraft ?? (editSchool ? school : null);
+  const schoolValues =
+    schoolDraft ??
+    (editSchool && school
+      ? { name: school.name, short_names: school.short_names.join("、"), tier: school.tier ?? "" }
+      : null);
   const collegeValues = collegeDraft ?? college;
   const schoolOptions =
     school && !schools.items.some((s) => s.id === school.id)
@@ -157,7 +165,7 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
       <Form method="post" className="space-y-4" key={`school-${editSchool ? school?.id : "new"}`}>
         <input type="hidden" name="intent" value="school" />
         {editSchool && school && <input type="hidden" name="id" value={school.id} />}
-        <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_12rem]">
+        <div className="grid items-start gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9rem]">
           <Field label="学校名称">
             <input
               name="name"
@@ -167,30 +175,28 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
               className="field"
             />
           </Field>
-          <Field label="简称">
+          <Field label="简称" hint="多个简称以逗号或顿号分隔，只用于搜索">
             <input
-              name="short_name"
-              maxLength={100}
-              defaultValue={schoolValues?.short_name ?? ""}
+              name="short_names"
+              defaultValue={schoolValues?.short_names ?? ""}
+              placeholder="北大、PKU"
               className="field"
             />
           </Field>
-        </div>
-        <fieldset>
-          <legend className="mb-2 text-[13px] font-medium">层次（可多选）</legend>
-          <div className="flex flex-wrap gap-5">
-            {TIERS.map((t) => (
-              <Checkbox
-                key={t.value}
-                name="tiers"
-                value={t.value}
-                defaultChecked={schoolValues?.tiers.includes(t.value)}
-              >
-                {t.label}
-              </Checkbox>
-            ))}
+          <div className="space-y-1.5">
+            <span className="block text-[13px] font-medium">层次</span>
+            <Select
+              name="tier"
+              aria-label="层次"
+              defaultValue={schoolValues?.tier ?? ""}
+              options={[
+                { value: "", label: "无" },
+                ...TIERS.map((t) => ({ value: t.value, label: t.label })),
+              ]}
+            />
+            <p className="text-xs text-muted-foreground">只选最高的一个</p>
           </div>
-        </fieldset>
+        </div>
         <div className="flex gap-2">
           <Button disabled={busy}>{busy ? "正在保存…" : "保存学校"}</Button>
           {editSchool && (
@@ -248,13 +254,13 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                   >
                     <span className="min-w-0">
                       <span className="block font-medium">{s.name}</span>
-                      {s.short_name && (
-                        <span className="block text-xs text-muted-foreground">{s.short_name}</span>
+                      {s.short_names.length > 0 && (
+                        <span className="block text-xs text-muted-foreground">
+                          {s.short_names.join("、")}
+                        </span>
                       )}
                     </span>
-                    <span className="flex shrink-0 gap-1">
-                      <TierTags tiers={s.tiers} />
-                    </span>
+                    <TierTag tier={s.tier} />
                   </Link>
                 </li>
               ))}
@@ -278,10 +284,12 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                 title={
                   <span className="flex flex-wrap items-center gap-2">
                     {school.name}
-                    <TierTags tiers={school.tiers} />
+                    <TierTag tier={school.tier} />
                   </span>
                 }
-                description={school.short_name && `简称：${school.short_name}`}
+                description={
+                  school.short_names.length > 0 && `简称：${school.short_names.join("、")}`
+                }
                 actions={
                   <Link
                     to={`?school_id=${school.id}&edit_school=1`}

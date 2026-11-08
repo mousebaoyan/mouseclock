@@ -3,7 +3,7 @@ import { Link } from "react-router";
 import { cn } from "~/cn";
 import { Check } from "~/components/icons";
 import type { Kind, Role } from "../../server/modules/programs/schemas.ts";
-import { TIERS, topTier } from "../tiers.ts";
+import { TIERS } from "../tiers.ts";
 import { STATUS_LABELS, type Status } from "../time.ts";
 
 // Tags tell tiers, kinds and statuses apart at a glance: text in a hue on a light wash of it
@@ -91,12 +91,9 @@ export function Chip({
   );
 }
 
-export function TierTags({ tiers }: { tiers: string[] }) {
-  return TIERS.filter((tier) => tiers.includes(tier.value)).map((tier) => (
-    <Tag key={tier.value} color={tier.color}>
-      {tier.label}
-    </Tag>
-  ));
+export function TierTag({ tier }: { tier: string | null }) {
+  const found = TIERS.find((item) => item.value === tier);
+  return found ? <Tag color={found.color}>{found.label}</Tag> : null;
 }
 
 // What a college is to its school.
@@ -105,12 +102,6 @@ export const COLLEGE_KINDS: Partial<Record<string, string>> = {
   institute: "研究所",
   graduate_school: "研究生院",
 };
-
-// Only the highest: in a list, C9 already says 985, 211 and 双一流.
-export function TopTier({ tiers }: { tiers: string[] }) {
-  const top = TIERS.find((tier) => tier.value === topTier(tiers));
-  return top ? <Tag color={top.color}>{top.label}</Tag> : null;
-}
 
 export const PROGRAM_KINDS: Record<Kind, { label: string; color: TagColor }> = {
   winter_camp: { label: "冬令营", color: "sky" },

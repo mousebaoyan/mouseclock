@@ -4,7 +4,7 @@ import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/compone
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { ProgramCard, ProgramCards } from "~/components/program";
-import { PROGRAM_KINDS, TopTier } from "~/components/tags";
+import { PROGRAM_KINDS, TierTag } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
 import { Segmented } from "~/components/ui/segmented";
@@ -228,7 +228,7 @@ function Place({ program, published, thisYear }: PlaceProps) {
     <>
       <p className="flex items-center gap-2">
         <span className="truncate font-semibold">{program.school.name}</span>
-        <TopTier tiers={program.school.tiers} />
+        <TierTag tier={program.school.tier} />
       </p>
       <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-muted-foreground">
         <Link to={`/colleges/${program.college.id}`} className="relative z-1 hover:text-primary">

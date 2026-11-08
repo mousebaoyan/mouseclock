@@ -23,9 +23,9 @@ beforeAll(async () => {
 // Valid bodies, so what turns each request down is who sends it.
 const endpoints: [string, string, object?][] = [
   ["GET", "schools"],
-  ["POST", "schools", { name: "某大学", short_name: "", tiers: [] }],
+  ["POST", "schools", { name: "某大学", short_names: [], tier: null }],
   ["GET", "schools/1"],
-  ["PATCH", "schools/1", { short_name: "某大" }],
+  ["PATCH", "schools/1", { short_names: ["某大"] }],
   ["GET", "colleges"],
   [
     "POST",
@@ -99,7 +99,7 @@ test("every management endpoint refuses guests, non-admins and restricted admins
 
 test("admins maintain schools, colleges and sources with before/after audit records; pause and resume change work", async () => {
   const schoolRes = await api.admin.schools.$post(
-    { json: { name: "测试大学", short_name: "测大", tiers: ["985", "211"] } },
+    { json: { name: "测试大学", short_names: ["测大"], tier: "985" } },
     admin,
   );
   expect(schoolRes.status).toBe(201);
@@ -108,7 +108,7 @@ test("admins maintain schools, colleges and sources with before/after audit reco
   expect(
     (
       await api.admin.schools[":id"].$patch(
-        { param: { id: String(school.id) }, json: { short_name: "测试" } },
+        { param: { id: String(school.id) }, json: { short_names: ["测试", "CS"] } },
         admin,
       )
     ).status,
@@ -216,7 +216,7 @@ test("admins maintain schools, colleges and sources with before/after audit reco
   expect(logs[1]).toMatchObject({
     action: "update",
     target_type: "school",
-    detail: { before: { short_name: "测大" }, after: { short_name: "测试" } },
+    detail: { before: { short_names: ["测大"] }, after: { short_names: ["测试", "CS"] } },
   });
   expect(logs[3]).toMatchObject({
     target_type: "college",
@@ -265,7 +265,7 @@ test("admins maintain schools, colleges and sources with before/after audit reco
 
 test("a source paused after leasing still accepts listing and run results without resuming", async () => {
   const actor: Actor = { user_id: adminId, via: "web" };
-  const school = await createSchool(actor, { name: "领取后暂停大学", short_name: "", tiers: [] });
+  const school = await createSchool(actor, { name: "领取后暂停大学", short_names: [], tier: null });
   const collegeId = await createCollege(actor, {
     school_id: school.id,
     name: "计算机学院",
@@ -346,7 +346,7 @@ test("a source paused after leasing still accepts listing and run results withou
 test("source constraints and explicit nulls preserve unrelated settings and audit only successful writes", async () => {
   const school = await createSchool(
     { user_id: adminId, via: "web" },
-    { name: "来源约束大学", short_name: "", tiers: [] },
+    { name: "来源约束大学", short_names: [], tier: null },
   );
   const collegeRes = await api.admin.colleges.$post(
     {
@@ -430,7 +430,7 @@ test("source constraints and explicit nulls preserve unrelated settings and audi
 
 test("conflicts, missing parents and invalid configuration do not change data or write audit records", async () => {
   const schoolRes = await api.admin.schools.$post(
-    { json: { name: "约束大学", short_name: "", tiers: [] } },
+    { json: { name: "约束大学", short_names: [], tier: null } },
     admin,
   );
   if (schoolRes.status !== 201) throw new Error("School failed");
@@ -439,7 +439,7 @@ test("conflicts, missing parents and invalid configuration do not change data or
   expect(
     (
       await api.admin.schools.$post(
-        { json: { name: "约束大学", short_name: "", tiers: [] } },
+        { json: { name: "约束大学", short_names: [], tier: null } },
         admin,
       )
     ).status,
@@ -493,14 +493,14 @@ test("conflicts, missing parents and invalid configuration do not change data or
 test("an audit failure rolls back both creation and update", async () => {
   const actor: Actor = { user_id: 2147483647, via: "web" };
   await expect(
-    createSchool(actor, { name: "应当回滚", short_name: "", tiers: [] }),
+    createSchool(actor, { name: "应当回滚", short_names: [], tier: null }),
   ).rejects.toMatchObject({ status: 404 });
   expect(
     await db.selectFrom("schools").select("id").where("name", "=", "应当回滚").execute(),
   ).toEqual([]);
   const row = await createSchool(
     { user_id: adminId, via: "web" },
-    { name: "回滚前", short_name: "", tiers: [] },
+    { name: "回滚前", short_names: [], tier: null },
   );
   await expect(updateSchool(actor, row.id, { name: "回滚后" })).rejects.toMatchObject({
     status: 404,
@@ -514,14 +514,14 @@ test("an audit failure rolls back both creation and update", async () => {
   ).toEqual({ name: "回滚前" });
 });
 
-test("school lists are searchable and paginated; owners may manage too", async () => {
+test("school lists are searchable by name or any short name, and paginated; owners may manage too", async () => {
   const owner = await login(fakeUsers[3], "fake-4", { ip: null, userAgent: "test" });
   const options = { headers: { cookie: `mouseclock_session=${owner}`, origin: env.PUBLIC_URL } };
   for (let i = 0; i < 21; i++) {
     expect(
       (
         await api.admin.schools.$post(
-          { json: { name: `分页大学${i}`, short_name: "分页", tiers: [] } },
+          { json: { name: `分页大学${i}`, short_names: ["分页", `FY${i}`], tier: null } },
           options,
         )
       ).status,
@@ -534,6 +534,8 @@ test("school lists are searchable and paginated; owners may manage too", async (
   expect(page).toMatchObject({ total: 21, page: 1, per_page: 20 });
   const second = await api.admin.schools.$get({ query: { q: "分页", page: "2" } }, options);
   expect(await second.json()).toMatchObject({ items: [{ name: "分页大学20" }], total: 21 });
+  const named = await api.admin.schools.$get({ query: { q: "fy20" } }, options);
+  expect(await named.json()).toMatchObject({ items: [{ name: "分页大学20" }], total: 1 });
   const wider = await api.admin.schools.$get({ query: { q: "分页", per_page: "50" } }, options);
   if (wider.status !== 200) throw new Error("List failed");
   expect((await wider.json()).items).toHaveLength(21);
@@ -545,21 +547,21 @@ test("what admins fill in wrongly is turned down naming the field and the fix", 
   const source = { college_id: 1, section: "", browser: false, config: null };
   const college = { school_id: 1, name: "计算机学院", kind: "college", region: "北京" };
   for (const [method, path, body, message] of [
-    ["POST", "schools", { name: " ", short_name: "", tiers: [] }, "学校名称不能为空"],
+    ["POST", "schools", { name: " ", short_names: [], tier: null }, "学校名称不能为空"],
     [
       "POST",
       "schools",
-      { name: "大".repeat(201), short_name: "", tiers: [] },
+      { name: "大".repeat(201), short_names: [], tier: null },
       "学校名称最多 200 个字",
     ],
-    ["POST", "schools", { short_name: "", tiers: [] }, "请填写学校名称"],
+    ["POST", "schools", { short_names: [], tier: null }, "请填写学校名称"],
     [
       "POST",
       "schools",
-      { name: "某大学", short_name: "", tiers: ["c10"] },
+      { name: "某大学", short_names: [], tier: "c10" },
       "层次只能从给出的选项里选",
     ],
-    ["POST", "schools", { name: "某大学", short_name: "", tiers: "985" }, "层次的格式不对"],
+    ["POST", "schools", { name: "某大学", short_names: "北大", tier: null }, "简称的格式不对"],
     ["PATCH", "schools/1", { name: " " }, "学校名称不能为空"],
     ["PATCH", "sources/1", { url: "x.example/list" }, "网址要写完整，以 http:// 或 https:// 开头"],
     ["POST", "colleges", { ...college, directions: ["计算机", " "] }, "方向不能为空"],
@@ -606,7 +608,7 @@ test("what admins fill in wrongly is turned down naming the field and the fix", 
 
 test("an admin probes a list page, sees what the crawler found and adopts its config", async () => {
   const actor: Actor = { user_id: adminId, via: "web" };
-  const school = await createSchool(actor, { name: "试抓大学", short_name: "", tiers: [] });
+  const school = await createSchool(actor, { name: "试抓大学", short_names: [], tier: null });
   const college = await createCollege(actor, {
     school_id: school.id,
     name: "计算机学院",

@@ -9,11 +9,11 @@ function program(
     deadline?: number | null;
     start?: number | null;
     kind?: "summer_camp" | "pre_recommendation";
-    tiers?: string[];
+    tier?: string;
     region?: string;
     directions?: string[];
     school?: string;
-    short?: string;
+    short?: string[];
     published?: string | null;
   } = {},
 ) {
@@ -21,8 +21,8 @@ function program(
     id,
     school: {
       name: values.school ?? "北辰大学",
-      short_name: values.short ?? "北辰",
-      tiers: values.tiers ?? [],
+      short_names: values.short ?? ["北辰"],
+      tier: values.tier ?? null,
     },
     college: {
       name: "计算机学院",
@@ -60,9 +60,9 @@ test("by default the table leaves out what has closed, and keeps what gave no ti
 
 test("filters narrow down together; tiers and kinds take any of those ticked", () => {
   const programs = [
-    program(1, { tiers: ["985", "211"], region: "上海", directions: ["计算机", "软件"] }),
-    program(2, { tiers: ["211"], kind: "pre_recommendation" }),
-    program(3, { tiers: ["c9", "985"], region: "上海" }),
+    program(1, { tier: "985", region: "上海", directions: ["计算机", "软件"] }),
+    program(2, { tier: "211", kind: "pre_recommendation" }),
+    program(3, { tier: "c9", region: "上海" }),
   ];
   expect(ids("tier=c9&tier=211", programs)).toEqual([2, 3]);
   expect(ids("tier=985&region=上海&direction=软件", programs)).toEqual([1]);
@@ -70,20 +70,8 @@ test("filters narrow down together; tiers and kinds take any of those ticked", (
   expect(ids("kind=summer_camp&kind=pre_recommendation&region=北京", programs)).toEqual([2]);
 });
 
-test("a tier picks the schools whose highest tier it is; 其他 those with none", () => {
-  const programs = [
-    program(1, { tiers: ["c9", "985", "211", "double_first_class"] }),
-    program(2, { tiers: ["985", "211", "double_first_class"] }),
-    program(3, { tiers: ["211"] }),
-    program(4, { tiers: ["double_first_class"] }),
-  ];
-  expect(ids("tier=211", programs)).toEqual([3]);
-  expect(ids("tier=985", programs)).toEqual([2]);
-  expect(ids("tier=double_first_class", programs)).toEqual([4]);
-});
-
 test("the tier 其他 picks the schools with no tier, alongside any others ticked", () => {
-  const programs = [program(1, { tiers: ["985"] }), program(2), program(3, { tiers: ["211"] })];
+  const programs = [program(1, { tier: "985" }), program(2), program(3, { tier: "211" })];
   expect(ids("tier=other", programs)).toEqual([2]);
   expect(ids("tier=other&tier=985", programs)).toEqual([1, 2]);
 });
@@ -102,9 +90,14 @@ test("each status choice counts what it would show under the other filters", () 
   expect(view("kind=summer_camp")).toEqual({ "": 3, open: 1, upcoming: 1, closed: 1, all: 4 });
 });
 
-test("search looks through the school, its short name, the college and the program", () => {
-  const programs = [program(1, { school: "北京邮电大学", short: "北邮" }), program(2), program(3)];
+test("search looks through the school, any of its short names, the college and the program", () => {
+  const programs = [
+    program(1, { school: "北京邮电大学", short: ["北邮", "BUPT"] }),
+    program(2),
+    program(3),
+  ];
   expect(ids("q=北邮", programs)).toEqual([1]);
+  expect(ids("q=bupt", programs)).toEqual([1]);
   expect(ids("q=北辰", programs)).toEqual([2, 3]);
   expect(ids("q=计算机学院", programs)).toEqual([1, 2, 3]);
   expect(ids("q=+项目2+", programs)).toEqual([2]);

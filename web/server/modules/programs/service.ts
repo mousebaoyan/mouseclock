@@ -62,8 +62,8 @@ export async function listPrograms(cohort: number, preview: boolean) {
       sql<Kind>`p.kind`.as("kind"),
       applyOf("p.id").as("apply"),
       "s.name as school_name",
-      "s.short_name as school_short_name",
-      "s.tiers as school_tiers",
+      "s.short_names as school_short_names",
+      "s.tier as school_tier",
       "c.id as college_id",
       "c.name as college_name",
       "c.region as college_region",
@@ -81,7 +81,11 @@ export async function listPrograms(cohort: number, preview: boolean) {
     preview,
     programs: rows.map((row) => ({
       id: row.id,
-      school: { name: row.school_name, short_name: row.school_short_name, tiers: row.school_tiers },
+      school: {
+        name: row.school_name,
+        short_names: row.school_short_names,
+        tier: row.school_tier,
+      },
       college: {
         id: row.college_id,
         name: row.college_name,
@@ -158,8 +162,7 @@ export async function getProgram(id: number) {
       sql<Kind>`p.kind`.as("kind"),
       fieldsOf("p.id").as("fields"),
       "s.name as school_name",
-      "s.short_name as school_short_name",
-      "s.tiers as school_tiers",
+      "s.tier as school_tier",
       "c.id as college_id",
       "c.name as college_name",
       "c.region as college_region",
@@ -175,7 +178,7 @@ export async function getProgram(id: number) {
   if (!row) notFound();
   return {
     id: row.id,
-    school: { name: row.school_name, short_name: row.school_short_name, tiers: row.school_tiers },
+    school: { name: row.school_name, tier: row.school_tier },
     college: { id: row.college_id, name: row.college_name, region: row.college_region },
     cohort: row.cohort,
     kind: row.kind,

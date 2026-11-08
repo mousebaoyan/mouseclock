@@ -5,8 +5,8 @@ import { Group, List, Row } from "~/components/list";
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { Missing } from "~/components/program";
-import { COLLEGE_KINDS, TierTags } from "~/components/tags";
-import { TIER_FILTERS, TIERS, topTier } from "~/tiers";
+import { COLLEGE_KINDS, TierTag } from "~/components/tags";
+import { TIER_FILTERS, TIERS } from "~/tiers";
 import { Select } from "~/components/ui/select";
 import { Table, Td, Th, Tr } from "~/components/ui/table";
 import { PER_PAGE } from "../../server/platform/paging.ts";
@@ -14,7 +14,8 @@ import { apiContext, readApi, type createApi } from "../api.server.ts";
 import type { Route } from "./+types/colleges.ts";
 
 type CollegeList = InferResponseType<ReturnType<typeof createApi>["colleges"]["$get"], 200>;
-type School = CollegeList["schools"][number];
+// The short names are only for search, which the loader does; the page goes without them.
+type School = Omit<CollegeList["schools"][number], "short_names">;
 
 export function meta() {
   return [{ title: "院校清单 · 鼠钟" }, { name: "description", content: "鼠钟收录的学校与学院" }];
@@ -30,7 +31,7 @@ const collator = new Intl.Collator("zh-CN");
 
 // A school's place among the tiers, highest first; schools with none come last.
 function rank(school: School) {
-  const at = TIERS.findIndex((tier) => school.tiers.includes(tier.value));
+  const at = TIERS.findIndex((tier) => tier.value === school.tier);
   return at === -1 ? TIERS.length : at;
 }
 
@@ -50,8 +51,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const sort = SORTS.find((item) => item.value === params.get("sort"))?.value ?? "";
   const perPage = PER_PAGE.find((n) => String(n) === params.get("per_page")) ?? PER_PAGE[0];
   const matched = schools
-    .map((school) => {
-      const named = [school.name, school.short_name].some((text) => text.toLowerCase().includes(q));
+    .map(({ short_names, ...school }) => {
+      const named = [school.name, ...short_names].some((text) => text.toLowerCase().includes(q));
       // A search for a school keeps all its colleges; one for a college keeps those it names.
       const colleges = school.colleges.filter(
         (college) =>
@@ -62,7 +63,8 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     })
     .filter(
       (school) =>
-        school.colleges.length > 0 && (tiers.length === 0 || tiers.includes(topTier(school.tiers))),
+        school.colleges.length > 0 &&
+        (tiers.length === 0 || tiers.includes(school.tier ?? "other")),
     );
   matched.sort(
     (a, b) =>
@@ -148,9 +150,9 @@ function SchoolLabel({ school }: { school: School }) {
     <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5 lg:block">
       <p className="text-base font-semibold">{school.name}</p>
       <p className="text-[13px] text-muted-foreground lg:mt-0.5">{regionOf(school)}</p>
-      {school.tiers.length > 0 && (
-        <p className="flex flex-wrap gap-1 lg:mt-2">
-          <TierTags tiers={school.tiers} />
+      {school.tier && (
+        <p className="lg:mt-2">
+          <TierTag tier={school.tier} />
         </p>
       )}
     </div>
@@ -181,9 +183,7 @@ function SchoolTable({ schools }: { schools: School[] }) {
                     {school.name}
                   </Td>
                   <Td center rowSpan={school.colleges.length} className="border-r">
-                    <span className="inline-flex gap-1">
-                      <TierTags tiers={school.tiers} />
-                    </span>
+                    <TierTag tier={school.tier} />
                   </Td>
                 </>
               )}
