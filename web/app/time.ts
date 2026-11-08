@@ -22,6 +22,34 @@ export function formatTime(value: TimeValue, thisYear: number) {
   return value.mark ? date + MARKS[value.mark] : date;
 }
 
+// A time as editors type it, as precise as the notice and no more: 2026-06-30 17:00,
+// 2026-06-30, 2026-06-30 前, 2026-06-30 前后, 2026-06 上旬 (中旬, 下旬) or 2026-06.
+export const TIME_HINT =
+  "写成 2026-06-30 17:00、2026-06-30、2026-06-30 前、2026-06 下旬 或 2026-06";
+
+export function timeText(value: TimeValue) {
+  if ("month" in value) return value.part ? `${value.month} ${PARTS[value.part]}` : value.month;
+  if ("time" in value) return `${value.date} ${value.time}`;
+  return value.mark ? `${value.date} ${MARKS[value.mark]}` : value.date;
+}
+
+// Null when the text is none of those forms; the API checks the date is on the calendar.
+export function parseTime(text: string): TimeValue | null {
+  const match = /^(\d{4}-\d{2})(-\d{2})?\s*(.*)$/.exec(text.trim());
+  if (!match) return null;
+  const [, month, day, rest] = match;
+  if (!day) {
+    if (rest === "") return { month };
+    const part = (["early", "mid", "late"] as const).find((key) => PARTS[key] === rest);
+    return part ? { month, part } : null;
+  }
+  const date = month + day;
+  if (rest === "") return { date };
+  if (/^\d{1,2}:\d{2}$/.test(rest)) return { date, time: rest.padStart(5, "0") };
+  const mark = (["before", "about"] as const).find((key) => MARKS[key] === rest);
+  return mark ? { date, mark } : null;
+}
+
 export function formatWindow(window: { start?: TimeValue; end?: TimeValue }, thisYear: number) {
   const start = window.start && formatTime(window.start, thisYear);
   const end = window.end && formatTime(window.end, thisYear);

@@ -51,7 +51,7 @@
 
 | 表 | 模块 | 说明 |
 | --- | --- | --- |
-| `edits` | `review` | 每次人工修改，包括撤销（`reverts_id`）：改的是字段，或者项目的名称、届、类型；改前改后的值、理由、依据（原文链接或截图）、谁、通过网页还是 Agent |
+| `edits` | `review` | 每次人工修改，包括撤销（`reverts_id`）：改的是字段（`field` 是 `program_fields` 的 `key`，分部分的字段一部分一行），或者项目的名称、届、类型；改前改后的值、理由、依据（原文链接或截图）、谁、通过网页还是 Agent。改前的值为空是原来没有，改后的为空是清空。`old_version_id`、`old_edit_id` 是改前的来源，撤销时连来源一起放回去，也用来判断这次修改还在不在（[总体设计 §12.4](design.md#124-记录和撤销)）：来自哪个版本，或者是哪次修改设的；都为空是原来没有，名称、届、类型是建项目时的。撤销的理由和依据为空 |
 | `review_items` | `ingest` | 审核页上待人判断的：抽取时没上表的字段（证据找不到、置信度低、明显不对、和人工改的值冲突），以及没法直接归并的项目（编号或学院对不上、届不对、可能重复、报名通知没有截止）。`payload` 是抽取出来的原样，通过就照它上表：字段的带 `key`，`payload` 是 `program_fields` 那一行的 `value`、`evidence` 和 `confidence`；项目的是抽取给的整个项目（编号、学院、届、类型、名称、作用和字段） |
 | `audit_log` | `review` | 管理员和站长的其他操作，别的模块调 `review` 的服务函数记 |
 
@@ -85,6 +85,6 @@
 | 新通知 | 列表里的网址见没见过：`notices (source_id, url)` 唯一 |
 | 最新的快照 | `snapshots_notice (notice_id, id)` |
 | 通知的版本 | `program_versions_snapshot (snapshot_id)` |
-| 修改记录 | 项目的：`edits_program (program_id, id)`；某人的：`edits_user (user_id, id)`；全站最近的：`edits_recent (created_at)` |
+| 修改记录 | 项目的：`edits_program (program_id, id)`；某人的：`edits_user (user_id, id)`；全站最近的按主键倒着取 |
 | 审核页 | 待处理的：`review_items_pending (id) WHERE status = 'pending'` |
 | 抓取看板 | 某天各来源的结果：`crawl_runs_started (started_at)`；某个来源最近几轮：`crawl_runs (source_id, started_at)` 唯一；用量：`model_calls_created (created_at)` |

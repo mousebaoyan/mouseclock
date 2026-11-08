@@ -1,11 +1,17 @@
 import { createRoute, z } from "@hono/zod-openapi";
-import { authorize, createRouter, errorResponse, IdParam, unix } from "../../platform/http.ts";
+import {
+  authorize,
+  createRouter,
+  errorResponse,
+  IdParam,
+  Page,
+  unix,
+} from "../../platform/http.ts";
 import {
   College,
   CollegeInput,
   CollegePatch,
   CollegeQuery,
-  Page,
   PageQuery,
   RunSummary,
   School,

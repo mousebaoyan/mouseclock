@@ -76,14 +76,16 @@ export interface CrawlRuns {
 }
 
 export interface Edits {
-  basis: string;
+  basis: string | null;
   created_at: Generated<Timestamp>;
   field: string;
   id: Generated<number>;
   new_value: Json | null;
+  old_edit_id: number | null;
   old_value: Json | null;
+  old_version_id: number | null;
   program_id: number;
-  reason: string;
+  reason: string | null;
   reverts_id: number | null;
   user_id: number;
   via: string;

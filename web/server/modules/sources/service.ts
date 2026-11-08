@@ -1,8 +1,8 @@
-import { sql, type SelectQueryBuilder, type Transaction } from "kysely";
+import { sql, type Transaction } from "kysely";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
-import { db } from "../../platform/db.ts";
+import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
@@ -37,25 +37,6 @@ async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
     }
     throw error;
   }
-}
-
-// A page of an admin list, and how many rows the whole list has.
-async function pageOf<TB extends keyof DB, O>(
-  query: SelectQueryBuilder<DB, TB, O>,
-  { page, per_page }: { page: number; per_page: number },
-) {
-  const [items, { total }] = await Promise.all([
-    query
-      .limit(per_page)
-      .offset((page - 1) * per_page)
-      .execute(),
-    query
-      .clearSelect()
-      .clearOrderBy()
-      .select((eb) => eb.fn.countAll<number>().as("total"))
-      .executeTakeFirstOrThrow(),
-  ]);
-  return { items, total, page, per_page };
 }
 
 export async function listSchools({ q, ...paging }: z.infer<typeof PageQuery>) {

@@ -76,10 +76,6 @@ export const RunSummary = z.object({
   useful_count: Int,
   notice_failure_count: Int,
 });
-export function Page<T extends z.ZodType>(item: T) {
-  return z.object({ items: z.array(item), total: Int, page: Int, per_page: Int });
-}
-
 // Public college pages keep the school grouping and the original application window visible.
 // The computed instants are included for status and countdowns; pages still display `apply`.
 export const PublicCollege = z.object({

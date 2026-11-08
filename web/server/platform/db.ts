@@ -1,4 +1,4 @@
-import { Kysely, PostgresDialect } from "kysely";
+import { Kysely, PostgresDialect, type SelectQueryBuilder } from "kysely";
 import { Pool, types } from "pg";
 import type { DB } from "../../db/types.ts";
 import { env } from "./env.ts";
@@ -15,3 +15,22 @@ const pool = new Pool({ connectionString: env.DATABASE_URL, max: 10 });
 pool.on("error", (error) => log("error", "Idle database connection failed", { error }));
 
 export const db = new Kysely<DB>({ dialect: new PostgresDialect({ pool }) });
+
+// A page of a list (api.md §1), and how many rows the whole list has.
+export async function pageOf<TB extends keyof DB, O>(
+  query: SelectQueryBuilder<DB, TB, O>,
+  { page, per_page }: { page: number; per_page: number },
+) {
+  const [items, { total }] = await Promise.all([
+    query
+      .limit(per_page)
+      .offset((page - 1) * per_page)
+      .execute(),
+    query
+      .clearSelect()
+      .clearOrderBy()
+      .select((eb) => eb.fn.countAll<number>().as("total"))
+      .executeTakeFirstOrThrow(),
+  ]);
+  return { items, total, page, per_page };
+}

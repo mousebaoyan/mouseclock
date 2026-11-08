@@ -113,3 +113,7 @@ export const PageParams = z.object({
   page: IntParam.min(1).max(100_000).default(1),
   per_page: z.coerce.number().pipe(z.literal(PER_PAGE)).default(PER_PAGE[0]),
 });
+
+export function Page<T extends z.ZodType>(item: T) {
+  return z.object({ items: z.array(item), total: Int, page: Int, per_page: Int });
+}
