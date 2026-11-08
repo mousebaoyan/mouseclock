@@ -46,15 +46,19 @@ export function useDismiss(
 // A panel beside `anchor`: below it, or above where there is more room, lined up with its start
 // edge unless that would run off the screen. In the body and fixed, so a box that clips what it
 // holds, such as a panel's rounded corners, can't cut it off; it follows the anchor as the page
-// scrolls.
+// scrolls. Its items take the arrow keys, not Tab, as a native select's options do; Tab past
+// the panel's other stops goes on from its anchor's place in the page, and `onLeave` closes it:
+// being at the end of the body, Tab would otherwise leave the page.
 export function Popup({
   anchor,
   panel,
+  onLeave,
   className,
   children,
 }: {
   anchor: RefObject<HTMLElement | null>;
   panel: RefObject<HTMLDivElement | null>;
+  onLeave: () => void;
   className?: string;
   children: ReactNode;
 }) {
@@ -85,6 +89,24 @@ export function Popup({
       removeEventListener("resize", fit);
     };
   }, [anchor, panel]);
+  useEffect(() => {
+    const self = panel.current;
+    function onKey(e: globalThis.KeyboardEvent) {
+      if (e.key !== "Tab" || !self) return;
+      const stops = [...self.querySelectorAll<HTMLElement>("input, button:not([tabindex='-1'])")];
+      const at = stops.findIndex((stop) => stop === document.activeElement);
+      // Back from the first stop, or from an item with none; on from the last stop or an item.
+      const leaving = e.shiftKey
+        ? at === 0 || stops.length === 0
+        : at === -1 || at === stops.length - 1;
+      if (!leaving) return;
+      // The browser then moves on from the anchor, before or after it.
+      anchor.current?.focus();
+      onLeave();
+    }
+    self?.addEventListener("keydown", onKey);
+    return () => self?.removeEventListener("keydown", onKey);
+  }, [anchor, panel, onLeave]);
   return createPortal(
     <div
       ref={panel}
@@ -238,7 +260,14 @@ export function Drawer({
   const [open, setOpen] = useState(false);
   const dialog = useRef<HTMLDialogElement>(null);
   useEffect(() => {
-    if (open) dialog.current?.showModal();
+    if (!open) return undefined;
+    dialog.current?.showModal();
+    // The page behind keeps still. Not html:has(dialog[open]) in CSS: Chrome 100 lacks :has().
+    const root = document.documentElement;
+    root.style.overflow = "hidden";
+    return () => {
+      root.style.overflow = "";
+    };
   }, [open]);
   return (
     <>
@@ -258,14 +287,8 @@ export function Drawer({
           onClose={() => setOpen(false)}
           className="fixed inset-0 m-0 size-full max-h-none max-w-none bg-transparent p-0 text-foreground backdrop:bg-transparent"
         >
-          <button
-            type="button"
-            aria-label="关闭"
-            tabIndex={-1}
-            onClick={() => dialog.current?.close()}
-            className="fade-in absolute inset-0 bg-black/30"
-          />
-          <div className="slide-in absolute inset-y-0 right-0 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl">
+          {/* The panel before the backdrop, so the focus starts on its close button. */}
+          <div className="slide-in absolute inset-y-0 right-0 z-1 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl">
             <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
               <p className="font-semibold">{label}</p>
               <button
@@ -279,6 +302,13 @@ export function Drawer({
             </div>
             {children}
           </div>
+          <button
+            type="button"
+            aria-label="关闭"
+            tabIndex={-1}
+            onClick={() => dialog.current?.close()}
+            className="fade-in absolute inset-0 bg-black/30"
+          />
         </dialog>
       )}
     </>

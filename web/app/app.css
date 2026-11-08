@@ -138,6 +138,11 @@
       animation-delay: 0s !important;
       transition-duration: 1ms !important;
     }
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+      animation: none !important;
+    }
   }
   /* Tailwind 4 resets buttons to the default cursor. Everything that can be clicked shows the
      hand. */
@@ -147,10 +152,6 @@
   label:has(input[type="checkbox"]),
   summary {
     cursor: pointer;
-  }
-  /* The page behind the phones' drawer keeps still. */
-  html:has(dialog[open]) {
-    overflow: hidden;
   }
   /* Lucide's look for the icons of components/icons.tsx; size-* and stroke-* classes win. */
   .lucide {
@@ -202,10 +203,10 @@
     @apply bg-primary text-primary-foreground hover:bg-primary-hover;
   }
   .btn-outline {
-    @apply border-input bg-card text-foreground hover:bg-accent data-popup-open:bg-accent;
+    @apply border-input bg-card text-foreground hover:bg-accent aria-expanded:bg-accent;
   }
   .btn-ghost {
-    @apply text-muted-foreground hover:bg-accent hover:text-foreground data-popup-open:bg-accent data-popup-open:text-foreground;
+    @apply text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground;
   }
   .btn-destructive {
     @apply bg-destructive text-white hover:bg-[color-mix(in_oklab,var(--destructive),black_10%)];

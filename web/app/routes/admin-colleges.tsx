@@ -419,7 +419,9 @@ export default function Colleges({ loaderData, actionData }: Route.ComponentProp
                         defaultValue={String(collegeValues?.school_id ?? school.id)}
                         options={schoolOptions.map((s) => ({ value: String(s.id), label: s.name }))}
                       />
-                      <p className="text-xs text-muted-foreground">找不到学校时可在左侧搜索</p>
+                      <p className="text-xs text-muted-foreground">
+                        找不到学校时可在学校列表中搜索
+                      </p>
                     </div>
                     <Field label="学院名称">
                       <input

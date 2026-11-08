@@ -447,7 +447,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
               )}
             </>
           ) : (
-            <p className="py-6 text-center text-[13px] text-muted-foreground">请先在左侧选择学院</p>
+            <p className="py-6 text-center text-[13px] text-muted-foreground">请先选择学院</p>
           )}
         </Panel>
       </div>

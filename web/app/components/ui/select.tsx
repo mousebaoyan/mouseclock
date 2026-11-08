@@ -26,6 +26,7 @@ function useList(optionCount: number) {
     setOpen(false);
     button.current?.focus();
   };
+  const leave = () => setOpen(false);
   useDismiss(
     open,
     (escaped) => {
@@ -47,23 +48,14 @@ function useList(optionCount: number) {
     setQuery("");
     setOpen(true);
   }
-  // Keys on an option. Tab closes the list and gives the focus back to its button: the list is
-  // at the end of the page, so Tab would otherwise leave for its end.
+  // Keys on an option, and in the search box, from which the down arrow goes to the options.
   function onItemKey(e: KeyboardEvent) {
-    if (moveFocus(e, panel.current, search.current)) return;
-    if (e.key === "Tab") {
-      e.preventDefault();
-      close();
-    }
+    moveFocus(e, panel.current, search.current);
   }
-  // Keys in the search box: down to the options, back to the button with Shift+Tab.
   function onSearchKey(e: KeyboardEvent) {
     if (e.key === "ArrowDown") {
       e.preventDefault();
       panel.current?.querySelector<HTMLElement>("[data-item]")?.focus();
-    } else if (e.key === "Tab" && e.shiftKey) {
-      e.preventDefault();
-      close();
     }
   }
   const triggerProps = {
@@ -87,6 +79,7 @@ function useList(optionCount: number) {
     search,
     searchable,
     close,
+    leave,
     onItemKey,
     onSearchKey,
     triggerProps,
@@ -102,7 +95,6 @@ export function Select({
   onValueChange,
   name,
   required,
-  disabled,
   className,
   "aria-label": label,
 }: {
@@ -112,7 +104,6 @@ export function Select({
   onValueChange?: (value: string) => void;
   name?: string;
   required?: boolean;
-  disabled?: boolean;
   className?: string;
   "aria-label": string;
 }) {
@@ -145,7 +136,7 @@ export function Select({
 
   return (
     <div className="relative min-w-0">
-      <button {...list.triggerProps} disabled={disabled} className={cn(TRIGGER, className)}>
+      <button {...list.triggerProps} className={cn(TRIGGER, className)}>
         <TriggerLabel label={label} />
         <span className="truncate">{chosen?.label}</span>
         <TriggerIcon />
@@ -169,7 +160,12 @@ export function Select({
           <input ref={input} type="hidden" name={name} value={current} />
         ))}
       {list.open && (
-        <Popup anchor={list.button} panel={list.panel} className={cn(list.searchable && "w-64")}>
+        <Popup
+          anchor={list.button}
+          panel={list.panel}
+          onLeave={list.leave}
+          className={cn(list.searchable && "w-64")}
+        >
           {list.searchable && (
             <PopupSearch
               label={label}
@@ -191,6 +187,7 @@ export function Select({
                 key={option.value}
                 type="button"
                 data-item
+                tabIndex={-1}
                 aria-current={option === chosen || undefined}
                 onClick={() => pick(option.value)}
                 onKeyDown={list.onItemKey}
@@ -254,7 +251,12 @@ export function MultiSelect({
         <TriggerIcon />
       </button>
       {list.open && (
-        <Popup anchor={list.button} panel={list.panel} className={cn(list.searchable && "w-64")}>
+        <Popup
+          anchor={list.button}
+          panel={list.panel}
+          onLeave={list.leave}
+          className={cn(list.searchable && "w-64")}
+        >
           {list.searchable && (
             <>
               <PopupSearch
@@ -296,6 +298,7 @@ export function MultiSelect({
                   key={option.value}
                   type="button"
                   data-item
+                  tabIndex={-1}
                   aria-pressed={on}
                   onKeyDown={list.onItemKey}
                   onClick={() =>

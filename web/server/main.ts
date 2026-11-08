@@ -15,10 +15,13 @@ every(10 * 60_000, "Refreshing users from mousehole", refreshUsers);
 every(24 * 3600_000, "Clearing expired sessions", clearExpiredSessions);
 
 // Built files carry a hash of their content in their names, so a browser keeps them without asking
-// again, even on a reload.
+// again, even on a reload. Each comes plain or compressed by what the browser takes, which a cache
+// on the way must be told for the plain ones too.
 const keepForever = createMiddleware(async (c, next) => {
   await next();
-  if (c.res.ok) c.res.headers.set("cache-control", "public, max-age=31536000, immutable");
+  if (!c.res.ok) return;
+  c.res.headers.set("cache-control", "public, max-age=31536000, immutable");
+  if (!c.res.headers.has("vary")) c.res.headers.set("vary", "accept-encoding");
 });
 
 // The app's middleware runs for pages too, so they know their visitor.
