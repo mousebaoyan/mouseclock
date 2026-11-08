@@ -25,10 +25,10 @@ export function RunResult({ run, className }: { run: Run; className?: string }) 
       : ["text-success", "抓取成功"];
   return (
     <span className={cn("inline-flex items-start gap-1.5", tone, className)}>
-      {/* On the first line's middle, should the text wrap. */}
+      {/* Level with the middle of the first line, 1.5em high, should the text wrap. */}
       <span
         aria-hidden="true"
-        className="mt-[calc((1lh-0.375rem)/2)] size-1.5 shrink-0 rounded-full bg-current"
+        className="mt-[calc(0.75em-0.1875rem)] size-1.5 shrink-0 rounded-full bg-current"
       />
       {text}
     </span>

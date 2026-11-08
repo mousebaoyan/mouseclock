@@ -175,7 +175,7 @@
       left: 50%;
       width: max(100%, 2.75rem);
       height: max(100%, 2.75rem);
-      translate: -50% -50%;
+      transform: translate(-50%, -50%);
     }
   }
 }
