@@ -56,13 +56,16 @@ const Url = z.url({ protocol: /^https?$/ }).max(2000);
 const Config = z
   .record(z.string(), z.unknown())
   .openapi("Config", { description: "抓取节点自己的配置，格式由抓取节点定" });
-const Failure = z
+export const Failure = z
   .enum(["timeout", "unreachable", "too_many_redirects", "http_status", "no_items", "error"])
   .openapi("Failure", {
     description:
       "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误",
   });
 const Detail = z.string().max(1000).openapi({ description: "具体原因，比如 HTTP 403" });
+export const NoticeFailure = z
+  .strictObject({ url: Url, failure: Failure, detail: Detail.optional() })
+  .openapi("NoticeFailure");
 const Usage = z
   .strictObject({
     model: z.string().min(1).max(100),
@@ -412,13 +415,7 @@ export const ingestRoutes = router
                   listed: Int.min(0),
                   new_count: Int.min(0),
                   useful_count: Int.min(0).openapi({ description: "新通知里抽取出项目的" }),
-                  notice_failures: z
-                    .array(
-                      z
-                        .strictObject({ url: Url, failure: Failure, detail: Detail.optional() })
-                        .openapi("NoticeFailure"),
-                    )
-                    .max(5000),
+                  notice_failures: z.array(NoticeFailure).max(5000),
                 })
                 .openapi("Run"),
             },

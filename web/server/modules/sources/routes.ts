@@ -13,7 +13,6 @@ import {
   CollegePatch,
   CollegeQuery,
   PageQuery,
-  RunSummary,
   School,
   SchoolInput,
   SchoolPatch,
@@ -25,6 +24,8 @@ import {
   PublicCollegeDetail,
   PublicCollegeList,
 } from "./schemas.ts";
+import { latestRuns } from "../ingest/dashboard.ts";
+import { RunSummary } from "../ingest/dashboard-routes.ts";
 import {
   createCollege,
   createSchool,
@@ -32,7 +33,6 @@ import {
   getCollege,
   getSchool,
   getSource,
-  latestRuns,
   listColleges,
   listSchools,
   listSources,

@@ -328,8 +328,9 @@ for (const school of SCHOOLS) {
       );
     }
 
-    // A round a day for the last three days; one site has been refusing for two.
-    for (const ago of [3, 2, 1]) {
+    // A round a day for the last three days and an hour ago; one site has been refusing since
+    // two days ago, and another timed out on two notices today.
+    for (const ago of [3, 2, 1, 1 / 24]) {
       const started = new Date(Date.now() - ago * DAY_MS);
       const refused = i === 2 && ago < 3;
       await recordRun({
@@ -340,7 +341,13 @@ for (const school of SCHOOLS) {
         listed: refused ? 0 : items.length,
         new_count: refused || ago < 3 ? 0 : items.length,
         useful_count: refused || ago < 3 ? 0 : plans.length,
-        notice_failures: [],
+        notice_failures:
+          i === 1 && ago < 1
+            ? [3, 4].map((n) => ({
+                url: `https://${host}/info/${n}.htm`,
+                failure: "timeout" as const,
+              }))
+            : [],
       });
     }
     i++;

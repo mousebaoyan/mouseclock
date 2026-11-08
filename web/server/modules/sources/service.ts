@@ -338,35 +338,6 @@ export async function listSources({
   return pageOf(query.orderBy("sources.id"), paging);
 }
 
-export async function latestRuns(sourceIds: number[]) {
-  if (sourceIds.length === 0) return [];
-  const rows = await db
-    .selectFrom("crawl_runs")
-    .select([
-      "id",
-      "source_id",
-      "started_at",
-      "finished_at",
-      "failure",
-      "detail",
-      "listed",
-      "new_count",
-      "useful_count",
-    ])
-    .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"))
-    .where("source_id", "in", sourceIds)
-    .distinctOn("source_id")
-    .orderBy("source_id")
-    .orderBy("finished_at", "desc")
-    .orderBy("id", "desc")
-    .execute();
-  return rows.map(({ started_at, finished_at, ...run }) => ({
-    ...run,
-    started_at: unix(started_at),
-    finished_at: unix(finished_at),
-  }));
-}
-
 export async function getSource(id: number) {
   const row = await db
     .selectFrom("sources")

@@ -64,18 +64,6 @@ export const Source = z.object({
   crawled_at: UnixSeconds.nullable(),
 });
 export const SourceDetail = Source.extend({ config: Config.nullable() });
-export const RunSummary = z.object({
-  id: Int,
-  source_id: Int,
-  started_at: UnixSeconds,
-  finished_at: UnixSeconds,
-  failure: z.string().nullable(),
-  detail: z.string(),
-  listed: Int,
-  new_count: Int,
-  useful_count: Int,
-  notice_failure_count: Int,
-});
 // Public college pages keep the school grouping and the original application window visible.
 // The computed instants are included for status and countdowns; pages still display `apply`.
 export const PublicCollege = z.object({

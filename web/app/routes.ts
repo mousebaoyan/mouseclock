@@ -7,6 +7,7 @@ export default [
   route("programs/:id", "routes/program-detail.tsx"),
   route("snapshots/:id", "routes/snapshot.tsx"),
   route("review", "routes/review.tsx"),
+  route("crawl", "routes/crawl.tsx"),
   route("logout", "routes/logout.ts"),
   route("admin/colleges", "routes/admin-colleges.tsx"),
   route("admin/sources", "routes/admin-sources.tsx"),

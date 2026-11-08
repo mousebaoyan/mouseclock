@@ -86,6 +86,11 @@ export function beijingYear(now: Date) {
   return new Date(now.getTime() + 8 * 3600_000).getUTCFullYear();
 }
 
+// The day an instant falls on in Beijing, as the crawl dashboard counts days.
+export function beijingDate(seconds: number) {
+  return new Date((seconds + 8 * 3600) * 1000).toISOString().slice(0, 10);
+}
+
 // How long until a program opens or closes, rounded down so it never reads as more time than
 // there is. Null once closed, and while open with no deadline.
 export function countdown(

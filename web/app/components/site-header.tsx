@@ -47,6 +47,11 @@ export function SiteHeader({ me }: { me: Me | null }) {
           <NavLink to="/colleges" className={navLink}>
             院校清单
           </NavLink>
+          {me && !me.frozen && (
+            <NavLink to="/crawl" className={navLink}>
+              抓取看板
+            </NavLink>
+          )}
           {me?.can.edit && (
             <NavLink to="/review" className={navLink}>
               审核
