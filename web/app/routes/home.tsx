@@ -1,21 +1,18 @@
 import { hc, type InferResponseType } from "hono/client";
 import { data, Link, useLocation, useRouteLoaderData } from "react-router";
-import { ExternalLink } from "~/components/icons";
-import { List, Row } from "~/components/list";
 import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/components/filters";
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
-import { ApplyDeadline, ApplyStart, Missing, ProgramStatus } from "~/components/program";
-import { KindTag, PROGRAM_KINDS, TopTier } from "~/components/tags";
+import { ProgramCard, ProgramCards } from "~/components/program";
+import { PROGRAM_KINDS, TopTier } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
 import { Segmented } from "~/components/ui/segmented";
 import { Select } from "~/components/ui/select";
-import { Table, Td, Th, Tr } from "~/components/ui/table";
 import type { ApiType } from "../../server/app.ts";
 import { SITE_DESCRIPTION, SITE_NAME } from "../../server/platform/site.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { cohortOf, tablePage, type Filters } from "../program-table.ts";
+import { cohortOf, tablePage } from "../program-table.ts";
 import type { loader as rootLoader } from "../root.tsx";
 import { currentCohort, formatTime, STATUS_LABELS, useNow } from "../time.ts";
 import type { Route } from "./+types/home.ts";
@@ -58,7 +55,7 @@ export async function clientLoader({ request }: Route.ClientLoaderArgs) {
 type Data = Route.ComponentProps["loaderData"];
 
 export default function Home({ loaderData }: Route.ComponentProps) {
-  const { cohort, preview, programs, total, page, filters } = loaderData;
+  const { cohort, preview, programs, total, page, filters, thisYear } = loaderData;
   const now = useNow(loaderData.now);
   return (
     <Page title={`${cohort} 届保研项目`} hideTitle>
@@ -67,18 +64,24 @@ export default function Home({ loaderData }: Route.ComponentProps) {
         <Empty>{preview ? "目前没有即将截止的项目" : "没有符合条件的项目"}</Empty>
       ) : (
         <div>
-          <ProgramTable
-            programs={programs}
-            sort={filters.sort}
-            now={now}
-            thisYear={loaderData.thisYear}
-          />
-          <ProgramList
-            programs={programs}
-            sort={filters.sort}
-            now={now}
-            thisYear={loaderData.thisYear}
-          />
+          <ProgramCards>
+            {programs.map((program) => (
+              <ProgramCard
+                key={program.id}
+                program={program}
+                now={now}
+                thisYear={thisYear}
+                notice={program.notice.url}
+                place={
+                  <Place
+                    program={program}
+                    published={filters.sort === "published"}
+                    thisYear={thisYear}
+                  />
+                }
+              />
+            ))}
+          </ProgramCards>
           {!preview && <Pagination total={total} page={page} perPage={filters.perPage} />}
         </div>
       )}
@@ -219,119 +222,27 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
   );
 }
 
-// Wide screens: one program to a row and one thing to a cell, so each column reads straight
-// down. Sorted by publication, the date it was published comes in as well.
-function ProgramTable({ programs, sort, now, thisYear }: ListProps) {
+// The program's school and college on its card; sorted by publication, the date it was published.
+function Place({ program, published, thisYear }: PlaceProps) {
   return (
-    <Table className="max-lg:hidden">
-      <thead>
-        <tr>
-          <Th>学校</Th>
-          <Th>学院</Th>
-          <Th>项目</Th>
-          <Th>类型</Th>
-          {sort === "published" && <Th>发布日期</Th>}
-          <Th>报名开始</Th>
-          <Th>报名截止</Th>
-          <Th>状态</Th>
-          <Th>原文</Th>
-        </tr>
-      </thead>
-      <tbody>
-        {programs.map((program) => (
-          <Tr key={program.id}>
-            <Td>
-              <span className="flex items-center gap-2 whitespace-nowrap">
-                <span className="font-medium">{program.school.name}</span>
-                <TopTier tiers={program.school.tiers} />
-              </span>
-            </Td>
-            <Td>
-              <Link to={`/colleges/${program.college.id}`} className="hover:text-primary">
-                {program.college.name}
-              </Link>
-            </Td>
-            <Td className="text-center">
-              <Link
-                to={`/programs/${program.id}`}
-                className="font-medium text-pretty hover:text-primary"
-              >
-                {program.name}
-              </Link>
-            </Td>
-            <Td center>
-              <KindTag kind={program.kind} />
-            </Td>
-            {sort === "published" && (
-              <Td center>
-                {program.notice.published_on ? (
-                  formatTime({ date: program.notice.published_on }, thisYear)
-                ) : (
-                  <Missing />
-                )}
-              </Td>
-            )}
-            <Td center>
-              <ApplyStart apply={program.apply} thisYear={thisYear} />
-            </Td>
-            <Td center>
-              <ApplyDeadline apply={program.apply} thisYear={thisYear} />
-            </Td>
-            <Td center>
-              <ProgramStatus program={program} now={now} />
-            </Td>
-            <Td center>
-              <a
-                href={program.notice.url}
-                target="_blank"
-                rel="nofollow noopener"
-                aria-label={`${program.name}的通知原文`}
-                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-primary"
-              >
-                <ExternalLink />
-              </a>
-            </Td>
-          </Tr>
-        ))}
-      </tbody>
-    </Table>
+    <>
+      <p className="flex items-center gap-2">
+        <span className="truncate font-semibold">{program.school.name}</span>
+        <TopTier tiers={program.school.tiers} />
+      </p>
+      <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[13px] text-muted-foreground">
+        <Link to={`/colleges/${program.college.id}`} className="relative z-1 hover:text-primary">
+          {program.college.name}
+        </Link>
+        <span>{program.college.region}</span>
+        {published && program.notice.published_on && (
+          <span className="tabular-nums">
+            发布于 {formatTime({ date: program.notice.published_on }, thisYear)}
+          </span>
+        )}
+      </p>
+    </>
   );
 }
 
-// Phones: the same programs as a list, two lines each.
-function ProgramList({ programs, now, thisYear }: ListProps) {
-  return (
-    <List className="lg:hidden">
-      {programs.map((program) => (
-        <Row
-          key={program.id}
-          title={
-            <>
-              <Link to={`/programs/${program.id}`} className="font-medium hover:text-primary">
-                {program.name}
-              </Link>
-              <KindTag kind={program.kind} />
-            </>
-          }
-          meta={
-            <>
-              <span className="text-foreground/85">{program.school.name}</span>
-              <Link to={`/colleges/${program.college.id}`} className="hover:text-primary">
-                {program.college.name}
-              </Link>
-              <TopTier tiers={program.school.tiers} />
-            </>
-          }
-          side={<ProgramStatus program={program} now={now} />}
-          sideMeta={
-            <span className="tabular-nums">
-              <ApplyDeadline apply={program.apply} thisYear={thisYear} /> 截止
-            </span>
-          }
-        />
-      ))}
-    </List>
-  );
-}
-
-type ListProps = { programs: Program[]; sort: Filters["sort"]; now: number; thisYear: number };
+type PlaceProps = { program: Program; published: boolean; thisYear: number };

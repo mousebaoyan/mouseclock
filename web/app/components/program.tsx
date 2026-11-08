@@ -1,6 +1,9 @@
-import { STATUS_COLORS, Tag } from "./tags.tsx";
-import type { ApplyValue } from "../../server/modules/programs/schemas.ts";
-import { countdown, formatTime, STATUS_LABELS, statusOf } from "../time.ts";
+import type { ReactNode } from "react";
+import { Link } from "react-router";
+import { ExternalLink } from "./icons.tsx";
+import { KindTag, STATUS_COLORS, Tag } from "./tags.tsx";
+import type { ApplyValue, Kind } from "../../server/modules/programs/schemas.ts";
+import { countdown, formatApply, formatTime, STATUS_LABELS, statusOf } from "../time.ts";
 
 // A program's application dates and status, the same wherever programs are listed.
 
@@ -45,5 +48,69 @@ export function ProgramStatus({ program, now }: { program: Instants; now: number
     <Tag color={soon ? "red" : STATUS_COLORS[status]}>
       {countdown(program, now) ?? STATUS_LABELS[status]}
     </Tag>
+  );
+}
+
+// Lists of programs are cards, one to a program: one column on phones, up to three side by side.
+export function ProgramCards({ children }: { children: ReactNode }) {
+  return <ul className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">{children}</ul>;
+}
+
+// Who runs the program on top, beside how long is left and what kind it is, which is what a list
+// is read for; then its name, and at the foot when it takes applications. The whole card opens
+// the program; the other links on it sit above that.
+export function ProgramCard({
+  program,
+  now,
+  thisYear,
+  place,
+  notice,
+}: {
+  program: Instants & { id: number; kind: Kind; name: string; apply: ApplyValue | null };
+  now: number;
+  thisYear: number;
+  place: ReactNode;
+  notice?: string;
+}) {
+  return (
+    <li className="group relative flex flex-col rounded-xl border bg-card px-4 py-3.5 shadow-card transition-colors hover:border-primary/40 has-[h3_a:focus-visible]:ring-3 has-[h3_a:focus-visible]:ring-ring/30 sm:px-5 sm:py-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">{place}</div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <ProgramStatus program={program} now={now} />
+          <KindTag kind={program.kind} />
+        </div>
+      </div>
+      <h3 className="mt-2 mb-4 line-clamp-2 text-[15px] leading-snug font-medium text-pretty group-hover:text-primary">
+        <Link
+          to={`/programs/${program.id}`}
+          className="outline-none after:absolute after:inset-0 after:rounded-xl"
+        >
+          {program.name}
+        </Link>
+      </h3>
+      <div className="mt-auto flex items-center gap-2 border-t pt-3">
+        <p className="min-w-0 flex-1 text-[13px] text-muted-foreground tabular-nums">
+          {program.apply && (
+            <>
+              <span className="mr-1.5 text-subtle-foreground">报名</span>
+              {formatApply(program.apply, thisYear)}
+            </>
+          )}
+        </p>
+        {notice && (
+          <a
+            href={notice}
+            target="_blank"
+            rel="nofollow noopener"
+            aria-label={`${program.name}的通知原文`}
+            title="通知原文"
+            className="relative z-1 -my-1 -mr-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-primary"
+          >
+            <ExternalLink />
+          </a>
+        )}
+      </div>
+    </li>
   );
 }
