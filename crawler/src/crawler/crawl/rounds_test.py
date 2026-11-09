@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import (
     AttachmentInfo,
     ExtractedFields,
@@ -70,7 +71,9 @@ class FakeWebsite:
                 Fetcher(nowhere) as fetcher,
                 Website("http://site", "token", httpx.MockTransport(self.handle)) as website,
             ):
-                await crawl_source(SOURCE, fetcher, website, steps, clock=lambda: 1_800_000_000)
+                await crawl_source(
+                    SOURCE, Browser(fetcher), website, steps, clock=lambda: 1_800_000_000
+                )
 
         asyncio.run(main())
 
@@ -78,7 +81,7 @@ class FakeWebsite:
         return [body for call, body in self.calls if call.startswith(prefix)]
 
 
-async def list_items(_fetcher: Fetcher, _source: WorkSource) -> list[ListedItem]:
+async def list_items(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
     return ITEMS
 
 
@@ -124,7 +127,7 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         extracted=frozenset({3}),
     )
 
-    async def read(_fetcher: Fetcher, _source: WorkSource, url: str) -> NoticePage | None:
+    async def read(_pages: PageSession, _source: WorkSource, url: str) -> NoticePage | None:
         return {"http://a/1.htm": page("冬令营", files=1), "http://a/3.htm": page("夏令营")}.get(
             url
         )
@@ -165,32 +168,37 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
 
 
 def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
-    site = FakeWebsite(
-        [pending(1, "fetch"), pending(2, "fetch"), pending(3, "fetch")], extracted=frozenset()
-    )
+    site = FakeWebsite([pending(n, "fetch") for n in range(1, 5)], extracted=frozenset())
 
-    async def read(_fetcher: Fetcher, _source: WorkSource, url: str) -> NoticePage | None:
+    async def read(_pages: PageSession, _source: WorkSource, url: str) -> NoticePage | None:
         if url == "http://a/1.htm":
             raise FetchError("timeout", url)
         if url == "http://a/2.htm":
             raise StepError("http_status", "HTTP 403")
+        if url == "http://a/3.htm":
+            raise FetchError("unreachable", "http://a/files/application.pdf")
         return page("冬令营")
 
     site.run(Steps(list_items, screen, read, extract))
 
-    assert len(site.called("POST /snapshots/30/extraction")) == 1
+    assert len(site.called("POST /snapshots/40/extraction")) == 1
     [run] = site.called("POST /runs")
     assert run["notice_failures"] == [
         {"url": "http://a/1.htm", "failure": "timeout", "detail": "http://a/1.htm"},
         {"url": "http://a/2.htm", "failure": "http_status", "detail": "HTTP 403"},
+        {
+            "url": "http://a/3.htm",
+            "failure": "unreachable",
+            "detail": "http://a/files/application.pdf",
+        },
     ]
 
 
 def test_a_list_that_cant_be_read_ends_the_round_with_the_reason() -> None:
-    async def unreachable(_fetcher: Fetcher, source: WorkSource) -> list[ListedItem]:
+    async def unreachable(_pages: PageSession, source: WorkSource) -> list[ListedItem]:
         raise FetchError("unreachable", source.url)
 
-    async def empty(_fetcher: Fetcher, _source: WorkSource) -> list[ListedItem]:
+    async def empty(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
         return []
 
     async def unused(*_: object) -> Any:
