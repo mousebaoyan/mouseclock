@@ -50,7 +50,7 @@ def selection() -> dict[str, object]:
 
 
 def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
-    page = NoticePage("", "报名截止延期至6月30日24点。", [], hyperlinks=())
+    page = NoticePage("", "报名截止延期至6月30日24点。", hyperlinks=(), attachments=[])
 
     def handle(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
@@ -100,7 +100,7 @@ def test_unknown_ids_and_mismatched_existing_project_are_rejected(key: str, valu
     item = selection()
     item[key] = value
     _, index = prepare(
-        "通知", NoticePage("", "报名截止6月30日24点。", [], hyperlinks=()), context()
+        "通知", NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[]), context()
     )
     with pytest.raises(SelectionError):
         resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
@@ -114,7 +114,9 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
         ),
         b"",
     )
-    _, index = prepare("通知", NoticePage("", "见附件。", [attachment], hyperlinks=()), context())
+    _, index = prepare(
+        "通知", NoticePage("", "见附件。", hyperlinks=(), attachments=[attachment]), context()
+    )
     sid = next(s.id for s in index.sentences.values() if s.attachment == 0)
     item = selection()
     fields = dict.fromkeys(SelectedFields.model_fields)
@@ -133,7 +135,7 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
 
 def test_raw_date_cannot_be_fabricated_or_replace_a_resolved_time() -> None:
     _, index = prepare(
-        "通知", NoticePage("", "报名截止6月30日24点。", [], hyperlinks=()), context()
+        "通知", NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[]), context()
     )
     for raw in [
         {"field": "apply.end", "text": "6月30日24点", "evidence": ["S1"]},
@@ -165,7 +167,9 @@ def test_invalid_selection_fails_the_entire_step() -> None:
         async with extract:
             with pytest.raises(StepError, match="Invalid extraction selection"):
                 await extract(
-                    "通知", NoticePage("", "报名截止6月30日。", [], hyperlinks=()), context()
+                    "通知",
+                    NoticePage("", "报名截止6月30日。", hyperlinks=(), attachments=[]),
+                    context(),
                 )
 
     asyncio.run(run())
@@ -193,6 +197,8 @@ def test_missing_usage_is_not_reported_as_a_free_success() -> None:
         )
         async with extract:
             with pytest.raises(StepError, match="LLM did not return usage"):
-                await extract("通知", NoticePage("", "无关材料。", [], hyperlinks=()), context())
+                await extract(
+                    "通知", NoticePage("", "无关材料。", hyperlinks=(), attachments=[]), context()
+                )
 
     asyncio.run(run())

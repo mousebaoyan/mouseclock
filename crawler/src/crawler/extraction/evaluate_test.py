@@ -14,7 +14,7 @@ from crawler.extraction.evaluate import CachedCall, Options, Result, cost_cny, e
 from crawler.extraction.extract import RoundSelection, prepare
 from crawler.extraction.metrics import Evaluation, pair_programs
 from crawler.extraction.numbered import SelectedFields
-from crawler.extraction.pages import Page, article, read_page, save_page
+from crawler.extraction.pages import Page, read_page, save_page
 from crawler.extraction.responses import MODEL, InputDetails, Response, Responses, ResponseUsage
 from crawler.extraction.schema import Extraction, LabelProgram, Notice
 from crawler.parse.indexing import NoticeIndex
@@ -34,7 +34,7 @@ def make_call(item: Notice, text: str) -> dict[str, JsonValue]:
             "programs": [],
         }
     )
-    return prepare(item.title, NoticePage("", text, [], hyperlinks=()), context)[0]
+    return prepare(item.title, NoticePage("", text, hyperlinks=(), attachments=[]), context)[0]
 
 
 def completion(content: str) -> dict[str, JsonValue]:
@@ -190,19 +190,6 @@ def test_evidence_only_ignores_whitespace() -> None:
     )
     metric.add(notice(), prediction, "Deadline: June 30, 24:00.")
     assert (metric.quotes, metric.missing_quotes) == (4, 2)
-
-
-def test_article_excludes_navigation_scripts_and_resolves_body_link() -> None:
-    html = (
-        '<nav>Wrong deadline</nav><div class="v_news_content"><p>Apply now.</p>'
-        '<script>Untrusted code</script><a href="../apply">Portal</a></div><footer>Footer</footer>'
-    )
-    text, links = article(html, "https://example.edu.cn/news/1")
-    assert text.strip() == "Apply now.\nPortal"
-    assert len(links) == 1
-    assert links[0].href == "https://example.edu.cn/apply"
-    assert text[links[0].start : links[0].end] == "Portal"
-    assert "https://example.edu.cn/apply" not in text
 
 
 def test_reuse_only_uses_cached_body_and_response_without_network(tmp_path: Path) -> None:

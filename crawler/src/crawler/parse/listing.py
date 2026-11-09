@@ -1,14 +1,14 @@
-import codecs
 import re
 from dataclasses import dataclass
 from datetime import date
 from urllib.parse import urldefrag, urljoin, urlsplit
 
-from lxml import etree, html
+from lxml import etree
 from lxml.html import HtmlElement
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from crawler.crawl.contract import ListedItem
+from crawler.parse.webpage import parse_webpage
 
 
 class Selectors(BaseModel):
@@ -147,15 +147,7 @@ def parse_listing(
 ) -> ListPage:
     if not body.strip():
         return ListPage([], None)
-    declaration = (content_type or "") + " " + body[:4096].decode("ascii", errors="ignore")
-    match = re.search(r"charset\s*=\s*['\"]?([\w.-]+)", declaration, re.IGNORECASE)
-    try:
-        encoding = codecs.lookup(match[1] if match else "utf-8").name
-        root = html.document_fromstring(
-            body, parser=html.HTMLParser(encoding=encoding, no_network=True, remove_comments=True)
-        )
-    except (LookupError, etree.ParserError) as error:
-        raise ValueError("列表页无法解析") from error
+    root = parse_webpage(body, content_type)
     try:
         if selectors is not None:
             items: dict[str, ListedItem] = {}

@@ -44,7 +44,8 @@ class StepError(Exception):
 @dataclass(frozen=True)
 class Attachment:
     info: AttachmentInfo
-    data: bytes
+    # None when the file couldn't be downloaded; the snapshot lists it all the same.
+    data: bytes | None
 
 
 @dataclass(frozen=True)
@@ -52,9 +53,10 @@ class NoticePage:
     html: str
     # The words of the notice; extraction quotes them, so they are what the reader sees.
     text: str
+    # Where `text` has links, their targets absolute against the page's final address.
+    hyperlinks: tuple[Hyperlink, ...]
     # In the order they appear; evidence refers to them by position.
     attachments: list[Attachment]
-    hyperlinks: tuple[Hyperlink, ...]
 
 
 @dataclass(frozen=True)
@@ -170,7 +172,8 @@ async def _fetch_notice(
         ),
     )
     for position in result.missing_files:
-        await website.attachment(result.snapshot_id, position, page.attachments[position].data)
+        if (data := page.attachments[position].data) is not None:
+            await website.attachment(result.snapshot_id, position, data)
     if result.extraction is None:
         return 0
     programs, usage = await steps.extract(notice.title, page, result.extraction)

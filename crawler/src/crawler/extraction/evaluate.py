@@ -207,7 +207,9 @@ async def evaluate(options: Options) -> int:
             )
             page = pages[notice.url]
             call, index = prepare(
-                notice.title, NoticePage("", page.text, [], hyperlinks=page.hyperlinks), context
+                notice.title,
+                NoticePage("", page.text, hyperlinks=page.hyperlinks, attachments=[]),
+                context,
             )
             identity = json.dumps(call, sort_keys=True)
             result = cache.get(identity)
