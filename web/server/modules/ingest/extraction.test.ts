@@ -179,6 +179,43 @@ test("unparsed update dates wait for review without overwriting existing dates o
   expect((await fieldsOf(program.id))["apply:end"]).toEqual(APPLY.value.end);
 });
 
+test("merging a duplicate preserves its pending unparsed dates on the original project", async () => {
+  const { cs, notice, snapshot: first } = await setUp("duplicate-raw.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [original] = await programsOf(cs);
+  const text = "报名截止改为下周二17点。";
+  const second = await snapshot(notice, text);
+  await extract(second.snapshot_id, [
+    {
+      college_id: cs,
+      fields: {},
+      unresolved_dates: [
+        {
+          field: "apply.end",
+          text: "下周二17点",
+          evidence: [{ quote: text }],
+        },
+      ],
+    },
+  ]);
+  const items = await pendingOf(second.snapshot_id);
+  const duplicate = items.find((item) => item.reason === "possible_duplicate");
+  const unresolved = items.find((item) => item.reason === "unparsed_date");
+  if (!duplicate || !unresolved) throw new Error("Missing duplicate or raw date review");
+  const res = await v1["review-items"][":id"].accept.$post(
+    { param: { id: String(duplicate.id) }, json: { program_id: original.id } },
+    editor,
+  );
+  expect(res.status).toBe(204);
+  const remaining = await pendingOf(second.snapshot_id);
+  expect(remaining).toHaveLength(1);
+  expect(remaining[0]).toMatchObject({
+    id: unresolved.id,
+    reason: "unparsed_date",
+    program_id: original.id,
+  });
+});
+
 test("unparsed dates require original evidence and cannot also contain a guessed normalized value", async () => {
   const { cs, snapshot: snap } = await setUp("bad-raw-date.edu.cn");
   for (const value of [

@@ -1,8 +1,9 @@
 import json
-from typing import Annotated, Literal
+from types import TracebackType
+from typing import Annotated, Literal, Self
 
 import httpx
-from pydantic import BaseModel, Field, JsonValue, ValidationError, model_validator
+from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from crawler.crawl.rounds import StepError
 
@@ -23,16 +24,6 @@ class ResponseUsage(BaseModel):
     input_tokens: TokenCount
     output_tokens: TokenCount
     input_tokens_details: InputDetails | None = None
-
-    @model_validator(mode="after")
-    def valid_cached_tokens(self) -> ResponseUsage:
-        if (
-            self.input_tokens_details is not None
-            and self.input_tokens_details.cached_tokens is not None
-            and self.input_tokens_details.cached_tokens > self.input_tokens
-        ):
-            raise ValueError("cached tokens exceed input tokens")
-        return self
 
 
 class Content(BaseModel):
@@ -77,7 +68,14 @@ def make_request(
             {"role": "user", "content": json.dumps(school, ensure_ascii=False, sort_keys=True)},
             {"role": "user", "content": json.dumps(notice, ensure_ascii=False, sort_keys=True)},
         ],
-        "text": {"format": {"type": "json_schema", "name": "notice_extraction", "schema": schema}},
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "notice_extraction",
+                "schema": schema,
+                "strict": True,
+            }
+        },
         "reasoning": {"effort": REASONING_EFFORT},
         "temperature": TEMPERATURE,
         "max_output_tokens": MAX_OUTPUT_TOKENS,
@@ -91,8 +89,17 @@ class Responses:
             headers={"Authorization": f"Bearer {key}"}, timeout=TIMEOUT, transport=transport
         )
 
-    async def close(self) -> None:
-        await self.client.aclose()
+    async def __aenter__(self) -> Self:
+        await self.client.__aenter__()
+        return self
+
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        await self.client.__aexit__(exc_type, exc, tb)
 
     async def generate(self, payload: dict[str, JsonValue]) -> Response:
         try:

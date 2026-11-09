@@ -28,7 +28,7 @@ const REASONS: Record<Reason, { label: string; color: TagColor; hint: string }> 
   unparsed_date: {
     label: "日期待确认",
     color: "amber",
-    hint: "原文有时间，但程序未能识别。请核对原句，到项目页补充时间后标记已核对；原有时间不会被这条原文覆盖。",
+    hint: "原文有时间，但程序未能识别。请核对原句，到项目页补充时间后关闭此条；原有时间不会被这条原文覆盖。",
   },
   no_deadline: {
     label: "缺少截止时间",
@@ -411,7 +411,7 @@ function ProgramItem({ item, reason, thisYear }: { item: Item; reason: Reason; t
             ))}
           </div>
         ))}
-        <Decide id={item.id} accept="已核对，关闭此条" reject="无需补充">
+        <Decide id={item.id} accept="已补充，关闭此条" reject="无需补充">
           {item.program && (
             <Link
               to={`/programs/${item.program.id}`}

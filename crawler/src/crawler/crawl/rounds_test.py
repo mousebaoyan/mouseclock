@@ -105,11 +105,11 @@ def page(text: str, files: int = 0) -> NoticePage:
         )
         for n in range(files)
     ]
-    return NoticePage(html=f"<p>{text}</p>", text=text, attachments=attachments)
+    return NoticePage(html=f"<p>{text}</p>", text=text, attachments=attachments, hyperlinks=())
 
 
 async def extract(
-    _page: NoticePage, _context: ExtractionContext
+    _title: str, _page: NoticePage, _context: ExtractionContext
 ) -> tuple[list[ExtractedProgram], list[Usage]]:
     program = ExtractedProgram(
         college_id=1,
@@ -231,21 +231,19 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
             return httpx.Response(200, json=body)
         return response
 
-    async def read(_fetcher: Fetcher, _source: WorkSource, _url: str) -> NoticePage:
+    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
         return page("报名截止6月30日24点。")
 
     async def run() -> None:
         extractor = Extract("local-test", httpx.MockTransport(model))
-        try:
-            async with (
-                Fetcher(httpx.MockTransport(lambda _: httpx.Response(500))) as fetcher,
-                Website("http://site", "token", httpx.MockTransport(website)) as client,
-            ):
-                await crawl_source(
-                    SOURCE, fetcher, client, Steps(list_items, screen, read, extractor)
-                )
-        finally:
-            await extractor.close()
+        async with (
+            extractor,
+            Fetcher(httpx.MockTransport(lambda _: httpx.Response(500))) as fetcher,
+            Website("http://site", "token", httpx.MockTransport(website)) as client,
+        ):
+            await crawl_source(
+                SOURCE, Browser(fetcher), client, Steps(list_items, screen, read, extractor)
+            )
 
     asyncio.run(run())
     [posted] = site.called("POST /snapshots/10/extraction")

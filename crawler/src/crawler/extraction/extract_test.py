@@ -50,14 +50,14 @@ def selection() -> dict[str, object]:
 
 
 def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
-    page = NoticePage("", "报名截止延期至6月30日24点。", [], title="夏令营延期")
+    page = NoticePage("", "报名截止延期至6月30日24点。", [], hyperlinks=())
 
     def handle(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
         shared = json.loads(payload["input"][0]["content"])
         notice = json.loads(payload["input"][1]["content"])
         assert shared["programs"][0]["id"] == 100
-        assert notice["title"] == page.title
+        assert notice["title"] == "夏令营延期"
         assert "published_on" not in shared
         return httpx.Response(
             200,
@@ -78,10 +78,8 @@ def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
 
     async def run() -> None:
         extract = Extract("local-test", httpx.MockTransport(handle))
-        try:
-            programs, usage = await extract(page, context())
-        finally:
-            await extract.close()
+        async with extract:
+            programs, usage = await extract("夏令营延期", page, context())
         [program] = programs
         assert (program.college_id, program.program_id) == (12, 100)
         assert program.fields.apply is not None
@@ -101,7 +99,9 @@ def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
 def test_unknown_ids_and_mismatched_existing_project_are_rejected(key: str, value: int) -> None:
     item = selection()
     item[key] = value
-    _, index = prepare(NoticePage("", "报名截止6月30日24点。", []), context())
+    _, index = prepare(
+        "通知", NoticePage("", "报名截止6月30日24点。", [], hyperlinks=()), context()
+    )
     with pytest.raises(SelectionError):
         resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
 
@@ -114,7 +114,7 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
         ),
         b"",
     )
-    _, index = prepare(NoticePage("", "见附件。", [attachment]), context())
+    _, index = prepare("通知", NoticePage("", "见附件。", [attachment], hyperlinks=()), context())
     sid = next(s.id for s in index.sentences.values() if s.attachment == 0)
     item = selection()
     fields = dict.fromkeys(SelectedFields.model_fields)
@@ -132,7 +132,9 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
 
 
 def test_raw_date_cannot_be_fabricated_or_replace_a_resolved_time() -> None:
-    _, index = prepare(NoticePage("", "报名截止6月30日24点。", []), context())
+    _, index = prepare(
+        "通知", NoticePage("", "报名截止6月30日24点。", [], hyperlinks=()), context()
+    )
     for raw in [
         {"field": "apply.end", "text": "6月30日24点", "evidence": ["S1"]},
         {"field": "event.start", "text": "不存在的日期", "evidence": ["S1"]},
@@ -160,11 +162,11 @@ def test_invalid_selection_fails_the_entire_step() -> None:
                 )
             ),
         )
-        try:
+        async with extract:
             with pytest.raises(StepError, match="Invalid extraction selection"):
-                await extract(NoticePage("", "报名截止6月30日。", []), context())
-        finally:
-            await extract.close()
+                await extract(
+                    "通知", NoticePage("", "报名截止6月30日。", [], hyperlinks=()), context()
+                )
 
     asyncio.run(run())
 
@@ -189,10 +191,8 @@ def test_missing_usage_is_not_reported_as_a_free_success() -> None:
                 )
             ),
         )
-        try:
+        async with extract:
             with pytest.raises(StepError, match="LLM did not return usage"):
-                await extract(NoticePage("", "无关材料。", []), context())
-        finally:
-            await extract.close()
+                await extract("通知", NoticePage("", "无关材料。", [], hyperlinks=()), context())
 
     asyncio.run(run())

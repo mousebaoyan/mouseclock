@@ -5,7 +5,7 @@ that need it, extract, and report the round. The steps that read pages and ask m
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import (
@@ -54,8 +54,7 @@ class NoticePage:
     text: str
     # In the order they appear; evidence refers to them by position.
     attachments: list[Attachment]
-    title: str = ""
-    hyperlinks: tuple[Hyperlink, ...] = ()
+    hyperlinks: tuple[Hyperlink, ...]
 
 
 @dataclass(frozen=True)
@@ -71,7 +70,7 @@ class Steps:
     read: Callable[[PageSession, WorkSource, str], Awaitable[NoticePage | None]]
     # The programs a notice is about (design §8.2).
     extract: Callable[
-        [NoticePage, ExtractionContext], Awaitable[tuple[list[ExtractedProgram], list[Usage]]]
+        [str, NoticePage, ExtractionContext], Awaitable[tuple[list[ExtractedProgram], list[Usage]]]
     ]
 
 
@@ -174,6 +173,6 @@ async def _fetch_notice(
         await website.attachment(result.snapshot_id, position, page.attachments[position].data)
     if result.extraction is None:
         return 0
-    programs, usage = await steps.extract(replace(page, title=notice.title), result.extraction)
+    programs, usage = await steps.extract(notice.title, page, result.extraction)
     await website.extraction(result.snapshot_id, Extraction(programs=programs, usage=usage))
     return len(programs)

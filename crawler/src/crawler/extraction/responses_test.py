@@ -3,7 +3,7 @@ import json
 
 import httpx
 import pytest
-from pydantic import JsonValue, ValidationError
+from pydantic import JsonValue
 
 from crawler.crawl.rounds import StepError
 from crawler.extraction.responses import Response, Responses, make_request
@@ -26,6 +26,7 @@ def test_responses_envelope_excludes_reasoning_and_preserves_cache_usage() -> No
         assert str(request.url) == "https://api.deepseek.com/responses"
         body = json.loads(request.content)
         assert body["text"]["format"]["type"] == "json_schema"
+        assert body["text"]["format"]["strict"] is True
         assert body["reasoning"] == {"effort": "none"}
         return httpx.Response(
             200,
@@ -52,10 +53,8 @@ def test_responses_envelope_excludes_reasoning_and_preserves_cache_usage() -> No
 
     async def run() -> Response:
         client = Responses("local-test", httpx.MockTransport(handle))
-        try:
+        async with client:
             return await client.generate(make_request("rules", {}, {}, {"type": "object"}))
-        finally:
-            await client.close()
 
     result = asyncio.run(run())
     assert result.output_text() == '{"programs":[]}'
@@ -81,22 +80,6 @@ def test_non_completed_response_keeps_usage_but_cannot_be_used_as_extraction(sta
     assert result.usage.input_tokens_details is None
 
 
-def test_invalid_cache_count_is_rejected_instead_of_reporting_a_discount() -> None:
-    with pytest.raises(ValidationError, match="cached tokens exceed"):
-        Response.model_validate(
-            {
-                "model": "deepseek-flash",
-                "status": "completed",
-                "output": [],
-                "usage": {
-                    "input_tokens": 1,
-                    "output_tokens": 1,
-                    "input_tokens_details": {"cached_tokens": 2},
-                },
-            }
-        )
-
-
 @pytest.mark.parametrize("content", [[], [{"type": "refusal"}], [{"type": "output_text"}]])
 def test_empty_or_refused_output_is_not_an_irrelevant_notice(content: list[dict[str, str]]) -> None:
     result = Response.model_validate(
@@ -117,11 +100,9 @@ def test_http_failure_reports_status_without_response_body_or_key(status: int) -
             "local-test",
             httpx.MockTransport(lambda _: httpx.Response(status, text="sensitive upstream detail")),
         )
-        try:
+        async with client:
             with pytest.raises(StepError) as caught:
                 await client.generate({})
             assert caught.value.detail == f"LLM HTTP {status}"
-        finally:
-            await client.close()
 
     asyncio.run(run())

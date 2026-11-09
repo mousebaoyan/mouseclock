@@ -1,22 +1,53 @@
 import asyncio
 import json
 from datetime import UTC, datetime
-from math import isclose
 from pathlib import Path
 
 import httpx
 import pytest
-from pydantic import TypeAdapter
+from pydantic import JsonValue, TypeAdapter
 
-from crawler.crawl.contract import Contacts, Evidence
+from crawler.crawl.contract import Contacts, Evidence, ExtractedProgram, ExtractionContext
 from crawler.crawl.fetch import Fetcher
-from crawler.extraction.evaluate import CachedCall, Options, evaluate
-from crawler.extraction.llm import DEFAULT_MODELS, LLM, Result, Usage, cost_cny, make_call
+from crawler.crawl.rounds import NoticePage
+from crawler.extraction.evaluate import CachedCall, Options, Result, cost_cny, evaluate
+from crawler.extraction.extract import RoundSelection, prepare
 from crawler.extraction.metrics import Evaluation, pair_programs
-from crawler.extraction.numbered import SelectedExtraction, SelectedFields
+from crawler.extraction.numbered import SelectedFields
 from crawler.extraction.pages import Page, article, read_page, save_page
+from crawler.extraction.responses import MODEL, InputDetails, Response, Responses, ResponseUsage
 from crawler.extraction.schema import Extraction, LabelProgram, Notice
 from crawler.parse.indexing import NoticeIndex
+
+
+def sources(path: Path) -> Path:
+    result = path / "sources.csv"
+    result.write_text("school,college\nExample University,Computer Science\n", encoding="utf-8")
+    return result
+
+
+def make_call(item: Notice, text: str) -> dict[str, JsonValue]:
+    context = ExtractionContext.model_validate(
+        {
+            "published_on": item.published_on,
+            "colleges": [{"id": 1, "name": "Computer Science"}],
+            "programs": [],
+        }
+    )
+    return prepare(item.title, NoticePage("", text, [], hyperlinks=()), context)[0]
+
+
+def completion(content: str) -> dict[str, JsonValue]:
+    return {
+        "model": MODEL,
+        "status": "completed",
+        "output": [{"type": "message", "content": [{"type": "output_text", "text": content}]}],
+        "usage": {
+            "input_tokens": 12,
+            "output_tokens": 7,
+            "input_tokens_details": {"cached_tokens": 0},
+        },
+    }
 
 
 def notice() -> Notice:
@@ -70,18 +101,20 @@ def extraction() -> Extraction:
     )
 
 
-def selected_extraction() -> SelectedExtraction:
+def selected_extraction() -> RoundSelection:
     fields = dict.fromkeys(SelectedFields.model_fields)
     fields["apply"] = {
         "value": {"start": None, "end": {"date_id": "D1", "edge": "first"}, "rolling": None},
         "evidence": ["S1"],
         "confidence": 0.9,
     }
-    return SelectedExtraction.model_validate(
+    return RoundSelection.model_validate(
         {
             "programs": [
                 {
-                    "college": "Computer Science",
+                    "college_id": 1,
+                    "program_id": None,
+                    "unresolved_dates": [],
                     "cohort": 2027,
                     "kind": "summer_camp",
                     "role": "call",
@@ -159,75 +192,6 @@ def test_evidence_only_ignores_whitespace() -> None:
     assert (metric.quotes, metric.missing_quotes) == (4, 2)
 
 
-def test_invalid_output_is_failure_but_usage_is_retained() -> None:
-    async def run() -> Result:
-        def respond(_: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200,
-                json={
-                    "model": "test",
-                    "usage": {"prompt_tokens": 12, "completion_tokens": 7},
-                    "choices": [
-                        {"finish_reason": "stop", "message": {"content": "```json\n{}\n```"}}
-                    ],
-                },
-            )
-
-        llm = LLM("local-test-credential", httpx.MockTransport(respond))
-        try:
-            return await llm.extract(make_call(notice(), "fictional text", "test", "off"))
-        finally:
-            await llm.close()
-
-    result = asyncio.run(run())
-    assert result.error is None
-    assert result.content == "```json\n{}\n```"
-    assert result.usage == Usage(prompt_tokens=12, completion_tokens=7)
-    assert cost_cny(DEFAULT_MODELS[0], result) is None
-    reference = cost_cny(DEFAULT_MODELS[0], result, reference=True)
-    assert reference is not None
-    assert isclose(reference, 0.00008)
-
-
-def test_unknown_usage_is_not_free_and_reasoning_is_not_double_counted() -> None:
-    result = Result(elapsed_seconds=1, observed_at=datetime(2026, 6, 1, 0, tzinfo=UTC))
-    assert cost_cny(DEFAULT_MODELS[0], result) is None
-    result.usage = Usage.model_validate(
-        {
-            "prompt_tokens": 100,
-            "completion_tokens": 200,
-            "prompt_tokens_details": {"cached_tokens": 50},
-            "completion_tokens_details": {"reasoning_tokens": 150},
-        }
-    )
-    cost = cost_cny(DEFAULT_MODELS[0], result)
-    assert cost is not None
-    assert isclose(cost, (50 * 2 + 50 * 0.04 + 200 * 8) / 1e6)
-    result.observed_at = datetime(2026, 6, 1, 19, tzinfo=UTC)
-    cost = cost_cny(DEFAULT_MODELS[0], result)
-    assert cost is not None
-    assert isclose(cost, 0.000851)
-
-
-def test_total_timeout_is_a_failed_call_with_unknown_cost() -> None:
-    async def run() -> Result:
-        async def never_respond(_: httpx.Request) -> httpx.Response:
-            await asyncio.Future[None]()
-            raise AssertionError("unreachable")
-
-        llm = LLM("local-test-credential", httpx.MockTransport(never_respond))
-        call = make_call(notice(), "fictional text", "test", "off")
-        call.timeout_seconds = 0
-        try:
-            return await llm.extract(call)
-        finally:
-            await llm.close()
-
-    result = asyncio.run(run())
-    assert result.error == "timeout"
-    assert result.usage is None
-
-
 def test_article_excludes_navigation_scripts_and_resolves_body_link() -> None:
     html = (
         '<nav>Wrong deadline</nav><div class="v_news_content"><p>Apply now.</p>'
@@ -253,9 +217,9 @@ def test_reuse_only_uses_cached_body_and_response_without_network(tmp_path: Path
         tmp_path / "pages.json",
     )
     entry = CachedCall(
-        call=make_call(item, text, "test", "off"),
+        call=make_call(item, text),
         result=Result(
-            content=selected_extraction().model_dump_json(),
+            response=Response.model_validate(completion(selected_extraction().model_dump_json())),
             elapsed_seconds=1,
             observed_at=datetime(2026, 5, 1, tzinfo=UTC),
         ),
@@ -266,8 +230,7 @@ def test_reuse_only_uses_cached_body_and_response_without_network(tmp_path: Path
             Options(
                 dataset=dataset,
                 output=tmp_path,
-                models=["test"],
-                modes=["off"],
+                sources=sources(tmp_path),
                 reuse_only=True,
                 prepare_only=False,
             )
@@ -275,8 +238,8 @@ def test_reuse_only_uses_cached_body_and_response_without_network(tmp_path: Path
     )
     assert status == 0
     report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
-    assert report["experiments"]["test/off"]["exact_notices"] == 1
-    assert report["experiments"]["test/off"]["reference_cny_per_notice"] is None
+    assert report["experiments"][MODEL]["exact_notices"] == 1
+    assert report["experiments"][MODEL]["estimated_total_cny"] is not None
 
 
 def test_invalid_selection_replays_raw_response_after_resolver_fix(
@@ -299,28 +262,18 @@ def test_invalid_selection_replays_raw_response_after_resolver_fix(
     def respond(_: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        content = selected_extraction().model_dump_json()
-        if calls == 1:
-            content = content.replace("D1", "D999")
-        return httpx.Response(
-            200,
-            json={
-                "model": "test",
-                "usage": {"prompt_tokens": 12, "completion_tokens": 7},
-                "choices": [{"finish_reason": "stop", "message": {"content": content}}],
-            },
-        )
+        content = selected_extraction().model_dump_json().replace("D1", "D999")
+        return httpx.Response(200, json=completion(content))
 
-    def local_llm(key: str) -> LLM:
-        return LLM(key, httpx.MockTransport(respond))
+    def local_llm(key: str) -> Responses:
+        return Responses(key, httpx.MockTransport(respond))
 
     monkeypatch.setenv("LLM_API_KEY", "local-test-credential")
-    monkeypatch.setattr("crawler.extraction.evaluate.LLM", local_llm)
+    monkeypatch.setattr("crawler.extraction.evaluate.Responses", local_llm)
     options = Options(
         dataset=dataset,
         output=tmp_path,
-        models=["test"],
-        modes=["off"],
+        sources=sources(tmp_path),
         reuse_only=False,
         prepare_only=False,
     )
@@ -329,24 +282,28 @@ def test_invalid_selection_replays_raw_response_after_resolver_fix(
         (tmp_path / "calls.jsonl").read_text(encoding="utf-8").strip()
     )
     assert entry.result.error is None
-    assert entry.result.usage == Usage(prompt_tokens=12, completion_tokens=7)
+    assert entry.result.response is not None
+    assert entry.result.response.usage == ResponseUsage(
+        input_tokens=12, output_tokens=7, input_tokens_details=InputDetails(cached_tokens=0)
+    )
     assert asyncio.run(evaluate(options)) == 1
     assert calls == 1
-    from crawler.extraction.numbered import resolve as original_resolve
+    from crawler.extraction.extract import resolve_programs as original_resolve
 
-    def fixed_resolve(selection: SelectedExtraction, index: NoticeIndex) -> Extraction:
+    def fixed_resolve(
+        selection: RoundSelection, index: NoticeIndex, context: ExtractionContext
+    ) -> list[ExtractedProgram]:
         return original_resolve(
-            SelectedExtraction.model_validate_json(
-                selection.model_dump_json().replace("D999", "D1")
-            ),
+            RoundSelection.model_validate_json(selection.model_dump_json().replace("D999", "D1")),
             index,
+            context,
         )
 
-    monkeypatch.setattr("crawler.extraction.evaluate.resolve", fixed_resolve)
+    monkeypatch.setattr("crawler.extraction.evaluate.resolve_programs", fixed_resolve)
     assert asyncio.run(evaluate(options)) == 0
     assert calls == 1
     report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
-    assert report["experiments"]["test/off"]["exact_notices"] == 1
+    assert report["experiments"][MODEL]["exact_notices"] == 1
 
 
 def test_cache_cannot_be_used_for_another_url(tmp_path: Path) -> None:
@@ -403,33 +360,22 @@ def test_failed_requests_are_not_cached_and_retry_on_next_run(
     def respond(_: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        if calls == 1:
-            return httpx.Response(503)
-        return httpx.Response(
-            200,
-            json={
-                "model": "test",
-                "usage": {"prompt_tokens": 12, "completion_tokens": 7},
-                "choices": [
-                    {
-                        "finish_reason": "stop",
-                        "message": {"content": selected_extraction().model_dump_json()},
-                    }
-                ],
-            },
+        return (
+            httpx.Response(503)
+            if calls == 1
+            else httpx.Response(200, json=completion(selected_extraction().model_dump_json()))
         )
 
     monkeypatch.setenv("LLM_API_KEY", "local-test-credential")
 
-    def local_llm(key: str) -> LLM:
-        return LLM(key, httpx.MockTransport(respond))
+    def local_llm(key: str) -> Responses:
+        return Responses(key, httpx.MockTransport(respond))
 
-    monkeypatch.setattr("crawler.extraction.evaluate.LLM", local_llm)
+    monkeypatch.setattr("crawler.extraction.evaluate.Responses", local_llm)
     options = Options(
         dataset=dataset,
         output=tmp_path,
-        models=["test"],
-        modes=["off"],
+        sources=sources(tmp_path),
         reuse_only=False,
         prepare_only=False,
     )
@@ -450,3 +396,15 @@ def test_page_reader_honors_declared_gbk_encoding(tmp_path: Path) -> None:
             )
 
     assert asyncio.run(run()).text.strip() == "自编通知正文。"
+
+
+def test_unknown_usage_is_not_free_and_cached_input_uses_the_official_rate() -> None:
+    result = Result(elapsed_seconds=1, observed_at=datetime(2026, 11, 9, tzinfo=UTC))
+    assert cost_cny(result) is None
+    result.response = Response.model_validate(completion("{}"))
+    assert cost_cny(result) == (12 * 2 + 7 * 8) / 1e6
+    assert cost_cny(result, off_peak=True) == (12 * 2 + 7 * 8) / 2e6
+    assert result.response.usage is not None
+    result.response.usage.input_tokens_details = None
+    assert cost_cny(result) is None
+    assert cost_cny(result, cached=False) is not None
