@@ -14,7 +14,7 @@ from crawler.extraction.evaluate import CachedCall, Options, evaluate
 from crawler.extraction.llm import DEFAULT_MODELS, LLM, Result, Usage, cost_cny, make_call
 from crawler.extraction.metrics import Evaluation, pair_programs
 from crawler.extraction.numbered import SelectedExtraction, SelectedFields
-from crawler.extraction.pages import Page, article, read_page, save_page
+from crawler.extraction.pages import Page, read_page, save_page
 from crawler.extraction.schema import Extraction, LabelProgram, Notice
 from crawler.parse.indexing import NoticeIndex
 
@@ -226,19 +226,6 @@ def test_total_timeout_is_a_failed_call_with_unknown_cost() -> None:
     result = asyncio.run(run())
     assert result.error == "timeout"
     assert result.usage is None
-
-
-def test_article_excludes_navigation_scripts_and_resolves_body_link() -> None:
-    html = (
-        '<nav>Wrong deadline</nav><div class="v_news_content"><p>Apply now.</p>'
-        '<script>Untrusted code</script><a href="../apply">Portal</a></div><footer>Footer</footer>'
-    )
-    text, links = article(html, "https://example.edu.cn/news/1")
-    assert text.strip() == "Apply now.\nPortal"
-    assert len(links) == 1
-    assert links[0].href == "https://example.edu.cn/apply"
-    assert text[links[0].start : links[0].end] == "Portal"
-    assert "https://example.edu.cn/apply" not in text
 
 
 def test_reuse_only_uses_cached_body_and_response_without_network(tmp_path: Path) -> None:

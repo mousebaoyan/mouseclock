@@ -456,7 +456,7 @@ def test_page_parse_failure_is_not_reported_as_a_configuration_error() -> None:
     )
     with pytest.raises(StepError) as caught:
         sites.run(lambda f: list_items(PageSession(f, None), source()))
-    assert caught.value.detail == "列表页无法解析"
+    assert caught.value.detail == "网页无法解析"
 
 
 def test_repeated_links_can_be_the_list_rows() -> None:

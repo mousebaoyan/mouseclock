@@ -103,7 +103,7 @@ def page(text: str, files: int = 0) -> NoticePage:
         )
         for n in range(files)
     ]
-    return NoticePage(html=f"<p>{text}</p>", text=text, attachments=attachments)
+    return NoticePage(html=f"<p>{text}</p>", text=text, hyperlinks=(), attachments=attachments)
 
 
 async def extract(
@@ -127,10 +127,14 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         extracted=frozenset({3}),
     )
 
+    behind_captcha = Attachment(
+        AttachmentInfo(name="表.doc", url="http://a/表.doc", content_type="doc", text=""), None
+    )
+    with_files = page("冬令营", files=1)
+    with_files.attachments.append(behind_captcha)
+
     async def read(_pages: PageSession, _source: WorkSource, url: str) -> NoticePage | None:
-        return {"http://a/1.htm": page("冬令营", files=1), "http://a/3.htm": page("夏令营")}.get(
-            url
-        )
+        return {"http://a/1.htm": with_files, "http://a/3.htm": page("夏令营")}.get(url)
 
     site.run(Steps(list_items, screen, read, extract))
 
@@ -154,6 +158,8 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         "content_type": "pdf",
         "text": "表",
     }
+    # The one behind a captcha is listed, and there is no file to send.
+    assert snapshot["attachments"][1]["url"] == "http://a/表.doc"
     assert site.called("PUT /snapshots/10/attachments/0") == [b"%PDF"]
     [run] = site.called("POST /runs")
     assert run == {
