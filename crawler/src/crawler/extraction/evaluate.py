@@ -1,49 +1,52 @@
 import argparse
 import asyncio
+import csv
 import json
 import os
 from collections import Counter
+from datetime import UTC, datetime
 from pathlib import Path
-from statistics import mean, median, quantiles
+from statistics import mean
+from time import perf_counter
 from typing import Annotated
 
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 
+from crawler.crawl.contract import ExtractionContext
 from crawler.crawl.fetch import Fetcher, FetchError
+from crawler.crawl.rounds import NoticePage, StepError
 from crawler.extraction.diagnostics import date_coverage
-from crawler.extraction.llm import (
-    DEFAULT_MODELS,
-    LLM,
-    MAX_TOKENS,
-    TIMEOUT,
-    Call,
-    Mode,
-    Result,
-    cost_cny,
-    make_call,
-)
-from crawler.extraction.metrics import FIELD_NAMES, META, Evaluation
-from crawler.extraction.numbered import SelectedExtraction, SelectionError, resolve
+from crawler.extraction.extract import RoundSelection, prepare, resolve_programs
+from crawler.extraction.metrics import Evaluation
+from crawler.extraction.numbered import SelectionError
 from crawler.extraction.pages import Page, PageError, read_page
-from crawler.extraction.schema import Extraction, Notice
-from crawler.parse.indexing import Document, index_documents
+from crawler.extraction.responses import MODEL, Response, Responses
+from crawler.extraction.schema import Extraction, Notice, Program
+from crawler.parse.indexing import Document
 
 CONCURRENCY = 3
 
 
+class Result(BaseModel):
+    response: Response | None = None
+    elapsed_seconds: float
+    observed_at: datetime
+    error: str | None = None
+
+
 class CachedCall(BaseModel):
-    call: Call
+    call: dict[str, JsonValue]
     result: Result
 
 
 class Options(BaseModel):
     dataset: Path
     output: Path
-    models: list[str]
-    modes: list[Mode]
+    sources: Path = Path("../data/sources.csv")
     limit: Annotated[int | None, Field(gt=0)] = None
-    reuse_only: bool
-    prepare_only: bool
+    reuse_only: bool = False
+    prepare_only: bool = False
+    off_peak: bool = False
 
 
 def write_json(path: Path, value: JsonValue) -> None:
@@ -59,135 +62,72 @@ def select_notices(notices: list[Notice], limit: int | None) -> list[Notice]:
     return [notices[i * len(notices) // limit] for i in range(limit)]
 
 
-def summarize(model: str, results: list[Result], evaluation: Evaluation) -> dict[str, JsonValue]:
-    calls = len(results)
-    known = [r for r in results if r.usage is not None]
-    costs = [cost_cny(model, r) for r in results]
-    references = [cost_cny(model, r, reference=True) for r in results]
-    times = [r.elapsed_seconds for r in results]
-    reasoning = [
-        r.usage.completion_tokens_details.reasoning_tokens
-        for r in known
-        if r.usage is not None
-        and r.usage.completion_tokens_details is not None
-        and r.usage.completion_tokens_details.reasoning_tokens is not None
-    ]
+def colleges_by_school(path: Path) -> dict[str, list[dict[str, JsonValue]]]:
+    with path.open(encoding="utf-8", newline="") as stream:
+        names = sorted({(r["school"], r["college"]) for r in csv.DictReader(stream)})
+    schools: dict[str, list[dict[str, JsonValue]]] = {}
+    for college_id, (school, college) in enumerate(names, 1):
+        schools.setdefault(school, []).append({"id": college_id, "name": college})
+    return schools
+
+
+def cost_cny(result: Result, *, off_peak: bool = False, cached: bool = True) -> float | None:
+    usage = result.response.usage if result.response else None
+    if usage is None:
+        return None
+    hits = usage.input_tokens_details.cached_tokens if usage.input_tokens_details else None
+    if cached and hits is None:
+        return None
+    hit = hits if cached and hits is not None else 0
+    # Official CNY/M tokens; the experiment explicitly selects its billing period.
+    return (
+        ((usage.input_tokens - hit) * 2 + hit * 0.04 + usage.output_tokens * 8)
+        / 1e6
+        * (0.5 if off_peak else 1)
+    )
+
+
+def summarize(
+    results: list[Result], evaluation: Evaluation, off_peak: bool
+) -> dict[str, JsonValue]:
     report = evaluation.report()
+    usages = [r.response.usage for r in results if r.response and r.response.usage is not None]
+    hits = [
+        u.input_tokens_details.cached_tokens if u.input_tokens_details else None for u in usages
+    ]
+    inputs = sum(u.input_tokens for u in usages)
+    known_hits = sum(n for n in hits if n is not None)
+    costs = [cost_cny(r, off_peak=off_peak) for r in results]
     report.update(
         {
-            "calls": calls,
+            "calls": len(results),
             "failures": sum(r.error is not None for r in results),
-            "known_usage_calls": len(known),
-            "input_tokens_per_notice": mean(
-                r.usage.prompt_tokens for r in known if r.usage is not None
-            )
-            if known
-            else None,
-            "output_tokens_per_notice": mean(
-                r.usage.completion_tokens for r in known if r.usage is not None
-            )
-            if known
-            else None,
-            "reasoning_tokens_per_notice": mean(reasoning) if reasoning else None,
-            "reasoning_usage_calls": len(reasoning),
-            "mean_seconds": mean(times) if times else None,
-            "p50_seconds": median(times) if times else None,
-            "p95_seconds": quantiles(times, n=100, method="inclusive")[94]
-            if len(times) > 1
-            else times[0]
-            if times
+            "failure_types": dict[str, JsonValue](Counter(r.error for r in results if r.error)),
+            "known_usage_calls": len(usages),
+            "input_tokens": inputs,
+            "output_tokens": sum(u.output_tokens for u in usages),
+            "cache_hit_tokens": known_hits,
+            "cache_hit_rate": known_hits / inputs
+            if inputs and len(usages) == len(results) and all(n is not None for n in hits)
             else None,
             "estimated_total_cny": sum(c for c in costs if c is not None)
-            if costs and all(c is not None for c in costs)
+            if all(c is not None for c in costs)
             else None,
-            "reference_cny_per_notice": sum(c for c in references if c is not None) / calls
-            if calls and all(c is not None for c in references)
-            else None,
+            "known_estimated_cny": sum(c for c in costs if c is not None),
+            "unknown_cost_calls": sum(c is None for c in costs),
+            "mean_seconds": mean(r.elapsed_seconds for r in results) if results else None,
         }
     )
-    report["returned_models"] = list[JsonValue](
-        sorted({r.returned_model for r in results if r.returned_model})
-    )
-    report["known_estimated_cny"] = sum(c for c in costs if c is not None)
-    report["unknown_cost_calls"] = sum(c is None for c in costs)
-    report["known_reference_cny"] = sum(c for c in references if c is not None)
-    known_references = [c for c in references if c is not None]
-    report["reference_cny_per_known_response"] = (
-        mean(known_references) if known_references else None
-    )
-    successes = [r.elapsed_seconds for r in results if r.error is None]
-    report["successful_mean_seconds"] = mean(successes) if successes else None
-    report["failure_types"] = dict[str, JsonValue](Counter(r.error for r in results if r.error))
     return report
 
 
 def markdown(report: dict[str, JsonValue]) -> str:
-    rows = [
-        "# 抽取摸底实验",
-        "",
-        "本轮使用 #75 的 S/D/L/E 编号,程序按引用还原时间值、报名入口和证据。",
-        "参数为请求值,不保证服务端采用;实际推理 token 单列。准确率分母是标注有值的数量,",
-        "只对标注集已有的项目元数据与 apply/apply_url/event/degrees 计准确率,其他字段只校验证据。",
-        "多项目先配学院、届、类型、作用全部相同的项目,剩余按相同项最多一对一配对。",
-        "没有共同元数据的不配对,剩余项目分别算漏抽或多抽;元数据差异单独计错。",
-        "失败记录为未抽取,保留已返回用量;证据匹配只忽略空白,不能替代语义核验。",
-        "",
-        "费用按官方单价估算,本轮估算含已知缓存与北京时间优惠;参考费用统一按常规时段、不计缓存。",
-        "用量未知时费用未知,不计成免费。单次非流式请求耗时包含网络及排队,无首 token 延迟指标。",
-        "",
-        "| 模型 / 请求设置 | 样本 | 失败 | 已标字段全对 | 截止准确率 | 证据未找到 | "
-        "平均秒 | 输入/输出 token | 参考元/条 |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
-    ]
-    experiments = report.get("experiments")
-    if isinstance(experiments, dict):
-        for name, item in experiments.items():
-            if not isinstance(item, dict):
-                continue
-            fields = item.get("fields")
-            deadline = fields.get("apply.end") if isinstance(fields, dict) else None
-            accuracy = deadline.get("accuracy") if isinstance(deadline, dict) else None
-
-            def number(value: JsonValue) -> str:
-                return f"{value:.4f}" if isinstance(value, (int, float)) else "未知"
-
-            rows.append(
-                f"| {name} | {item.get('notices')} | {item.get('failures')} | "
-                f"{number(item.get('exact_notice_accuracy'))} | {number(accuracy)} | "
-                f"{number(item.get('missing_quote_rate'))} | {number(item.get('mean_seconds'))} | "
-                f"{number(item.get('input_tokens_per_notice'))}/"
-                f"{number(item.get('output_tokens_per_notice'))} | "
-                f"{number(item.get('reference_cny_per_notice'))} |"
-            )
-    rows.extend(
-        [
-            "",
-            "| 模型 / 请求设置 | 字段 | 标注数 | 正确 | 错误 | 漏抽 | 多抽 |",
-            "| --- | --- | ---: | ---: | ---: | ---: | ---: |",
-        ]
+    return (
+        "# 官方编号抽取复验\n\n固定标注分母。失败保留分母。"
+        "费用按用量估算。未核对账单。\n\n```json\n"
+        + json.dumps(report["experiments"], ensure_ascii=False, indent=2)
+        + "\n```\n"
     )
-    if isinstance(experiments, dict):
-        for name, item in experiments.items():
-            fields = item.get("fields") if isinstance(item, dict) else None
-            if not isinstance(fields, dict):
-                continue
-            for key in ("apply.start", "apply.end", "event.start", "event.end", "apply_url"):
-                metric = fields.get(key)
-                if isinstance(metric, dict):
-                    rows.append(
-                        f"| {name} | {key} | {metric.get('expected')} | "
-                        f"{metric.get('correct')} | {metric.get('wrong')} | "
-                        f"{metric.get('missing')} | {metric.get('extra')} |"
-                    )
-    rows.extend(
-        [
-            "",
-            "逐字段指标、分母、截止准确率/精确率和失败网址见 report.json。",
-            "报告中的比例取值 0-1。正文与包含证据的响应缓存仅供本地使用,不提交。",
-            "",
-        ]
-    )
-    return "\n".join(rows)
 
 
 async def evaluate(options: Options) -> int:
@@ -198,13 +138,12 @@ async def evaluate(options: Options) -> int:
     if not notices or len({n.url for n in notices}) != len(notices):
         raise ValueError("empty_or_duplicate_dataset")
     selected = select_notices(notices, options.limit)
+    schools = colleges_by_school(options.sources)
     options.output.mkdir(parents=True, exist_ok=True)
-    page_errors: list[JsonValue] = []
     pages: dict[str, Page] = {}
+    errors: list[JsonValue] = []
     async with Fetcher() as fetcher:
-        for notice in notices:
-            if notice not in selected:
-                continue
+        for notice in selected:
             try:
                 pages[notice.url] = await read_page(
                     notice.url,
@@ -213,17 +152,21 @@ async def evaluate(options: Options) -> int:
                     reuse_only=options.reuse_only,
                 )
             except FetchError as error:
-                page_errors.append({"url": notice.url, "error": error.failure})
-            except PageError as error:
-                page_errors.append({"url": notice.url, "error": str(error)})
-            except (ValidationError, UnicodeError) as error:
-                page_errors.append({"url": notice.url, "error": type(error).__name__})
+                errors.append({"url": notice.url, "error": error.failure})
+            except (PageError, ValidationError, UnicodeError) as error:
+                errors.append(
+                    {
+                        "url": notice.url,
+                        "error": str(error)
+                        if isinstance(error, PageError)
+                        else type(error).__name__,
+                    }
+                )
     coverage = (
         date_coverage(
-            selected,
-            {url: Document(page.text, hyperlinks=page.hyperlinks) for url, page in pages.items()},
+            selected, {u: Document(p.text, hyperlinks=p.hyperlinks) for u, p in pages.items()}
         )
-        if not page_errors
+        if not errors
         else None
     )
     write_json(
@@ -231,123 +174,128 @@ async def evaluate(options: Options) -> int:
         {
             "selected": len(selected),
             "ready": len(pages),
-            "failures": page_errors,
+            "failures": errors,
             "date_coverage": coverage,
         },
     )
-    print(f"pages_ready={len(pages)}/{len(selected)} failures={len(page_errors)}", flush=True)
-    if options.prepare_only:
-        return int(bool(page_errors))
-    if page_errors:
-        # Keep the denominator fixed across models instead of silently shrinking the dataset.
-        return 1
+    print(f"pages_ready={len(pages)}/{len(selected)} failures={len(errors)}", flush=True)
+    if options.prepare_only or errors:
+        return int(bool(errors))
     records_path = options.output / "calls.jsonl"
     cache: dict[str, Result] = {}
     if records_path.exists():
         for line in records_path.read_text(encoding="utf-8").splitlines():
             entry = CachedCall.model_validate_json(line)
-            if entry.result.error is None:
-                cache[entry.call.model_dump_json()] = entry.result
-    llm = LLM(key) if key and not options.reuse_only else None
+            if (
+                entry.result.response is not None
+                and entry.result.response.status == "completed"
+                and entry.result.error is None
+            ):
+                cache[json.dumps(entry.call, sort_keys=True)] = entry.result
+    evaluation = Evaluation()
+    results: list[Result] = []
     semaphore = asyncio.Semaphore(CONCURRENCY)
-    groups: dict[tuple[str, Mode], tuple[Evaluation, list[Result]]] = {
-        (model, mode): (Evaluation(), []) for mode in options.modes for model in options.models
+    async with Responses(key or "") as llm:
+
+        async def run(notice: Notice) -> None:
+            context = ExtractionContext.model_validate(
+                {
+                    "published_on": notice.published_on,
+                    "colleges": schools[notice.school],
+                    "programs": [],
+                }
+            )
+            page = pages[notice.url]
+            call, index = prepare(
+                notice.title,
+                NoticePage("", page.text, hyperlinks=page.hyperlinks, attachments=[]),
+                context,
+            )
+            identity = json.dumps(call, sort_keys=True)
+            result = cache.get(identity)
+            if result is None:
+                if options.reuse_only:
+                    raise ValueError("response_cache_missing")
+                async with semaphore:
+                    start = perf_counter()
+                    result = Result(elapsed_seconds=0, observed_at=datetime.now(UTC))
+                    try:
+                        result.response = await llm.generate(call)
+                    except StepError as error:
+                        result.error = error.detail
+                    result.elapsed_seconds = perf_counter() - start
+                if (
+                    result.error is None
+                    and result.response is not None
+                    and result.response.status == "completed"
+                ):
+                    with records_path.open("a", encoding="utf-8", newline="\n") as stream:
+                        stream.write(CachedCall(call=call, result=result).model_dump_json() + "\n")
+            # Only provider results are cached; selection restoration always runs again.
+            result = result.model_copy()
+            prediction: Extraction | None = None
+            if result.error is None and result.response is not None:
+                try:
+                    programs = resolve_programs(
+                        RoundSelection.model_validate_json(
+                            result.response.output_text(), strict=True
+                        ),
+                        index,
+                        context,
+                    )
+                    names = {c.id: c.name for c in context.colleges}
+                    prediction = Extraction(
+                        programs=[
+                            Program(
+                                college=names[p.college_id],
+                                cohort=p.cohort,
+                                kind=p.kind,
+                                role=p.role,
+                                name=p.name,
+                                fields=p.fields,
+                            )
+                            for p in programs
+                        ]
+                    )
+                    if result.response.usage is None:
+                        prediction = None
+                        result.error = "missing_usage"
+                except (SelectionError, ValidationError) as error:
+                    result.error = type(error).__name__
+                except StepError as error:
+                    result.error = error.detail
+            evaluation.add(notice, prediction, page.text)
+            results.append(result)
+            print(f"done={len(results)}/{len(selected)} error={result.error or 'none'}", flush=True)
+
+        await asyncio.gather(*(run(n) for n in selected))
+    report: dict[str, JsonValue] = {
+        "dataset": str(options.dataset),
+        "urls": [n.url for n in selected],
+        "date_coverage": coverage,
+        "scope": "First ingestion; colleges from sources.csv; no existing projects or attachments",
+        "billing_period": "off_peak" if options.off_peak else "peak",
+        "experiments": {MODEL: summarize(results, evaluation, options.off_peak)},
     }
-
-    async def run(notice: Notice, model: str, mode: Mode) -> Result:
-        evaluation, results = groups[model, mode]
-        page = pages[notice.url]
-        call = make_call(
-            notice,
-            page.text,
-            model,
-            mode,
-            hyperlinks=page.hyperlinks,
-        )
-        identity = call.model_dump_json()
-        result = cache.get(identity)
-        fresh = result is None
-        if result is None:
-            if llm is None:
-                raise ValueError("response_cache_missing")
-            async with semaphore:
-                result = await llm.extract(call)
-        if fresh and result.error is None:
-            cache[identity] = result
-            with records_path.open("a", encoding="utf-8", newline="\n") as stream:
-                stream.write(CachedCall(call=call, result=result).model_dump_json() + "\n")
-        # Parsing is deliberately outside the cached provider result so fixes can be replayed.
-        result = result.model_copy()
-        prediction: Extraction | None = None
-        if result.error is None and result.content is not None:
-            try:
-                prediction = resolve(
-                    SelectedExtraction.model_validate_json(result.content, strict=True),
-                    index_documents(
-                        [Document(page.text, hyperlinks=page.hyperlinks)],
-                        published_on=notice.published_on,
-                    ),
-                )
-            except SelectionError, ValidationError:
-                result.error = "invalid_selection"
-        evaluation.add(notice, prediction, page.text)
-        results.append(result)
-        if result.error or evaluation.notices % 10 == 0 or evaluation.notices == len(selected):
-            print(
-                f"model={model} mode={mode} done={evaluation.notices}/{len(selected)} "
-                f"error={result.error or 'none'}",
-                flush=True,
-            )
-        return result
-
-    try:
-        results = await asyncio.gather(
-            *(
-                run(notice, model, mode)
-                for notice in selected
-                for mode in options.modes
-                for model in options.models
-            )
-        )
-        report: dict[str, JsonValue] = {
-            "dataset": str(options.dataset),
-            "urls": [n.url for n in selected],
-            "method": "numbered",
-            "date_coverage": coverage,
-            "evaluated_fields": list[JsonValue](META + FIELD_NAMES),
-            "settings": {
-                "concurrency": CONCURRENCY,
-                "max_tokens": MAX_TOKENS,
-                "timeout_seconds": TIMEOUT,
-                "response_format": "json_schema",
-                "strict": True,
-                "temperature": 0,
-            },
-            "experiments": {
-                f"{model}/{mode}": summarize(model, items, evaluation)
-                for (model, mode), (evaluation, items) in groups.items()
-            },
-        }
-        write_json(options.output / "report.json", report)
-        (options.output / "report.md").write_text(markdown(report), encoding="utf-8", newline="\n")
-    finally:
-        if llm:
-            await llm.close()
-    return int(any(result.error for result in results))
+    write_json(options.output / "report.json", report)
+    (options.output / "report.md").write_text(markdown(report), encoding="utf-8", newline="\n")
+    return int(any(r.error for r in results))
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate body-only, numbered JSON extraction.")
+    parser = argparse.ArgumentParser(
+        description="Evaluate the production numbered extraction scheme."
+    )
     parser.add_argument("--dataset", type=Path, default=Path("../data/extraction.json"))
+    parser.add_argument("--sources", type=Path, default=Path("../data/sources.csv"))
     parser.add_argument("--output", type=Path, default=Path("extraction-results"))
-    parser.add_argument("--models", nargs="+", default=list(DEFAULT_MODELS))
-    parser.add_argument("--modes", nargs="+", choices=("off", "low", "high"), default=["off"])
     parser.add_argument("--limit", type=int)
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
-    options = Options.model_validate(vars(parser.parse_args()))
-    status = asyncio.run(evaluate(options))
-    raise SystemExit(status)
+    parser.add_argument(
+        "--off-peak", action="store_true", help="Use official off-peak token prices for this run"
+    )
+    raise SystemExit(asyncio.run(evaluate(Options.model_validate(vars(parser.parse_args())))))
 
 
 if __name__ == "__main__":

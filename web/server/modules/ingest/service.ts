@@ -5,6 +5,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
 import type { ExtractedFields, Kind, Role } from "../programs/schemas.ts";
+import type { UnresolvedDate } from "./schemas.ts";
 import {
   applyOf,
   applyStored,
@@ -477,6 +478,7 @@ export type ExtractedProgram = {
   name: string;
   role: Role;
   fields: ExtractedFields;
+  unresolved_dates?: UnresolvedDate[];
 };
 
 // Why something waits on the review page instead of going on the table (design §8.3, §8.4).
@@ -492,7 +494,8 @@ export type ReviewReason =
   | "unknown_college"
   | "implausible_cohort"
   | "possible_duplicate"
-  | "no_deadline";
+  | "no_deadline"
+  | "unparsed_date";
 
 type ReviewItem = {
   reason: ReviewReason;
@@ -551,6 +554,26 @@ export async function recordExtraction(
     const year = noticeYear(snapshot.published_on);
     const held: ReviewItem[] = [];
     for (const program of programs) {
+      for (const unresolved of program.unresolved_dates ?? []) {
+        if (
+          !evidenceFound(docs, unresolved.evidence) ||
+          !unresolved.evidence.some((e) => squash(e.quote).includes(squash(unresolved.text)))
+        )
+          throw new AppError(400, "invalid_request", "未识别日期的原文与证据不符");
+        const [field, edge] = unresolved.field.split(".");
+        const interval =
+          field === "apply"
+            ? program.fields.apply
+            : field === "event"
+              ? program.fields.event
+              : undefined;
+        if (
+          (edge === "start" && interval?.value.start !== undefined) ||
+          (edge === "end" && interval?.value.end !== undefined)
+        ) {
+          throw new AppError(400, "invalid_request", "未识别的时间不能同时提交换算值");
+        }
+      }
       const hold = (reason: ReviewItem["reason"]) =>
         held.push({ reason, snapshot_id: snapshotId, payload: program });
       if (!context.colleges.some((c) => c.id === program.college_id)) hold("unknown_college");
@@ -690,7 +713,16 @@ export async function mergeProgram(
     .where("id", "=", version.id)
     .execute();
 
-  if (program.role === "call") {
+  if (program.unresolved_dates?.length) {
+    held.push({
+      reason: "unparsed_date",
+      snapshot_id: snapshotId,
+      program_id: programId,
+      version_id: version.id,
+      payload: program,
+    });
+  }
+  if (program.role === "call" && !program.unresolved_dates?.some((d) => d.field === "apply.end")) {
     const { apply_deadline } = await trx
       .selectFrom("programs")
       .select("apply_deadline")
