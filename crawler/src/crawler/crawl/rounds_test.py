@@ -21,9 +21,7 @@ from crawler.crawl.fetch import Fetcher, FetchError
 from crawler.crawl.rounds import Attachment, NoticePage, StepError, Steps, crawl_source
 from crawler.crawl.website import Website
 
-SOURCE = WorkSource(
-    id=7, url="http://a/list.htm", section="通知公告", browser=False, config=None, backfill=False
-)
+SOURCE = WorkSource(id=7, url="http://a/list.htm", browser=False, config=None, backfill=False)
 ITEMS = [ListedItem(url=f"http://a/{n}.htm", title=f"通知 {n}") for n in range(1, 5)]
 CONTEXT = ExtractionContext(published_on=None, colleges=[], programs=[])
 USAGE = [Usage(model="m", input_tokens=10, output_tokens=1)]

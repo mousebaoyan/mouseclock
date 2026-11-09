@@ -13,7 +13,6 @@ from crawler.crawl.rounds import NoticePage, StepError
 SOURCE = WorkSource(
     id=7,
     url="https://example.edu.cn/tzgg.htm",
-    section="通知公告",
     browser=False,
     config=None,
     backfill=False,
