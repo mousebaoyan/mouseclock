@@ -23,14 +23,17 @@ def test_dates_can_be_followed_immediately_by_numbers(text: str, days: list[int]
 @pytest.mark.parametrize(
     "text",
     [
-        "6月1日-6月14号",
+        "6月1日-6月31号",
         "6月1日8:00-17:0",
         "6月1日8:00至17:001",
         "6月1日-6月14日17:0",
         "6月14日17:001",
-        "6月1日到14号",
-        "6月1日—14号",
-        "6月1日\uff5e14号",
+        "6月1日到31号",
+        "6月1日—31号",
+        "6月1日\uff5e31号",
+        "六月一日至零日",
+        "六月一日至一百日",
+        "六月一日至一百号",
     ],
 )
 def test_unrecognized_numeric_range_end_cannot_leave_a_valid_start(text: str) -> None:
@@ -43,6 +46,13 @@ def test_unrecognized_numeric_range_end_cannot_leave_a_valid_start(text: str) ->
 def test_dash_before_prose_still_allows_an_ordinary_date() -> None:
     [found] = find_dates("6月14日——截止", date(2027, 5, 1))
     assert found.value == TimeToDay(date=date(2027, 6, 14))
+    assert found.issue is None
+
+
+def test_chinese_floor_after_a_date_is_not_an_invalid_range_endpoint() -> None:
+    [found] = find_dates("六月一日至一楼报到", date(2027, 5, 1))
+    assert found.text == "六月一日"
+    assert found.value == TimeToDay(date=date(2027, 6, 1))
     assert found.issue is None
 
 
@@ -363,4 +373,360 @@ def test_before_a_clock_time_keeps_the_minute_value_and_original_qualifier(
     assert found.value.date == date(2028, 8, 12)
     assert found.value.time == clock
     assert found.text == text
+    assert found.issue is None
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("2027-06-30", TimeToDay(date=date(2027, 6, 30))),
+        ("2027/6/30", TimeToDay(date=date(2027, 6, 30))),
+        ("2027.6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("2027 / 6 / 30 17:00", TimeToMinute(date=date(2027, 6, 30), time="17:00")),
+        ("2027-06-30下午5点前", TimeToMinute(date=date(2027, 6, 30), time="17:00")),
+        ("6月30号", TimeToDay(date=date(2027, 6, 30))),
+        ("6月30号24时", TimeToMinute(date=date(2027, 6, 30), time="24:00")),
+        ("二\u3007二七年八月五日", TimeToDay(date=date(2027, 8, 5))),
+        ("二零二七年十二月三十一号", TimeToDay(date=date(2027, 12, 31))),
+        ("二\u3007二八年二月二十九日", TimeToDay(date=date(2028, 2, 29))),
+        ("八月上旬", TimeToMonth(month="2027-08", part="early")),
+        ("九月中旬", TimeToMonth(month="2027-09", part="mid")),
+        ("十一月底", TimeToMonth(month="2027-11", part="late")),
+    ],
+)
+def test_additional_date_spellings_preserve_source_and_precision(
+    expression: str, expected: TimeValue
+) -> None:
+    text = f"报名时间为{expression}\uff0c请及时提交。"
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.value == expected
+    assert found.end_value is None
+    assert found.issue is None
+    assert found.text == expression
+    assert text[found.start : found.end] == expression
+
+
+@pytest.mark.parametrize(
+    ("text", "expression", "expected"),
+    [
+        ("报名截止为6.30", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("申请截止日期\uff1a6/30", "6/30", TimeToDay(date=date(2027, 6, 30))),
+        ("请于6.30前报名", "6.30前", TimeToDay(date=date(2027, 6, 30), mark="before")),
+        ("6.30日提交材料", "6.30日", TimeToDay(date=date(2027, 6, 30))),
+        ("报名截止6.30 17:00", "6.30 17:00", TimeToMinute(date=date(2027, 6, 30), time="17:00")),
+        ("6.30开始报名", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("6.30结束报名", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("6.30截止申请", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("6.30提交材料", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("6.30截止。", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("6.30截止\uff0c逾期不候。", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("6.30截止\n请提交材料。", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("6.30截止.", "6.30", TimeToDay(date=date(2027, 6, 30))),
+        ("通知称“6.30截止”。", "6.30", TimeToDay(date=date(2027, 6, 30))),
+    ],
+)
+def test_short_numeric_dates_need_adjacent_date_context(
+    text: str, expression: str, expected: TimeValue
+) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == expression
+    assert text[found.start : found.end] == expression
+    assert found.value == expected
+    assert found.issue is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "6.30",
+        "Python 3.14",
+        "版本6.30发布",
+        "版本v6.30前请完成报名",
+        "报名截止前升级到Python 3.14",
+        "IELTS≥6.0分",
+        "面积61.4万方",
+        "报名费6.30元",
+        "完成6/30的工作",
+        "报名时间使用版本6.30",
+        "温度3.14前后",
+        "价格6.30左右",
+        "2027-06-01至6.30元",
+        "2027-06-01至6/30分",
+        "版本2027.6.30",
+        "版本号\uff1a2027-06-30",
+        "version 2027/6/30",
+        "V 2027.6.30",
+        "版本\uff086.30\uff0917:00发布",
+        "版本(2027.6.30)17:00发布",
+        "版本( 2027.6.30 )17:00发布",
+        "版本\uff082027.6.30\uff09发布",
+        "版本2027 / 6 / 30报名",
+        "版本2027 - 6 - 30截止支持",
+        "版本2027. 6. 30截止支持",
+        "v1.2027.6.30",
+        "v1-2027-6-30",
+        "v1. 2027. 6. 30",
+        "v1 - 2027 - 6 - 30",
+        "v1 / 2027 / 6 / 30",
+        "一二三月",
+        "一二六月一日",
+        "6-30",
+        "数值区间1-10",
+        "报名费6-30元",
+        "报名截止\n6.30",
+        "从 Python 3.14开始支持新功能。",
+        "Python 3.14结束支持。",
+        "Python 3.14截止支持。",
+        "Python 3.14截止 支持。",
+        "6.30截止 支持。",
+        "版本号为6.30开始支持此接口。",
+        "版本号为6.30开始报名。",
+        "学分绩点3.20开始计算。",
+        "工作时间8.30-17:00。",
+        "面试时间8.30-17:00。",
+        "上午8.30开始报名。",
+        "下午6.30开始面试。",
+        "晚上8.30截止报名。",
+        "中午12.30开始考核。",
+    ],
+)
+def test_unrelated_numeric_expressions_are_not_promoted_to_dates(text: str) -> None:
+    assert find_dates(text, date(2027, 5, 1)) == []
+
+
+@pytest.mark.parametrize("prefix", ["1.", "2. ", "3.\t"])
+def test_numbered_list_items_do_not_hide_a_chinese_date(prefix: str) -> None:
+    text = prefix + "7月1日00:00至7月7日24:00报名。"
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == "7月1日00:00至7月7日24:00"
+    assert found.value == TimeToMinute(date=date(2027, 7, 1), time="00:00")
+    assert found.end_value == TimeToMinute(date=date(2027, 7, 7), time="24:00")
+
+
+@pytest.mark.parametrize(
+    ("text", "start", "end"),
+    [
+        ("6月1日-6月14号", date(2027, 6, 1), date(2027, 6, 14)),
+        ("6月1号到14号", date(2027, 6, 1), date(2027, 6, 14)),
+        ("2027-06-01-2027-06-14", date(2027, 6, 1), date(2027, 6, 14)),
+        ("2027/6/1至6月14号", date(2027, 6, 1), date(2027, 6, 14)),
+        ("报名时间6.1至6.30", date(2027, 6, 1), date(2027, 6, 30)),
+        ("6.1-6.30日", date(2027, 6, 1), date(2027, 6, 30)),
+        ("6/1至6/30号", date(2027, 6, 1), date(2027, 6, 30)),
+        ("2027-06-01至6/30", date(2027, 6, 1), date(2027, 6, 30)),
+        ("2027-06-01至06-14", date(2027, 6, 1), date(2027, 6, 14)),
+        ("2027-06-30-07-01", date(2027, 6, 30), date(2027, 7, 1)),
+        ("二\u3007二七年十二月二十八日至一月十日", date(2027, 12, 28), date(2028, 1, 10)),
+        ("六月一至三十号", date(2027, 6, 1), date(2027, 6, 30)),
+        ("二\u3007二七年六月一至三十日", date(2027, 6, 1), date(2027, 6, 30)),
+        ("十二月二十八至一月十日", date(2027, 12, 28), date(2028, 1, 10)),
+        ("6月一至三十日", date(2027, 6, 1), date(2027, 6, 30)),
+    ],
+)
+def test_added_date_formats_share_range_and_year_rules(text: str, start: date, end: date) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.value == TimeToDay(date=start)
+    assert found.end_value == TimeToDay(date=end)
+    assert found.issue is None
+
+
+@pytest.mark.parametrize(
+    ("text", "expected_day", "expected_time"),
+    [
+        ("2027-6-1 17:00", 1, "17:00"),
+        ("2027 / 6 / 1\t08:30", 1, "08:30"),
+        ("2027.6.9 17点30分", 9, "17:30"),
+        ("报名截止6.1 08:30", 1, "08:30"),
+        ("报名截止6/9 17:00", 9, "17:00"),
+        ("报名截止6-1 24:00", 1, "24:00"),
+        ("(2027/6/1)17:00", 1, "17:00"),
+        ("\uff08 6.1 \uff09 08:30", 1, "08:30"),
+    ],
+)
+def test_numeric_day_does_not_absorb_the_first_clock_digit(
+    text: str, expected_day: int, expected_time: str
+) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.value == TimeToMinute(date=date(2027, 6, expected_day), time=expected_time)
+    assert found.issue is None
+    assert text[found.start : found.end] == found.text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "报名时间6.1 08:30至6.9 17:00",
+        "2027-6-1 08:30至2027-6-9 17:00",
+        "(2027/6/1)08:30至(2027/6/9)17:00",
+    ],
+)
+def test_numeric_range_endpoints_preserve_the_clock_boundary(text: str) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.value == TimeToMinute(date=date(2027, 6, 1), time="08:30")
+    assert found.end_value == TimeToMinute(date=date(2027, 6, 9), time="17:00")
+    assert found.issue is None
+
+
+@pytest.mark.parametrize(
+    "activity", ["分别组织面试", "分批考核", "分为两组", "分组报到", "分阶段考核"]
+)
+def test_activity_verbs_are_not_mistaken_for_a_score_unit(activity: str) -> None:
+    [found] = find_dates(f"报名日期6.30{activity}", date(2027, 5, 1))
+    assert found.value == TimeToDay(date=date(2027, 6, 30))
+    assert found.issue is None
+
+
+@pytest.mark.parametrize(
+    ("text", "end_day"),
+    [
+        ("6.30号分批报名", None),
+        ("报名日期6月30日至7.1分别组织考核", 1),
+        ("报名日期6.30至7月1日分批考核", 1),
+    ],
+)
+def test_numeric_unit_filter_applies_only_to_an_ambiguous_range_endpoint(
+    text: str, end_day: int | None
+) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.value == TimeToDay(date=date(2027, 6, 30))
+    assert found.end_value == (TimeToDay(date=date(2027, 7, end_day)) if end_day else None)
+    assert found.issue is None
+
+
+@pytest.mark.parametrize("text", ["6.30日8:00-17:00", "6.30 8:00-17:00", "报名日期6.30-17:00"])
+def test_short_date_clock_ranges_keep_explicit_calendar_context(text: str) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.issue is None
+    assert found.value == (
+        TimeToDay(date=date(2027, 6, 30))
+        if text.startswith("报名日期")
+        else TimeToMinute(date=date(2027, 6, 30), time="08:00")
+    )
+    assert found.end_value == TimeToMinute(date=date(2027, 6, 30), time="17:00")
+
+
+@pytest.mark.parametrize("text", ["报名截止6.30", "六月三十号", "八月上旬"])
+def test_new_yearless_formats_still_require_publication(text: str) -> None:
+    [found] = find_dates(text, None)
+    assert found.issue == "missing_publication"
+    assert found.value is None
+    assert found.end_value is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2027-02-29",
+        "2027/6/31",
+        "二\u3007二七年二月二十九日",
+        "6月31号",
+        "2027-06-01至6/31",
+        "2027-06-30至2027-06-01",
+        "2027-06-30 24:01",
+        "2027/6-30",
+        "2027-06-01至06-31",
+    ],
+)
+def test_new_formats_preserve_invalid_date_and_range_failure(text: str) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.issue == "invalid_date"
+    assert found.value is None
+    assert found.end_value is None
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        ("\uff086月20日\uff0900:00", TimeToMinute(date=date(2027, 6, 20), time="00:00")),
+        ("(6月20日)08:30", TimeToMinute(date=date(2027, 6, 20), time="08:30")),
+        (
+            "\uff08二\u3007二七年六月二十日\uff09下午2点前",
+            TimeToMinute(date=date(2027, 6, 20), time="14:00"),
+        ),
+        ("(2027/6/20) 24时", TimeToMinute(date=date(2027, 6, 20), time="24:00")),
+        ("( 2027/6/20 ) 24时", TimeToMinute(date=date(2027, 6, 20), time="24:00")),
+    ],
+)
+def test_parenthesized_dates_keep_a_clock_directly_after_the_closing_parenthesis(
+    expression: str, expected: TimeToMinute
+) -> None:
+    text = f"报到安排为{expression}\uff0c请提前准备。"
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == expression
+    assert text[found.start : found.end] == expression
+    assert found.value == expected
+    assert found.issue is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "\uff086月20日\uff09\n08:30报到",
+        "6月20日\uff08注意事项\uff0908:30报到",
+        "\uff08见6月20日\uff0908:30报到",
+    ],
+)
+def test_clocks_are_not_joined_across_prose_or_line_breaks(text: str) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == "6月20日"
+    assert found.value == TimeToDay(date=date(2027, 6, 20))
+
+
+@pytest.mark.parametrize("weekday", ["周一", "星期一", "星期六"])
+@pytest.mark.parametrize("expression", ["6月1日17:00", "六月一日17:00"])
+def test_a_weekday_immediately_before_a_date_does_not_hide_it(
+    weekday: str, expression: str
+) -> None:
+    text = f"{weekday}{expression}截止"
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == expression
+    assert found.value == TimeToMinute(date=date(2027, 6, 1), time="17:00")
+
+
+@pytest.mark.parametrize("expression", ["2027-06-30", "2027/6/30", "2027.6.30"])
+@pytest.mark.parametrize("prefix", ["1.", "1. ", "1.\t", "1 . "])
+def test_numbered_lists_can_start_with_a_complete_numeric_date(
+    expression: str, prefix: str
+) -> None:
+    text = f"{prefix}{expression}截止"
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == expression
+    assert text[found.start : found.end] == expression
+    assert found.value == TimeToDay(date=date(2027, 6, 30))
+
+
+@pytest.mark.parametrize("boundary", ["。", "\uff01", "?", ";", "\r", "\r\n"])
+@pytest.mark.parametrize("expression", ["2027-6-30", "6.30"])
+def test_numbered_dates_after_sentence_boundaries(boundary: str, expression: str) -> None:
+    text = f"说明{boundary}1. {expression}报名"
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == expression
+    assert found.value == TimeToDay(date=date(2027, 6, 30))
+    assert found.issue is None
+
+
+@pytest.mark.parametrize("expression", ["2027.6.30", "6.30日"])
+def test_a_version_label_on_the_previous_line_does_not_hide_a_date(expression: str) -> None:
+    text = f"版本\n{expression}截止"
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == expression
+    assert found.value == TimeToDay(date=date(2027, 6, 30))
+
+
+@pytest.mark.parametrize(
+    ("text", "expression", "expected"),
+    [
+        ("版本6.30-7月1日发布", "7月1日", TimeToDay(date=date(2027, 7, 1))),
+        ("版本2027.6.30-7月1日发布", "7月1日", TimeToDay(date=date(2027, 7, 1))),
+        ("版本2027 / 6 / 30-7月1日发布", "7月1日", TimeToDay(date=date(2027, 7, 1))),
+        ("版本6.30至七月上旬更新", "七月上旬", TimeToMonth(month="2027-07", part="early")),
+    ],
+)
+def test_rejected_numeric_candidates_do_not_hide_a_later_date(
+    text: str, expression: str, expected: TimeValue
+) -> None:
+    [found] = find_dates(text, date(2027, 5, 1))
+    assert found.text == expression
+    assert text[found.start : found.end] == expression
+    assert found.value == expected
     assert found.issue is None

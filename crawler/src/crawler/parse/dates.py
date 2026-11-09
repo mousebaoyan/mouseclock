@@ -10,28 +10,55 @@ from crawler.crawl.contract import TimeToDay, TimeToMinute, TimeToMonth, TimeVal
 
 _CLOCK = r"(?:[0-9]{1,2}[:\uff1a][0-9]{2}|[0-9]{1,2}[时点](?:[0-9]{1,2}分?)?)"
 _WEEKDAY = r"[\uff08(]?(?:星期|周)[一二三四五六日天][\uff09)]?"
-_GAP = rf"(?:[ \t]*(?:{_WEEKDAY}|上午|中午|下午|晚上))*[ \t]*"
+_PERIOD = r"(?:上午|中午|下午|晚上)"
+_GAP = rf"(?:[ \t]*(?:{_WEEKDAY}|{_PERIOD}))*[ \t]*"
+_HAN_DIGITS = "零\u3007\u25cb一二三四五六七八九"
+_DIGITS = dict(zip(_HAN_DIGITS, "000123456789", strict=True))
+_CHINESE_NUMBER = r"(?:[一二三四五六七八九]?十[一二三四五六七八九]?|[一二三四五六七八九])"
+_NUMBER = rf"(?:[0-9]{{1,2}}|{_CHINESE_NUMBER})"
+_YEAR = rf"(?:[0-9]{{4}}|[{_HAN_DIGITS}]{{4}})"
+_MARK = r"(?:[ \t]*(?:前后|左右|之前|前))?"
+_TIME = rf"(?:{_GAP}{_CLOCK}|[ \t]*止[ \t]*[\uff08(]{_CLOCK}[\uff09)])?"
 # Spaces are allowed between components, but a line break ends an expression.
-_DAY = (
-    rf"[0-9]{{1,2}}[ \t]*日(?:{_GAP}{_CLOCK}|[ \t]*止[ \t]*[\uff08(]{_CLOCK}[\uff09)])?"
-    r"(?:[ \t]*(?:前后|左右|之前|前))?"
-)
+_DAY = rf"{_NUMBER}[ \t]*[日号]{_TIME}{_MARK}"
+_MONTH_START = rf"(?:{_YEAR}[ \t]*年[ \t]*)?{_NUMBER}[ \t]*月"
 _MONTH = (
-    rf"(?:[0-9]{{4}}[ \t]*年[ \t]*)?[0-9]{{1,2}}[ \t]*月"
+    rf"{_MONTH_START}"
     rf"(?:[ \t]*(?:{_DAY}|中下旬|上旬|中旬|下旬|初|底))?"
 )
-_ATOM = rf"(?:即日起|{_MONTH})"
-_SEPARATOR = r"(?:至|到|—+|\u2013|\uff0d|\uff5e|~|-)"
-_EXPRESSION = re.compile(
-    rf"(?<![0-9年月])(?P<first>(?:[0-9]{{4}}[ \t]*年[ \t]*)?"
-    rf"[0-9]{{1,2}}[ \t]*月[ \t]*[0-9]{{1,2}}(?=[ \t]*{_SEPARATOR}[ \t]*{_DAY})|{_ATOM})"
-    rf"(?:[ \t]*{_SEPARATOR}[ \t]*(?P<last>{_ATOM}|{_DAY}|{_GAP}{_CLOCK}(?:前后|左右|之前|前)?))?"
-    r"(?!(?<=[0-9])[0-9])(?!(?<=月)[ \t]*[0-9])"
+_NUMERIC_DATE = (
+    r"(?:(?<![A-Za-z0-9/])[0-9]{4}[ \t]*[-/.][ \t]*[0-9]{1,2}[ \t]*[-/.][ \t]*"
+    r"[0-9]{1,2}|(?<![A-Za-z0-9./])[0-9]{1,2}[ \t]*[-/.][ \t]*[0-9]{1,2})"
+    r"(?![0-9年月]|[./][0-9])"
 )
+_NUMERIC = rf"{_NUMERIC_DATE}[日号]?{_TIME}{_MARK}"
+_DATED = rf"(?:{_MONTH_START}[ \t]*{_NUMBER}[ \t]*[日号]|{_NUMERIC_DATE}[日号]?)"
+_PAREN_DATE = (
+    rf"(?:\([ \t]*{_DATED}[ \t]*\)|\uff08[ \t]*{_DATED}[ \t]*\uff09)"
+    rf"{_GAP}{_CLOCK}{_MARK}"
+)
+_ATOM = rf"(?:即日起|{_PAREN_DATE}|{_NUMERIC}|{_MONTH})"
+_SEPARATOR = r"(?:至|到|—+|\u2013|\uff0d|\uff5e|~|-)"
+_HAN_BOUNDARY = (
+    rf"(?:(?<![{_HAN_DIGITS}十])|(?=[^{_HAN_DIGITS}十])"
+    r"|(?<=周[一二三四五六日天])|(?<=星期[一二三四五六日天]))"
+)
+_EXPRESSION = re.compile(
+    rf"(?<![0-9年月]){_HAN_BOUNDARY}"
+    rf"(?P<first>{_MONTH_START}[ \t]*{_NUMBER}"
+    rf"(?=[ \t]*{_SEPARATOR}[ \t]*(?:{_ATOM}|{_DAY}))|{_ATOM})"
+    rf"(?:[ \t]*{_SEPARATOR}[ \t]*(?P<last>{_ATOM}|{_DAY}|{_GAP}{_CLOCK}(?:前后|左右|之前|前)?))?"
+    r"(?!(?<=[0-9])[0-9])(?!(?<=月)[ \t]*[0-9一二三四五六七八九十])"
+)
+_DATE_LABEL = re.compile(
+    r"(?:截止(?:时间|日期)?|(?:报名|申请|活动|考核|面试)(?:时间|日期)|日期|请于|定于)"
+    r"[ \t为是自从\uff1a:]*\Z"
+)
+_SHORT_DATE = re.compile(r"[0-9]{1,2}[ \t]*[-/.]")
 _POINT = re.compile(
     r"(?:(?P<year>[0-9]{4})年)?(?:(?P<month>[0-9]{1,2})月)?"
     r"(?:(?P<day>[0-9]{1,2})日)?"
-    r"(?P<period>上午|中午|下午|晚上)?"
+    rf"(?P<period>{_PERIOD})?"
     r"(?:(?P<hour>[0-9]{1,2})[:\uff1a](?P<minute>[0-9]{2})|"
     r"(?P<clock_hour>[0-9]{1,2})[时点](?:(?P<clock_minute>[0-9]{1,2})分?)?)?"
     r"(?P<part>上旬|中旬|下旬|初|底)?(?P<mark>前后|左右|之前|前)?"
@@ -54,6 +81,80 @@ class DateMatch:
     value: TimeValue | None
     end_value: TimeValue | None = None
     issue: Literal["missing_publication", "invalid_date"] | None = None
+
+
+def _chinese_number(match: re.Match[str]) -> str:
+    number = match[0]
+    if "十" not in number:
+        return "".join(_DIGITS[character] for character in number)
+    tens, _, units = number.partition("十")
+    return str(int(_DIGITS[tens] if tens else "1") * 10 + int(_DIGITS[units] if units else "0"))
+
+
+def _numeric_date_context(match: re.Match[str], text: str) -> bool:
+    first, last = match["first"], match["last"]
+    parenthesized = first.startswith(("(", "\uff08"))
+    point = first[1:].lstrip(" \t") if parenthesized else first
+    first_is_numeric = re.match(_NUMERIC_DATE, point) is not None
+    last_is_short = last is not None and _SHORT_DATE.match(last) is not None
+    if not first_is_numeric and not last_is_short:
+        return True
+    before = text[: match.start()]
+    if first_is_numeric:
+        if re.search(
+            r"(?:版本(?:号)?|版|(?<![A-Za-z])(?:v|version))[ \t为是:\uff1a=(\uff08]*\Z",
+            before,
+            re.IGNORECASE,
+        ):
+            return False
+        if re.search(r"[A-Za-z0-9][ \t]*[-./][ \t]*\Z", before) and not re.search(
+            r"(?:^|[。\uff01\uff1f!?\uff1b;\r\n]|\.[ \t]+)[ \t]*[0-9]+[ \t]*\.[ \t]*\Z",
+            before,
+        ):
+            return False
+    first_is_short = _SHORT_DATE.match(point) is not None
+    if not first_is_short and not last_is_short:
+        return True
+    if (
+        first_is_short
+        and not re.search(r"[日号]", first)
+        and re.search(rf"{_PERIOD}[ \t]*\Z", before)
+    ):
+        return False
+    after = text[match.end() :]
+    last_point = last or first
+    if (
+        _SHORT_DATE.match(last_point)
+        and not re.search(r"[日号]", last_point)
+        and re.match(r"[ \t]*(?:元|分(?!别|批|为|组|配|开|阶段)|万|亿|%|\uff05|倍|米|克|版)", after)
+    ):
+        return False
+    label = _DATE_LABEL.search(before)
+    # A clock such as 17:00 does not disambiguate 8.30 from 08:30.
+    if (
+        first_is_short
+        and last is not None
+        and re.fullmatch(rf"{_GAP}{_CLOCK}{_MARK}", last)
+        and not (
+            re.search(r"[日号]", first)
+            or re.search(_CLOCK, first)
+            or (label is not None and "日期" in label[0])
+        )
+    ):
+        return False
+    return bool(
+        not first_is_short
+        or parenthesized
+        or label
+        or re.search(r"[日号]", first + (last or ""))
+        or re.match(
+            r"[ \t]*(?:截止[ \t]*(?=\Z|[^\w \t])"
+            r"|(?:开始|结束|截止)?(?:报名|申请|提交(?:材料|申请)|面试|考核|开营|报到)"
+            r"|(?:举行|举办)(?:活动|面试|考核|(?:夏|冬)令营))",
+            after,
+        )
+        or (last is not None and not last_is_short)
+    )
 
 
 def _calendar(value: TimeValue) -> date:
@@ -79,9 +180,30 @@ def _point(
     previous: TimeValue | None = None,
     inherited_period: str | None = None,
 ) -> TimeValue | None:
+    # Add calendar units before removing delimiters so a clock digit cannot become part of the day.
+    numeric = re.match(
+        r"(?P<opening>[\uff08(][ \t]*)?"
+        r"(?:(?P<year>[0-9]{4})[ \t]*(?P<year_separator>[-/.])[ \t]*)?"
+        r"(?P<month>[0-9]{1,2})[ \t]*(?P<day_separator>[-/.])[ \t]*"
+        r"(?P<day>[0-9]{1,2})[日号]?",
+        text,
+    )
+    if numeric is not None:
+        if numeric["year"] and numeric["year_separator"] != numeric["day_separator"]:
+            raise ValueError("Mixed numeric date separators")
+        year = f"{numeric['year']}年" if numeric["year"] else ""
+        text = (
+            f"{numeric['opening'] or ''}{year}{numeric['month']}月{numeric['day']}日"
+            f"{text[numeric.end() :]}"
+        )
     compact = re.sub(r"[ \t]", "", text)
     compact = re.sub(_WEEKDAY, "", compact)
     compact = re.sub(rf"止[\uff08(]({_CLOCK})[\uff09)]$", r"\1", compact)
+    if re.fullmatch(rf"{_MONTH_START}{_NUMBER}", compact):
+        compact += "日"
+    compact = re.sub(rf"[{_HAN_DIGITS}十]+(?=[年月日号])", _chinese_number, compact)
+    compact = re.sub(rf"^[\uff08(]([^\uff09)]+)[\uff09)](?={_PERIOD}|[0-9])", r"\1", compact)
+    compact = compact.replace("号", "日")
     if compact == "即日起":
         return TimeToDay(date=published_on) if published_on is not None else None
     match = _POINT.fullmatch(compact)
@@ -136,7 +258,12 @@ def _point(
 
 def find_dates(text: str, published_on: date | None) -> list[DateMatch]:
     matches: list[DateMatch] = []
-    for match in _EXPRESSION.finditer(text):
+    position = 0
+    while match := _EXPRESSION.search(text, position):
+        if not _numeric_date_context(match, text):
+            position = match.end("first")
+            continue
+        position = match.end()
         value: TimeValue | None = None
         end_value: TimeValue | None = None
         issue: Literal["missing_publication", "invalid_date"] | None = None
@@ -147,19 +274,20 @@ def find_dates(text: str, published_on: date | None) -> list[DateMatch]:
                 if last is None:
                     last = first.removesuffix("中下旬") + "下旬"
                 first = first.removesuffix("中下旬") + "中旬"
-            if first[-1].isdigit() and "月" in first and "日" not in first:
-                first += "日"
             value = _point(first, published_on)
             if value is None:
                 issue = "missing_publication"
             if last is not None:
-                period = re.search(r"上午|中午|下午|晚上", first)
+                period = re.search(_PERIOD, first)
                 end_value = _point(last, published_on, value, period[0] if period else None)
                 if end_value is None:
                     issue = "missing_publication"
                 elif value is not None and _earliest(end_value) < _earliest(value):
                     raise ValueError("Reversed date range")
-            if re.match(rf"[ \t]*{_SEPARATOR}[ \t]*[0-9]", text[match.end() :]):
+            if re.match(
+                rf"[ \t]*{_SEPARATOR}[ \t]*(?:[0-9]|[{_HAN_DIGITS}十百千万]+[ \t]*[年月日号])",
+                text[match.end() :],
+            ):
                 issue = "invalid_date"
             if re.match(r"[ \t]*[0-9]{1,2}[:\uff1a][0-9]", text[match.end() :]):
                 issue = "invalid_date"

@@ -5,7 +5,7 @@ Pass documents in body/attachment order and hyperlinks with absolute targets fro
 
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date
 from typing import Literal
 from urllib.parse import unquote, urlsplit
@@ -121,10 +121,13 @@ def _references(document: Document) -> list[_LocatedReference]:
     return sorted(references, key=lambda reference: reference.start)
 
 
-def _sentences(text: str, references: list[_LocatedReference]) -> list[tuple[int, int]]:
+def _sentences(
+    text: str, references: list[_LocatedReference], dates: list[DateMatch]
+) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     start = 0
     reference_position = 0
+    date_position = 0
     for match in _BREAK.finditer(text):
         while (
             reference_position < len(references)
@@ -136,8 +139,12 @@ def _sentences(text: str, references: list[_LocatedReference]) -> list[tuple[int
             and references[reference_position].start < match.end()
         ):
             continue
-        if match[0] == "." and re.fullmatch(
-            r"[0-9]+(?:\.[0-9]+)*", text[start : match.start()].strip()
+        while date_position < len(dates) and dates[date_position].end <= match.start():
+            date_position += 1
+        # A dot inside a spaced numeric date must not truncate its evidence sentence.
+        if match[0] == "." and (
+            (date_position < len(dates) and dates[date_position].start <= match.start())
+            or re.fullmatch(r"[0-9]+(?:\.[0-9]+)*", text[start : match.start()].strip())
         ):
             continue
         newline = match[0][0] in "\r\n"
@@ -163,8 +170,10 @@ def index_documents(documents: Sequence[Document], *, published_on: date | None)
     index = NoticeIndex({}, {}, {}, {})
     for document in documents:
         references = _references(document)
+        dates = find_dates(document.text, published_on)
         reference_position = 0
-        for start, end in _sentences(document.text, references):
+        date_position = 0
+        for start, end in _sentences(document.text, references, dates):
             sentence_id = f"S{len(index.sentences) + 1}"
             sentence = Sentence(
                 sentence_id, document.attachment, start, end, document.text[start:end]
@@ -189,8 +198,9 @@ def index_documents(documents: Sequence[Document], *, published_on: date | None)
                 (start + address.start(), start + address.end())
                 for address in _REFERENCE.finditer(sentence.text)
             ]
-            for match in find_dates(sentence.text, published_on):
-                located = replace(match, start=start + match.start, end=start + match.end)
+            while date_position < len(dates) and dates[date_position].start < end:
+                located = dates[date_position]
+                date_position += 1
                 # Dates embedded in a URL or an email are not dates asserted by the notice.
                 if any(
                     located.start < address_end and located.end > address_start
