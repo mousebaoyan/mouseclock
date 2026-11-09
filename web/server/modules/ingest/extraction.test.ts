@@ -7,6 +7,7 @@ import { env } from "../../platform/env.ts";
 import { login } from "../accounts/service.ts";
 import type { ExtractedFields } from "../programs/schemas.ts";
 import { createCrawlerToken } from "./service.ts";
+import type { UnresolvedDate } from "./routes.ts";
 
 const v1 = testClient(app).api.v1;
 const api = v1.crawler;
@@ -98,6 +99,7 @@ async function extract(
     cohort?: number;
     role?: "call" | "update" | "result";
     fields: ExtractedFields;
+    unresolved_dates?: UnresolvedDate[];
   }[],
 ) {
   const res = await api.snapshots[":id"].extraction.$post(
@@ -131,6 +133,107 @@ const APPLY = {
   },
   ...sure("报名时间：2026年6月1日8:00至6月14日17:00"),
 };
+
+test("unparsed update dates wait for review without overwriting existing dates or duplicating items", async () => {
+  const { cs, notice, snapshot: first } = await setUp("raw-date.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [program] = await programsOf(cs);
+  const raw = "截止顺延至下周二17点。名额120人。";
+  const second = await snapshot(notice, raw);
+  const payload = [
+    {
+      program_id: program.id,
+      college_id: cs,
+      role: "update" as const,
+      fields: { quota: { value: "120人", ...sure("名额120人") } },
+      unresolved_dates: [
+        {
+          field: "apply.end" as const,
+          text: "下周二17点",
+          evidence: sure("截止顺延至下周二17点").evidence,
+        },
+      ],
+    },
+  ];
+  await extract(second.snapshot_id, payload);
+  await extract(second.snapshot_id, payload);
+  const current = await fieldsOf(program.id);
+  expect(current["apply:start"]).toEqual(APPLY.value.start);
+  expect(current["apply:end"]).toEqual(APPLY.value.end);
+  expect(current.quota).toBe("120人");
+  expect(await reviewOf(second.snapshot_id)).toEqual([
+    { reason: "unparsed_date", key: null, program_id: program.id },
+  ]);
+  const listed = await v1["review-items"].$get({ query: { reason: "unparsed_date" } }, editor);
+  expect(listed.status).toBe(200);
+  if (listed.status !== 200) throw new Error("Cannot list raw date review");
+  const { items } = await listed.json();
+  const item = items.find((i) => i.notice.snapshot_id === second.snapshot_id);
+  expect(item?.extracted?.program.unresolved_dates).toEqual(payload[0].unresolved_dates);
+  if (!item) throw new Error("Missing raw date review");
+  const accepted = await v1["review-items"][":id"].accept.$post(
+    { param: { id: String(item.id) }, json: {} },
+    editor,
+  );
+  expect(accepted.status).toBe(204);
+  expect((await fieldsOf(program.id))["apply:end"]).toEqual(APPLY.value.end);
+});
+
+test("unparsed dates require original evidence and cannot also contain a guessed normalized value", async () => {
+  const { cs, snapshot: snap } = await setUp("bad-raw-date.edu.cn");
+  for (const value of [
+    { text: "不存在的日期", fields: {} },
+    { text: "6月14日17:00", fields: { apply: APPLY } },
+  ]) {
+    const res = await api.snapshots[":id"].extraction.$post(
+      {
+        param: { id: String(snap) },
+        json: {
+          programs: [
+            {
+              college_id: cs,
+              cohort: 2027,
+              kind: "summer_camp",
+              role: "call",
+              name: "夏令营",
+              fields: value.fields,
+              unresolved_dates: [
+                { field: "apply.end", text: value.text, evidence: APPLY.evidence },
+              ],
+            },
+          ],
+          usage: [],
+        },
+      },
+      crawler,
+    );
+    expect(res.status).toBe(400);
+  }
+  expect(await programsOf(cs)).toEqual([]);
+});
+
+test("a new call with an unparsed deadline creates one specific review, not a missing-deadline duplicate", async () => {
+  const { cs, notice } = await setUp("new-raw-date.edu.cn");
+  const { snapshot_id } = await snapshot(notice, "报名截止为下周二17点。");
+  await extract(snapshot_id, [
+    {
+      college_id: cs,
+      fields: {},
+      unresolved_dates: [
+        {
+          field: "apply.end",
+          text: "下周二17点",
+          evidence: sure("报名截止为下周二17点").evidence,
+        },
+      ],
+    },
+  ]);
+  const [program] = await programsOf(cs);
+  expect(program.apply_deadline).toBeNull();
+  expect(await reviewOf(snapshot_id)).toEqual([
+    { reason: "unparsed_date", key: null, program_id: program.id },
+  ]);
+});
 
 async function programsOf(collegeId: number) {
   return db

@@ -27,6 +27,7 @@ export type Decision = { program_id?: number; college_id?: number; cohort?: numb
 
 // In the order the review page lists them.
 export const REASONS = [
+  "unparsed_date",
   "no_deadline",
   "conflicts_edit",
   "implausible",

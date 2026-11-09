@@ -21,6 +21,7 @@ function json<T extends z.ZodType>(schema: T) {
 
 const Reason = z.enum(REASONS).openapi("ReviewReason", {
   description:
+    "unparsed_date：时间原文待人工确认；" +
     "no_deadline：报名通知没有截止；conflicts_edit：和人改的值冲突；implausible：明显不对；evidence_not_found：证据找不到；low_confidence：置信度低；unknown_program：编号对不上；unknown_college：学院对不上；implausible_cohort：届不对；possible_duplicate：可能重复",
 });
 

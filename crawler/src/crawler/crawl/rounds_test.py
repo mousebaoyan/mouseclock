@@ -19,6 +19,8 @@ from crawler.crawl.contract import (
 from crawler.crawl.fetch import Fetcher, FetchError
 from crawler.crawl.rounds import Attachment, NoticePage, StepError, Steps, crawl_source
 from crawler.crawl.website import Website
+from crawler.extraction.extract import Extract
+from crawler.extraction.numbered import SelectedFields
 
 SOURCE = WorkSource(
     id=7, url="http://a/list.htm", section="通知公告", browser=False, config=None, backfill=False
@@ -162,6 +164,95 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         "useful_count": 1,
         "notice_failures": [],
     }
+
+
+def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> None:
+    site = FakeWebsite([pending(1, "fetch")], frozenset())
+    context = ExtractionContext.model_validate(
+        {
+            "published_on": "2026-06-01",
+            "colleges": [{"id": 12, "name": "计算机学院"}],
+            "programs": [],
+        }
+    )
+    fields = dict.fromkeys(SelectedFields.model_fields)
+    fields["apply"] = {
+        "value": {"start": None, "end": {"date_id": "D1", "edge": "first"}, "rolling": None},
+        "evidence": ["S1"],
+        "confidence": 0.95,
+    }
+
+    def model(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert json.loads(payload["input"][1]["content"])["title"] == "t"
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-flash",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(
+                                    {
+                                        "programs": [
+                                            {
+                                                "college_id": 12,
+                                                "program_id": None,
+                                                "cohort": 2027,
+                                                "kind": "summer_camp",
+                                                "role": "call",
+                                                "name": "夏令营",
+                                                "fields": fields,
+                                                "unresolved_dates": [],
+                                            }
+                                        ]
+                                    }
+                                ),
+                            }
+                        ],
+                    }
+                ],
+                "usage": {"input_tokens": 200, "output_tokens": 50},
+            },
+        )
+
+    def website(request: httpx.Request) -> httpx.Response:
+        response = site.handle(request)
+        if request.url.path.endswith("/snapshot"):
+            body = response.json()
+            body["extraction"] = context.model_dump(mode="json")
+            return httpx.Response(200, json=body)
+        return response
+
+    async def read(_fetcher: Fetcher, _source: WorkSource, _url: str) -> NoticePage:
+        return page("报名截止6月30日24点。")
+
+    async def run() -> None:
+        extractor = Extract("local-test", httpx.MockTransport(model))
+        try:
+            async with (
+                Fetcher(httpx.MockTransport(lambda _: httpx.Response(500))) as fetcher,
+                Website("http://site", "token", httpx.MockTransport(website)) as client,
+            ):
+                await crawl_source(
+                    SOURCE, fetcher, client, Steps(list_items, screen, read, extractor)
+                )
+        finally:
+            await extractor.close()
+
+    asyncio.run(run())
+    [posted] = site.called("POST /snapshots/10/extraction")
+    assert posted["programs"][0]["college_id"] == 12
+    assert posted["programs"][0]["fields"]["apply"]["value"] == {
+        "end": {"date": "2026-06-30", "time": "24:00"}
+    }
+    assert posted["usage"] == [
+        {"model": "deepseek-flash", "input_tokens": 200, "output_tokens": 50}
+    ]
 
 
 def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:

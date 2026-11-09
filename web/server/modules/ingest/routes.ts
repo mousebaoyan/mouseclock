@@ -16,6 +16,7 @@ import {
   ApplyValue,
   Cohort,
   ExtractedFields,
+  Evidence,
   IsoDate,
   Kind,
   ProgramName,
@@ -70,6 +71,15 @@ const Usage = z
   .openapi("Usage");
 
 // One program a notice is about, as design §8.2 lays out.
+export const UnresolvedDate = z
+  .strictObject({
+    field: z.enum(["apply.start", "apply.end", "event.start", "event.end", "dates"]),
+    text: z.string().trim().min(1).max(2000),
+    evidence: z.array(Evidence).min(1).max(20),
+  })
+  .openapi("UnresolvedDate");
+export type UnresolvedDate = z.infer<typeof UnresolvedDate>;
+
 export const ExtractedProgram = z
   .strictObject({
     program_id: Int.optional().openapi({ description: "对照里的哪个项目；新项目不写" }),
@@ -79,6 +89,7 @@ export const ExtractedProgram = z
     name: ProgramName,
     role: Role.openapi({ description: "call：报名；update：补充；result：名单" }),
     fields: ExtractedFields,
+    unresolved_dates: z.array(UnresolvedDate).max(30).optional(),
   })
   .openapi("ExtractedProgram");
 

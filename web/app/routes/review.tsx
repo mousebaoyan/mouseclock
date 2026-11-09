@@ -25,6 +25,11 @@ type Edits = InferResponseType<Api["edits"]["$get"], 200>;
 
 // Why each item waits (design §8.3, §8.4), in the order the API lists them.
 const REASONS: Record<Reason, { label: string; color: TagColor; hint: string }> = {
+  unparsed_date: {
+    label: "日期待确认",
+    color: "amber",
+    hint: "原文有时间，但程序未能识别。请核对原句，到项目页补充时间后标记已核对；原有时间不会被这条原文覆盖。",
+  },
   no_deadline: {
     label: "缺少截止时间",
     color: "red",
@@ -386,6 +391,39 @@ function ProgramItem({ item, reason, thisYear }: { item: Item; reason: Reason; t
       </p>
     </div>
   );
+  if (reason === "unparsed_date") {
+    return (
+      <>
+        {summary}
+        {program.unresolved_dates?.map((unresolved, index) => (
+          <div key={index} className="space-y-2 rounded-md border p-3">
+            <p className="font-medium">
+              {unresolved.field === "dates"
+                ? "其他时间"
+                : fieldLabel(unresolved.field.replace(".", ":"))}
+              ：{unresolved.text}
+            </p>
+            {unresolved.evidence.map((e) => (
+              <blockquote key={e.quote} className="border-l-2 pl-3 text-sm">
+                {e.quote}
+                {e.attachment !== undefined && `（第 ${e.attachment + 1} 个附件）`}
+              </blockquote>
+            ))}
+          </div>
+        ))}
+        <Decide id={item.id} accept="已核对，关闭此条" reject="无需补充">
+          {item.program && (
+            <Link
+              to={`/programs/${item.program.id}`}
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              前往项目补充时间
+            </Link>
+          )}
+        </Decide>
+      </>
+    );
+  }
   if (reason === "no_deadline") {
     return (
       <Decide id={item.id} accept="原文未写明" reject="已补充，关闭此条">
