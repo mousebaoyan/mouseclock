@@ -76,6 +76,9 @@ class FakePage:
     async def content(self) -> str:
         return "<html>保研通知</html>"
 
+    async def evaluate(self, _expression: str) -> str:
+        return "HeadlessChrome/1.0"
+
     async def __aenter__(self) -> Self:
         return self
 
@@ -139,26 +142,44 @@ class FakeContext:
 
 class FakeBrowser:
     def __init__(self) -> None:
+        self.running = False
         self.contexts: list[FakeContext] = []
         self.started: asyncio.Queue[FakePage] = asyncio.Queue()
         self.block_pages = False
         self.destination: str | None = None
         self.responses = [(200, True, True)]
 
+    async def launch(self, **_options: object) -> Self:
+        self.running = True
+        return self
+
+    async def new_page(self) -> FakePage:
+        return FakePage(FakeContext(self, 0))
+
     async def new_context(self, **_options: object) -> FakeContext:
         context = FakeContext(self, len(self.contexts) + 1)
         self.contexts.append(context)
         return context
 
+    async def close(self) -> None:
+        self.running = False
+
+
+class FakePlaywright:
+    def __init__(self, browser: FakeBrowser) -> None:
+        self.chromium = browser
+
+    async def start(self) -> Self:
+        return self
+
+    async def stop(self) -> None:
+        pass
+
 
 @pytest.fixture
 def driver(monkeypatch: pytest.MonkeyPatch) -> FakeBrowser:
     browser = FakeBrowser()
-
-    async def start(_owner: object) -> FakeBrowser:
-        return browser
-
-    monkeypatch.setattr("crawler.crawl.browser.Browser._start", start)
+    monkeypatch.setattr("crawler.crawl.browser.async_playwright", lambda: FakePlaywright(browser))
     return browser
 
 
@@ -242,6 +263,7 @@ def test_each_round_opens_reuses_and_closes_its_context(driver: FakeBrowser) -> 
             Fetcher(clock=clock.clock, sleep=clock.sleep) as fetcher,
             Browser(fetcher) as browser,
         ):
+            assert driver.running
             async with browser.session(SOURCE.model_copy(update={"browser": False})):
                 assert driver.contexts == []
             async with browser.session(SOURCE) as session:
@@ -254,6 +276,7 @@ def test_each_round_opens_reuses_and_closes_its_context(driver: FakeBrowser) -> 
             async with browser.session(SOURCE):
                 assert len(driver.contexts) == 2
             assert driver.contexts[1].closed
+        assert not driver.running
 
     run(main)
 

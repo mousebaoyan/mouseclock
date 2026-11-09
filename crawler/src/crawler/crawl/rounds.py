@@ -5,7 +5,6 @@ that need it, extract, and report the round. The steps that read pages and ask m
 import logging
 import time
 from collections.abc import Awaitable, Callable
-from contextlib import AsyncExitStack
 from dataclasses import dataclass
 
 from crawler.crawl.browser import Browser, PageSession
@@ -87,9 +86,8 @@ async def crawl_source(
     clock: Callable[[], float] = time.time,
 ) -> None:
     started_at = int(clock())
-    async with AsyncExitStack() as stack:
+    async with browser.session(source) as pages:
         try:
-            pages = await stack.enter_async_context(browser.session(source))
             items = await steps.list_items(pages, source)
             if not items:
                 raise StepError("no_items")

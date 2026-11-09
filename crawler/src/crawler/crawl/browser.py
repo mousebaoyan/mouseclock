@@ -7,12 +7,8 @@ from typing import Self
 from urllib.parse import urljoin
 
 from playwright.async_api import (
-    Browser as PlaywrightBrowser,
-)
-from playwright.async_api import (
     BrowserContext,
     Page,
-    Playwright,
     Route,
     async_playwright,
 )
@@ -41,7 +37,7 @@ PAGE_LIMIT = 2
 _REDIRECTS = {301, 302, 303, 307, 308}
 _BLOCKED = {"image", "font", "media"}
 _CHALLENGES = {202, 412}
-_logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 async def _close_popup(page: Page) -> None:
@@ -60,61 +56,38 @@ class Browser:
     def __init__(self, fetcher: Fetcher) -> None:
         self.fetcher = fetcher
         self.slots = asyncio.Semaphore(PAGE_LIMIT)
-        self._lock = asyncio.Lock()
-        self._playwright: Playwright | None = None
-        self._browser: PlaywrightBrowser | None = None
-        self._user_agent = ""
 
     async def __aenter__(self) -> Self:
+        self._playwright = await async_playwright().start()
+        try:
+            self._browser = await self._playwright.chromium.launch(
+                headless=True, args=["--disable-blink-features=AutomationControlled"]
+            )
+            async with await self._browser.new_page() as page:
+                user_agent: str = await page.evaluate("navigator.userAgent")
+        except BaseException:
+            await self._playwright.stop()
+            raise
+        self._user_agent = user_agent.replace("HeadlessChrome", "Chrome") + " " + USER_AGENT
         return self
 
     async def __aexit__(self, *_: object) -> None:
-        await self.close()
-
-    async def _start(self) -> PlaywrightBrowser:
-        async with self._lock:
-            if self._browser is not None:
-                return self._browser
-            playwright = await async_playwright().start()
-            try:
-                browser = await playwright.chromium.launch(
-                    headless=True, args=["--disable-blink-features=AutomationControlled"]
-                )
-                async with await browser.new_page() as page:
-                    user_agent: str = await page.evaluate("navigator.userAgent")
-            except BaseException:
-                await playwright.stop()
-                raise
-            self._user_agent = user_agent.replace("HeadlessChrome", "Chrome") + " " + USER_AGENT
-            self._playwright = playwright
-            self._browser = browser
-            return browser
+        try:
+            await self._browser.close()
+        finally:
+            await self._playwright.stop()
 
     @asynccontextmanager
     async def session(self, source: WorkSource) -> AsyncGenerator[PageSession]:
         if not source.browser:
             yield PageSession(self.fetcher, None)
             return
-        try:
-            browser = await self._start()
-            async with await browser.new_context(
-                user_agent=self._user_agent, service_workers="block", accept_downloads=False
-            ) as context:
-                await context.route("**/*", _route)
-                context.on("page", _close_popup)
-                yield PageSession(self.fetcher, BrowserSession(self, context))
-        except PlaywrightTimeoutError as error:
-            raise FetchError("timeout", source.url) from error
-        except PlaywrightError as error:
-            raise FetchError("unreachable", source.url) from error
-
-    async def close(self) -> None:
-        try:
-            if self._browser is not None:
-                await self._browser.close()
-        finally:
-            if self._playwright is not None:
-                await self._playwright.stop()
+        async with await self._browser.new_context(
+            user_agent=self._user_agent, service_workers="block", accept_downloads=False
+        ) as context:
+            await context.route("**/*", _route)
+            context.on("page", _close_popup)
+            yield PageSession(self.fetcher, BrowserSession(self, context))
 
 
 class BrowserSession:
@@ -146,11 +119,13 @@ class BrowserSession:
                         "text/html; charset=utf-8",
                         body.encode("utf-8"),
                     )
-                    _logger.info(
-                        "Browser fetched %s status=%s elapsed=%.3fs",
-                        response.url,
-                        response.status,
-                        time.monotonic() - started,
+                    logger.info(
+                        "Browser fetched",
+                        extra={
+                            "url": response.url,
+                            "status": response.status,
+                            "elapsed": time.monotonic() - started,
+                        },
                     )
                     return response
             except PlaywrightTimeoutError as error:

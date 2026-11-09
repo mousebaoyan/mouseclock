@@ -279,12 +279,14 @@ def test_bad_configuration_is_recorded_by_the_round(
         raise AssertionError("a failed list must not read notices")
 
     async def run(fetcher: Fetcher) -> None:
-        async with (
-            Browser(fetcher) as browser,
-            Website("http://site", "local-test", httpx.MockTransport(website.handle)) as client,
-        ):
+        async with Website(
+            "http://site", "local-test", httpx.MockTransport(website.handle)
+        ) as client:
             await crawl_source(
-                source(config=config), browser, client, Steps(list_items, screen, read, extract)
+                source(config=config),
+                Browser(fetcher),
+                client,
+                Steps(list_items, screen, read, extract),
             )
 
     sites.run(run)

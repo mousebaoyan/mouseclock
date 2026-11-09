@@ -4,7 +4,6 @@ import re
 from typing import Any
 
 import httpx
-import pytest
 
 from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import (
@@ -65,15 +64,16 @@ class FakeWebsite:
             )
         return httpx.Response(204)
 
-    def run(self, steps: Steps, source: WorkSource = SOURCE) -> None:
+    def run(self, steps: Steps) -> None:
         async def main() -> None:
             nowhere = httpx.MockTransport(lambda _: httpx.Response(500))
             async with (
                 Fetcher(nowhere) as fetcher,
-                Browser(fetcher) as browser,
                 Website("http://site", "token", httpx.MockTransport(self.handle)) as website,
             ):
-                await crawl_source(source, browser, website, steps, clock=lambda: 1_800_000_000)
+                await crawl_source(
+                    SOURCE, Browser(fetcher), website, steps, clock=lambda: 1_800_000_000
+                )
 
         asyncio.run(main())
 
@@ -212,25 +212,3 @@ def test_a_list_that_cant_be_read_ends_the_round_with_the_reason() -> None:
         [run] = site.called("POST /runs")
         assert run["failure"] == failure
         assert run["listed"] == 0
-
-
-def test_a_session_that_cant_start_is_reported(monkeypatch: pytest.MonkeyPatch) -> None:
-    site = FakeWebsite([], extracted=frozenset())
-
-    async def unavailable(_browser: Browser) -> None:
-        raise FetchError("unreachable", SOURCE.url)
-
-    async def unused_read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
-        raise AssertionError("Listing failed before notices could be read")
-
-    monkeypatch.setattr(Browser, "_start", unavailable)
-    site.run(
-        Steps(list_items, screen, unused_read, extract),
-        SOURCE.model_copy(update={"browser": True}),
-    )
-
-    assert [call for call, _ in site.calls] == ["POST /runs"]
-    [run] = site.called("POST /runs")
-    assert run["failure"] == "unreachable"
-    assert run["detail"] == SOURCE.url
-    assert run["listed"] == 0
