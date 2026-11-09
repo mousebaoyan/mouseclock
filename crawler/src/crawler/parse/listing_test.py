@@ -21,9 +21,7 @@ TODAY = date(2026, 11, 7)
 
 
 def source(*, backfill: bool = False, config: dict[str, JsonValue] | None = None) -> WorkSource:
-    return WorkSource(
-        id=7, url=BASE, section="招生信息", browser=False, config=config, backfill=backfill
-    )
+    return WorkSource(id=7, url=BASE, browser=False, config=config, backfill=backfill)
 
 
 def page(rows: list[tuple[str, str | None]], following: str | None = None) -> bytes:

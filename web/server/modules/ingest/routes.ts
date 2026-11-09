@@ -89,7 +89,6 @@ const Work = z
         .object({
           id: Int,
           url: z.string(),
-          section: z.string(),
           browser: z.boolean(),
           config: z.union([Config, z.null()]),
           backfill: z.boolean().openapi({ description: "第一次抓：往回翻页，补上前两年的通知" }),

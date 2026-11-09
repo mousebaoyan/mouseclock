@@ -13,7 +13,6 @@ def source() -> WorkSource:
     return WorkSource(
         id=7,
         url="https://example.edu.cn",
-        section="招生",
         browser=False,
         config=None,
         backfill=False,

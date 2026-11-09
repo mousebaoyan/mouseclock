@@ -566,7 +566,7 @@ export async function leaseSources(
         .forUpdate()
         .skipLocked(),
     )
-    .returning(["id", "url", "section", "browser", "crawled_at"])
+    .returning(["id", "url", "browser", "crawled_at"])
     .returning(sql<Record<string, unknown> | null>`config`.as("config"))
     .execute();
 }

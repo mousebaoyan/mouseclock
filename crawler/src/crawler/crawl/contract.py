@@ -162,7 +162,6 @@ class ProbeReport(BaseModel):
 class WorkSource(BaseModel):
     id: Annotated[int, Field(ge=-2147483648, le=2147483647)]
     url: str
-    section: str
     browser: bool
     config: Config | None
     backfill: Annotated[bool, Field(description="第一次抓：往回翻页，补上前两年的通知")]
