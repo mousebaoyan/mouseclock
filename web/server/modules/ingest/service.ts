@@ -5,7 +5,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
 import type { ExtractedFields, Kind, Role } from "../programs/schemas.ts";
-import type { UnresolvedDate } from "./routes.ts";
+import type { UnresolvedDate } from "./schemas.ts";
 import {
   applyOf,
   applyStored,

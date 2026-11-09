@@ -7,7 +7,7 @@ import { env } from "../../platform/env.ts";
 import { login } from "../accounts/service.ts";
 import type { ExtractedFields } from "../programs/schemas.ts";
 import { createCrawlerToken } from "./service.ts";
-import type { UnresolvedDate } from "./routes.ts";
+import type { UnresolvedDate } from "./schemas.ts";
 
 const v1 = testClient(app).api.v1;
 const api = v1.crawler;
