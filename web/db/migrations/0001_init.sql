@@ -245,7 +245,7 @@ CREATE TABLE review_items (
                  'evidence_not_found', 'low_confidence', 'implausible', 'conflicts_edit',
                  -- a program from an extraction
                  'unknown_program', 'unknown_college', 'implausible_cohort',
-                 'possible_duplicate', 'no_deadline')),
+                 'possible_duplicate', 'no_deadline', 'unparsed_date')),
   snapshot_id  integer NOT NULL REFERENCES snapshots (id),
   program_id   integer REFERENCES programs (id),       -- NULL: the extraction's program was held back
   version_id   integer REFERENCES program_versions (id),

@@ -72,7 +72,7 @@ class Steps:
     read: Callable[[PageSession, WorkSource, str], Awaitable[NoticePage | None]]
     # The programs a notice is about (design §8.2).
     extract: Callable[
-        [NoticePage, ExtractionContext], Awaitable[tuple[list[ExtractedProgram], list[Usage]]]
+        [str, NoticePage, ExtractionContext], Awaitable[tuple[list[ExtractedProgram], list[Usage]]]
     ]
 
 
@@ -176,6 +176,6 @@ async def _fetch_notice(
             await website.attachment(result.snapshot_id, position, data)
     if result.extraction is None:
         return 0
-    programs, usage = await steps.extract(page, result.extraction)
+    programs, usage = await steps.extract(notice.title, page, result.extraction)
     await website.extraction(result.snapshot_id, Extraction(programs=programs, usage=usage))
     return len(programs)

@@ -129,6 +129,15 @@ class Evidence(BaseModel):
     ] = None
 
 
+class UnresolvedDate(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    field: Literal["apply.start", "apply.end", "event.start", "event.end", "dates"]
+    text: Annotated[str, Field(max_length=2000, min_length=1)]
+    evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
+
+
 type Failure = Annotated[
     Literal["timeout", "unreachable", "too_many_redirects", "http_status", "no_items", "error"],
     Field(description="不写就是列表读到了"),
@@ -407,6 +416,7 @@ class ExtractedProgram(BaseModel):
         Field(description="call：报名；update：补充；result：名单"),
     ]
     fields: ExtractedFields
+    unresolved_dates: Annotated[list[UnresolvedDate] | None, Field(max_length=30)] = None
 
 
 class ExtractionContext(BaseModel):

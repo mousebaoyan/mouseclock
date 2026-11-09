@@ -676,6 +676,13 @@
           },
           "fields": {
             "$ref": "#/components/schemas/ExtractedFields"
+          },
+          "unresolved_dates": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UnresolvedDate"
+            },
+            "maxItems": 30
           }
         },
         "required": [
@@ -1139,6 +1146,40 @@
         },
         "required": [
           "label"
+        ],
+        "additionalProperties": false
+      },
+      "UnresolvedDate": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "apply.start",
+              "apply.end",
+              "event.start",
+              "event.end",
+              "dates"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "minItems": 1,
+            "maxItems": 20
+          }
+        },
+        "required": [
+          "field",
+          "text",
+          "evidence"
         ],
         "additionalProperties": false
       },
