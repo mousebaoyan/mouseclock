@@ -3,9 +3,8 @@
 /* Like mousehole and the main site: html[data-theme] is set before first paint (root.tsx). */
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-/* Mousehole's colors, from the 鼠群 logo: near-white paper and slate ink, a sea teal for buttons
-   and the apricot sun for accents. System fonts only: Chinese web fonts run to megabytes
-   (design §14). */
+/* Cool paper and indigo ink; vermilion is kept for deadlines that are close and for errors, so
+   it always means "act now". System fonts only: Chinese web fonts run to megabytes (design §14). */
 @theme inline {
   --font-sans:
     -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Hiragino Sans GB",
@@ -14,24 +13,19 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
-  --color-card-foreground: var(--card-foreground);
   --color-popover: var(--popover);
-  --color-popover-foreground: var(--popover-foreground);
   --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
   --color-primary-foreground: var(--primary-foreground);
-  --color-secondary: var(--secondary);
-  --color-secondary-foreground: var(--secondary-foreground);
+  --color-primary-soft: var(--primary-soft);
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
+  --color-subtle-foreground: var(--subtle-foreground);
   --color-accent: var(--accent);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-destructive: var(--destructive);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --color-brand: var(--brand);
-  --color-brand-strong: var(--brand-strong);
-  --color-link: var(--link);
+  --color-destructive: var(--destructive);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-tag-red: var(--tag-red);
@@ -43,80 +37,66 @@
   --color-tag-blue: var(--tag-blue);
   --color-tag-violet: var(--tag-violet);
   --color-tag-pink: var(--tag-pink);
-  --text-2xs: 0.6875rem;
-  --text-2xs--line-height: 1.4;
-  --text-meta: 0.8125rem;
-  --text-meta--line-height: 1.45;
-  --text-body: 0.9375rem;
-  --text-body--line-height: 1.6;
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
+  --color-tag-gray: var(--tag-gray);
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --shadow-card: 0 1px 2px rgb(20 32 58 / 0.05), 0 4px 16px -8px rgb(20 32 58 / 0.1);
+  --shadow-pop: 0 12px 32px -8px rgb(20 32 58 / 0.25), 0 2px 6px rgb(20 32 58 / 0.06);
 }
 
 :root {
   color-scheme: light;
-  --radius: 0.625rem;
-  --background: #fefdfb;
-  --foreground: #1f2a28;
+  --background: #f3f5f8;
+  --foreground: #18212f;
   --card: #ffffff;
-  --card-foreground: #1f2a28;
   --popover: #ffffff;
-  --popover-foreground: #1f2a28;
-  --primary: #2b7a6b;
+  --primary: #2b5197;
+  --primary-hover: #224383;
   --primary-foreground: #ffffff;
-  --secondary: #f5f2ec;
-  --secondary-foreground: #1f2a28;
-  --muted: #f5f2ec;
-  --muted-foreground: #686d66;
-  --accent: #f3efe8;
-  --accent-foreground: #1f2a28;
-  --destructive: #c2410c;
-  --border: #ebe6dd;
-  --input: #ded8cb;
-  --ring: #ef9f70;
-  --brand: #ef9f70;
-  --brand-strong: #a9532e;
-  --link: #23716a;
-  --success: #2d7a4c;
-  --warning: #9a5a0c;
-  /* Tags tell tiers, kinds and statuses apart at a glance: text in the hue on a light wash of it. */
+  --primary-soft: #edf2fb;
+  --muted: #f1f3f7;
+  --muted-foreground: #5d6778;
+  --subtle-foreground: #8b94a3;
+  --accent: #eef1f6;
+  --border: #e1e5eb;
+  --input: #cdd3dc;
+  --ring: #2b5197;
+  --destructive: #c8372d;
+  --success: #1e7b4e;
+  --warning: #a86206;
+  /* Tags tell tiers, kinds and statuses apart at a glance: text in the hue on a light wash. */
   --tag-red: #c03a2b;
   --tag-orange: #c2560c;
   --tag-amber: #94670a;
-  --tag-green: #2d7a4c;
-  --tag-teal: #1f7a70;
+  --tag-green: #1e7b4e;
+  --tag-teal: #17766c;
   --tag-sky: #0f6fa8;
   --tag-blue: #3557b8;
   --tag-violet: #6d48c2;
   --tag-pink: #b8396f;
+  --tag-gray: #5d6778;
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --background: #161b1a;
-  --foreground: #ece7dc;
-  --card: #1b2120;
-  --card-foreground: #ece7dc;
-  --popover: #1f2624;
-  --popover-foreground: #ece7dc;
-  --primary: #2e8070;
+  --background: #0f141b;
+  --foreground: #e6eaf0;
+  --card: #161c25;
+  --popover: #1b2230;
+  --primary: #4a70c0;
+  --primary-hover: #5a7fcd;
   --primary-foreground: #ffffff;
-  --secondary: #222927;
-  --secondary-foreground: #ece7dc;
-  --muted: #222927;
-  --muted-foreground: #a09f96;
-  --accent: #262e2c;
-  --accent-foreground: #ece7dc;
-  --destructive: #f2855a;
-  --border: #313a37;
-  --input: #3a4441;
-  --ring: #c9845f;
-  --brand: #c9845f;
-  --brand-strong: #eeb084;
-  --link: #7cc4b8;
+  --primary-soft: #1c2740;
+  --muted: #1d2430;
+  --muted-foreground: #a0a9b8;
+  --subtle-foreground: #737d8d;
+  --accent: #212938;
+  --border: #283142;
+  --input: #364256;
+  --ring: #7fa2e6;
+  --destructive: #f07a6e;
   --success: #6fcf97;
   --warning: #e9b860;
   --tag-red: #f28b82;
@@ -128,30 +108,26 @@
   --tag-blue: #93b4f7;
   --tag-violet: #bba4f5;
   --tag-pink: #f293bd;
+  --tag-gray: #a0a9b8;
 }
 
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border outline-ring/40;
   }
-  /* Desktop screens are read from further away, so everything sized in rem grows a little. */
   html {
     scrollbar-gutter: stable;
-    @variant lg {
-      font-size: 106.25%;
-    }
   }
-  /* Titles and names come from colleges' sites and members: a long link or word breaks rather
-     than running out of its box. */
+  /* Titles and names come from colleges' sites: a long link or word breaks rather than running
+     out of its box. */
   body {
-    @apply bg-background font-sans text-foreground antialiased;
+    @apply bg-background font-sans text-sm text-foreground antialiased;
     overflow-wrap: break-word;
   }
-  /* Hover and press colors ease in rather than snap; utilities on an element still win. */
   a,
   button,
   summary {
-    transition-property: color, background-color, border-color, text-decoration-color, opacity;
+    transition-property: color, background-color, border-color, box-shadow, opacity;
     transition-duration: 150ms;
   }
   @media (prefers-reduced-motion: reduce) {
@@ -162,16 +138,25 @@
       animation-delay: 0s !important;
       transition-duration: 1ms !important;
     }
+    ::view-transition-group(*),
+    ::view-transition-old(*),
+    ::view-transition-new(*) {
+      animation: none !important;
+    }
   }
-  /* Tailwind 4 resets buttons to the default cursor. */
+  /* Tailwind 4 resets buttons to the default cursor. Everything that can be clicked shows the
+     hand. */
   button:not(:disabled),
-  [role="button"]:not([aria-disabled="true"]) {
+  [role="button"]:not([aria-disabled="true"]),
+  input[type="checkbox"]:not(:disabled),
+  label:has(input[type="checkbox"]),
+  summary {
     cursor: pointer;
   }
   /* Lucide's look for the icons of components/icons.tsx; size-* and stroke-* classes win. */
   .lucide {
-    width: 24px;
-    height: 24px;
+    width: 16px;
+    height: 16px;
     fill: none;
     stroke: currentColor;
     stroke-width: 2;
@@ -180,47 +165,75 @@
   }
 }
 
-/* Buttons, as classes rather than utilities spelled out on each, as in mousehole: a long table
-   has many. Utilities a caller adds still win, being in a later layer. */
+/* On touch screens buttons and fields grow to a fingertip, and so does a small control marked
+   touch-target, whose look stays as it is. */
+@utility touch-target {
+  position: relative;
+  @media (pointer: coarse) {
+    &::before {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: max(100%, 2.75rem);
+      height: max(100%, 2.75rem);
+      transform: translate(-50%, -50%);
+    }
+  }
+}
+
+/* iOS zooms the page in on a field whose text is under 16px when it is tapped. Outside the
+   layers, so it holds against a field's own smaller text. */
+@media (pointer: coarse) {
+  input,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
+/* Buttons and fields as classes rather than utilities spelled out on each: a long table has
+   many. Utilities a caller adds still win, being in a later layer. */
 @layer components {
+  /* A button gives a little under the finger. */
   .btn {
-    @apply inline-flex shrink-0 items-center justify-center rounded-lg border border-transparent bg-clip-padding text-sm font-medium whitespace-nowrap transition-all outline-none select-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:scale-[0.96] disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4;
+    @apply inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-transparent text-sm font-medium whitespace-nowrap outline-none select-none focus-visible:ring-3 focus-visible:ring-ring/30 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0;
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale;
   }
   .btn-primary {
-    @apply bg-primary text-primary-foreground hover:bg-[color-mix(in_oklab,var(--primary),black_7%)];
+    @apply bg-primary text-primary-foreground hover:bg-primary-hover;
   }
   .btn-outline {
-    @apply border-border bg-background hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50;
-  }
-  .btn-secondary {
-    @apply bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground;
+    @apply border-input bg-card text-foreground hover:bg-accent aria-expanded:bg-accent;
   }
   .btn-ghost {
-    @apply hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50;
+    @apply text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground;
   }
   .btn-destructive {
-    @apply bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40;
+    @apply bg-destructive text-white hover:bg-[color-mix(in_oklab,var(--destructive),black_10%)];
   }
   .btn-link {
-    @apply text-primary underline-offset-4 hover:underline;
+    @apply h-auto! border-0 px-0! text-primary underline-offset-4 hover:underline;
   }
   .btn-md {
-    @apply h-8 gap-1.5 px-2.5;
-  }
-  .btn-xs {
-    @apply h-6 gap-1 rounded-[min(var(--radius-md),10px)] px-2 text-xs [&_svg:not([class*='size-'])]:size-3;
+    @apply h-9 px-3.5 pointer-coarse:h-11;
   }
   .btn-sm {
-    @apply h-7 gap-1 rounded-[min(var(--radius-md),12px)] px-2.5 text-[0.8rem] [&_svg:not([class*='size-'])]:size-3.5;
+    @apply h-8 px-3 text-[13px] pointer-coarse:h-10;
   }
-  .btn-lg {
-    @apply h-9 gap-1.5 px-2.5;
+  .btn-xs {
+    @apply h-7 gap-1 px-2 text-xs pointer-coarse:h-9;
   }
   .btn-icon {
-    @apply size-8;
+    @apply size-9 pointer-coarse:size-11;
   }
   .btn-icon-sm {
-    @apply size-7 rounded-[min(var(--radius-md),12px)];
+    @apply size-8 pointer-coarse:size-10;
+  }
+  .field {
+    @apply h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm outline-none placeholder:text-subtle-foreground hover:border-[color-mix(in_oklab,var(--input),var(--foreground)_15%)] focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-ring/15 disabled:opacity-50 aria-invalid:border-destructive pointer-coarse:h-11;
+  }
+  .link {
+    @apply text-primary underline-offset-4 hover:underline;
   }
 }
 
@@ -231,7 +244,7 @@
   inset: 0 0 auto;
   z-index: 60;
   height: 2px;
-  background: var(--brand);
+  background: var(--primary);
   transform-origin: left;
   animation: nav-progress 8s cubic-bezier(0.1, 0.7, 0.2, 1) 150ms both;
 }
@@ -244,10 +257,91 @@
   }
 }
 
+/* Motion, short and light, as mousehole's: only opacity and transform move, so none of it costs
+   layout, and prefers-reduced-motion turns it all off. */
+
+/* A page opened from another fades in, and its cards and rows rise one after another
+   (components/page-transition.tsx). The page itself only fades: a transform on it would carry
+   along the fixed panels inside. */
+.page-in {
+  animation: fade-in 220ms ease-out;
+}
+.page-in .stagger > * {
+  animation: rise-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+.page-in .stagger > :nth-child(2) {
+  animation-delay: 30ms;
+}
+.page-in .stagger > :nth-child(3) {
+  animation-delay: 60ms;
+}
+.page-in .stagger > :nth-child(4) {
+  animation-delay: 90ms;
+}
+.page-in .stagger > :nth-child(5) {
+  animation-delay: 120ms;
+}
+.page-in .stagger > :nth-child(n + 6) {
+  animation-delay: 150ms;
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+/* A filter, a tab or a page of a list picked: the list cross-fades to the new one rather than
+   snap (the links' viewTransition), where the browser has view transitions. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+}
+
+/* A dropdown or menu grows from the edge by its button (components/disclosure.tsx); the phones'
+   drawer slides in over a fading backdrop. */
+.pop-in {
+  animation: pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.97);
+  }
+}
+.fade-in {
+  animation: fade-in 200ms ease-out;
+}
+.slide-in {
+  animation: slide-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+  }
+}
+
+/* What opens beneath a control, such as a Reveal's evidence or the phones' filters, eases down
+   into view. A utility, so it can wait for a variant such as group-open. */
+@utility drop-in {
+  animation: drop-in 180ms ease-out;
+}
+@keyframes drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
 /* A snapshot's HTML, which keeps only text-level tags (programs/sanitize.ts); the reset took their
    spacing away. */
 .snapshot {
-  line-height: 1.75;
+  line-height: 1.8;
   overflow-wrap: anywhere;
   & :where(p, ul, ol, table, pre, blockquote, h1, h2, h3, h4, h5, h6) {
     margin-block: 0.75em;
@@ -264,7 +358,7 @@
     padding-left: 1.5em;
   }
   & :where(a) {
-    color: var(--link);
+    color: var(--primary);
     text-decoration: underline;
     text-underline-offset: 4px;
   }

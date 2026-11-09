@@ -5,7 +5,6 @@ import { cn } from "~/cn";
 const VARIANTS = {
   default: "btn-primary",
   outline: "btn-outline",
-  secondary: "btn-secondary",
   ghost: "btn-ghost",
   destructive: "btn-destructive",
   link: "btn-link",
@@ -15,7 +14,6 @@ const SIZES = {
   default: "btn-md",
   xs: "btn-xs",
   sm: "btn-sm",
-  lg: "btn-lg",
   icon: "btn-icon",
   "icon-sm": "btn-icon-sm",
 };

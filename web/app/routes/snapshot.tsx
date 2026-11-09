@@ -1,7 +1,9 @@
 import type { InferResponseType } from "hono/client";
-import { Link } from "react-router";
+import { ExternalLink } from "~/components/icons";
+import { Page, Panel } from "~/components/page";
+import { DateTime } from "~/components/time";
+import { buttonVariants } from "~/components/ui/button";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { CrawlTime, linkClass, panelClass } from "../components/admin.tsx";
 import type { Route } from "./+types/snapshot.ts";
 
 type Snapshot = InferResponseType<ReturnType<typeof createApi>["snapshots"][":id"]["$get"], 200>;
@@ -21,62 +23,75 @@ export default function SnapshotPage({ loaderData }: Route.ComponentProps) {
   const { snapshot } = loaderData;
   const { notice } = snapshot;
   return (
-    <main className="mx-auto max-w-4xl space-y-5 px-3 py-6 sm:px-5">
-      <p className="text-sm">
-        <Link to="/" className={linkClass}>
-          总表
-        </Link>
-        <span className="text-muted-foreground"> / 快照</span>
-      </p>
-      <header>
-        <p className="text-sm text-muted-foreground">
-          快照 · <CrawlTime value={snapshot.fetched_at} /> 抓取
-        </p>
-        <h1 className="mt-1.5 text-xl font-semibold text-pretty">{notice.title}</h1>
-        <p className="mt-2 text-sm">
-          <a href={notice.url} target="_blank" rel="nofollow noopener" className={linkClass}>
-            打开原文
-          </a>
-          {notice.removed && <span className="ml-2 text-warning">原文已删除</span>}
-        </p>
-        <p className="mt-2 text-xs text-muted-foreground">
-          鼠钟抓取时存下的原文，只留了文字、表格和链接，图片和样式都去掉了。
-        </p>
-      </header>
-      {snapshot.attachments.length > 0 && (
-        <section className={panelClass}>
-          <h2 className="font-semibold">附件</h2>
-          <ul className="mt-2 space-y-1.5 text-sm">
-            {snapshot.attachments.map((attachment) => (
-              <li key={attachment.position}>
-                {attachment.size === null ? (
-                  <>
-                    {attachment.name}
-                    <span className="text-muted-foreground">（文件还没存下来）</span>
-                  </>
-                ) : (
-                  <>
-                    <a
-                      href={`/api/v1/snapshots/${snapshot.id}/attachments/${attachment.position}`}
-                      download
-                      className={linkClass}
-                    >
-                      {attachment.name}
-                    </a>
-                    <span className="text-muted-foreground"> · {size(attachment.size)}</span>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <article
-        className={`${panelClass} snapshot text-sm`}
-        // Sanitized on the server against an allowlist (programs/sanitize.ts).
-        dangerouslySetInnerHTML={{ __html: snapshot.html }}
-      />
-    </main>
+    <Page
+      title={notice.title}
+      crumbs={[{ to: "/", label: "项目总表" }]}
+      meta={
+        <>
+          通知快照，抓取于 <DateTime value={snapshot.fetched_at} />
+        </>
+      }
+      actions={
+        <a
+          href={notice.url}
+          target="_blank"
+          rel="nofollow noopener"
+          className={buttonVariants({ variant: "outline" })}
+        >
+          打开原文
+          <ExternalLink />
+        </a>
+      }
+    >
+      <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+        <article
+          className="snapshot min-w-0 rounded-xl border bg-card shadow-card p-5 text-sm sm:p-7"
+          // Sanitized on the server against an allowlist (programs/sanitize.ts).
+          dangerouslySetInnerHTML={{ __html: snapshot.html }}
+        />
+        <aside className="space-y-4 lg:sticky lg:top-20">
+          <Panel title="关于快照">
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              快照仅保留原文的文字、表格和链接，不含图片与样式
+            </p>
+            {notice.removed && (
+              <p className="mt-3 rounded-md bg-warning/8 px-3 py-2 text-[13px] text-warning">
+                原文已被删除
+              </p>
+            )}
+          </Panel>
+          {snapshot.attachments.length > 0 && (
+            <Panel title="附件" flush>
+              <ul className="divide-y text-[13px]">
+                {snapshot.attachments.map((attachment) => (
+                  <li key={attachment.position} className="px-4 py-2.5">
+                    {attachment.size === null ? (
+                      <>
+                        {attachment.name}
+                        <span className="block text-xs text-muted-foreground">文件尚未保存</span>
+                      </>
+                    ) : (
+                      <>
+                        <a
+                          href={`/api/v1/snapshots/${snapshot.id}/attachments/${attachment.position}`}
+                          download
+                          className="link break-all"
+                        >
+                          {attachment.name}
+                        </a>
+                        <span className="block text-xs text-muted-foreground">
+                          {size(attachment.size)}
+                        </span>
+                      </>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </Panel>
+          )}
+        </aside>
+      </div>
+    </Page>
   );
 }
 

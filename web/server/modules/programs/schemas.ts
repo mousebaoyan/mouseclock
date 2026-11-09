@@ -164,7 +164,12 @@ export const ProgramTableQuery = z.object({
 export const TableProgram = z
   .object({
     id: Int,
-    school: z.object({ name: z.string(), short_name: z.string(), tiers: z.array(z.string()) }),
+    school: z.object({
+      name: z.string(),
+      short_names: z.array(z.string()).openapi({ description: "简称，只用来搜索" }),
+      tier: z.string().nullable(),
+      logo: z.string().nullable().openapi({ description: "校徽的地址，没有为空" }),
+    }),
     college: z.object({
       id: Int,
       name: z.string(),
@@ -267,7 +272,11 @@ export type ProgramFields = z.infer<typeof ProgramFields>;
 export const ProgramDetail = z
   .object({
     id: Int,
-    school: z.object({ name: z.string(), short_name: z.string(), tiers: z.array(z.string()) }),
+    school: z.object({
+      name: z.string(),
+      tier: z.string().nullable(),
+      logo: z.string().nullable().openapi({ description: "校徽的地址，没有为空" }),
+    }),
     college: z.object({ id: Int, name: z.string(), region: z.string() }),
     cohort: Int,
     kind: Kind,

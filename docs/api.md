@@ -45,6 +45,7 @@
 | | `GET /snapshots/{id}`、`GET /snapshots/{id}/attachments/{position}` | 快照：净化过的正文和附件列表；下载附件 |
 | | `GET /programs/{id}/edits` | 修改记录：修改和撤销，最新的在前 |
 | 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页 |
+| | `GET /schools/{id}/logo` | 校徽图片，不用登录。学校的 `logo` 字段就是这个地址，带着最后修改的时间（`?v=`），换了图片地址就变，所以响应可以一直缓存；SVG 加了 `sandbox`，单独打开也不会运行脚本 |
 | 订阅和关注 | `PUT`、`DELETE /programs/{id}/subscription` | 订阅、取消；超过 10 个返回 `409 subscription_limit` |
 | | `PUT`、`DELETE /colleges/{id}/follow` | 关注、取消 |
 | 我的报名 | `PUT`、`DELETE /programs/{id}/application` | 进度和备注 |
@@ -67,6 +68,7 @@
 | 数据下载 | `GET /export` | 全部项目和字段，登录后可用 |
 | 群汇总 | `GET /bot/summary` | 插件每天来取的汇总，用插件专用的令牌 |
 | 管理 | `GET`、`POST /admin/schools`，`GET`、`PATCH /admin/schools/{id}` | 管理员查询、新增、修改学校 |
+| | `PUT`、`DELETE /admin/schools/{id}/logo` | 管理员上传、更换或移除校徽：请求体就是图片本身，PNG、JPEG、WebP 或 SVG，不超过 16 KB |
 | | `GET`、`POST /admin/colleges`，`GET`、`PATCH /admin/colleges/{id}` | 管理员查询、新增、修改学院 |
 | | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
 | | `POST /admin/source-probes`，`GET /admin/source-probes/{id}` | 管理员发起试抓（网址、要不要浏览器、可选的配置），查看结果：抓到的条目和生成的配置，或者失败的原因；`finished_at` 为空是还在等抓取节点。发起记进操作日志；采用结果就是用它的配置保存来源（[总体设计 §7.2](design.md#72-怎么抓)） |

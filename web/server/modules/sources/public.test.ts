@@ -38,7 +38,7 @@ beforeEach(async () => {
 async function fixture() {
   const school = await db
     .insertInto("schools")
-    .values({ name: "测试大学", short_name: "测试大", tiers: ["985", "double_first_class"] })
+    .values({ name: "测试大学", short_names: ["测试大"], tier: "985" })
     .returning("id")
     .executeTakeFirstOrThrow();
   const college = await db
@@ -147,7 +147,7 @@ test("the list groups all colleges, including those without sources, beyond the 
   const { schoolId, collegeId } = await fixture();
   const extraSchool = await db
     .insertInto("schools")
-    .values({ name: "另一大学", short_name: "", tiers: [] })
+    .values({ name: "另一大学", short_names: [], tier: null })
     .returning("id")
     .executeTakeFirstOrThrow();
   await db
@@ -177,8 +177,8 @@ test("the list groups all colleges, including those without sources, beyond the 
   const school = body.schools.find((item) => item.id === schoolId);
   expect(school).toMatchObject({
     name: "测试大学",
-    short_name: "测试大",
-    tiers: ["985", "double_first_class"],
+    short_names: ["测试大"],
+    tier: "985",
   });
   expect(school?.colleges).toHaveLength(26);
   expect(school?.colleges).toContainEqual({
@@ -210,6 +210,8 @@ test("detail exposes source summaries and failure reasons without crawler config
     school: {
       id: seeded.schoolId,
       name: "测试大学",
+      tier: "985",
+      logo: null,
     },
     name: "计算机学院",
     kind: "college",

@@ -1,67 +1,36 @@
+import { cn } from "~/cn";
 import type { Failure } from "../../server/modules/sources/schemas.ts";
 
 export const FAILURES: Record<Failure, string> = {
-  timeout: "超时",
-  unreachable: "连不上",
-  too_many_redirects: "重定向太多",
-  http_status: "状态码不对",
-  no_items: "列表里没找到条目",
-  error: "出错",
+  timeout: "请求超时",
+  unreachable: "无法连接",
+  too_many_redirects: "重定向次数过多",
+  http_status: "服务器返回错误",
+  no_items: "未解析到通知条目",
+  error: "抓取出错",
 };
 
 export function failureText(failure: Failure, detail?: string) {
-  return detail ? `${FAILURES[failure]}：${detail}` : FAILURES[failure];
+  return detail ? `${FAILURES[failure]}（${detail}）` : FAILURES[failure];
 }
 
-// How a round went (design §7.5): the list read or not, the notices it couldn't fetch, and what
-// it found.
-export function RunResult({
-  run,
-}: {
-  run: {
-    failure: Failure | null;
-    detail: string;
-    listed: number;
-    new_count: number;
-    useful_count: number;
-    notice_failure_count: number;
-  };
-}) {
+type Run = { failure: Failure | null; detail: string; notice_failure_count: number };
+
+// How a round went (design §7.5): the list page read or not, and the notices it couldn't fetch.
+export function RunResult({ run, className }: { run: Run; className?: string }) {
+  const [tone, text] = run.failure
+    ? ["text-destructive", `列表页抓取失败：${failureText(run.failure, run.detail)}`]
+    : run.notice_failure_count > 0
+      ? ["text-warning", `${run.notice_failure_count} 条通知抓取失败`]
+      : ["text-success", "抓取成功"];
   return (
-    <>
+    <span className={cn("inline-flex items-start gap-1.5", tone, className)}>
+      {/* Level with the middle of the first line, 1.5em high, should the text wrap. */}
       <span
-        className={
-          run.failure
-            ? "text-destructive"
-            : run.notice_failure_count > 0
-              ? "text-warning"
-              : "text-success"
-        }
-      >
-        {run.failure
-          ? `列表没读到，${failureText(run.failure, run.detail)}`
-          : run.notice_failure_count > 0
-            ? `列表读到了，${run.notice_failure_count} 条通知没抓成`
-            : "成功"}
-      </span>
-      <span className="text-muted-foreground">
-        {" "}
-        · 列表 {run.listed} · 新通知 {run.new_count} · 有用 {run.useful_count}
-      </span>
-    </>
-  );
-}
-
-// The time of day in Beijing, for rounds listed under their day.
-export function ClockTime({ value }: { value: number }) {
-  return (
-    <time dateTime={new Date(value * 1000).toISOString()} className="tabular-nums">
-      {new Intl.DateTimeFormat("zh-CN", {
-        timeZone: "Asia/Shanghai",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: false,
-      }).format(new Date(value * 1000))}
-    </time>
+        aria-hidden="true"
+        className="mt-[calc(0.75em-0.1875rem)] size-1.5 shrink-0 rounded-full bg-current"
+      />
+      {text}
+    </span>
   );
 }

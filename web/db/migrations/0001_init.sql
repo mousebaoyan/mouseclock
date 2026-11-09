@@ -34,10 +34,19 @@ CREATE INDEX sessions_user ON sessions (user_id);
 CREATE TABLE schools (
   id          integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name        text    NOT NULL UNIQUE,
-  short_name  text    NOT NULL DEFAULT '',     -- as people say it, for search: 电科
-  tiers       text[]  NOT NULL DEFAULT '{}'
-              CHECK (tiers <@ ARRAY['c9', '985', '211', 'double_first_class']),
+  short_names text[]  NOT NULL DEFAULT '{}',   -- as people say it, only for search: 北大, PKU
+  -- Only the highest: C9 schools are all 985, 985 ones 211, and 211 ones 双一流.
+  tier        text    CHECK (tier IN ('c9', '985', '211', 'double_first_class')),
   created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- A school's emblem, served from this site so pages don't load the schools' own (design §9.1).
+CREATE TABLE school_logos (
+  school_id     integer PRIMARY KEY REFERENCES schools (id),
+  content_type  text    NOT NULL
+                CHECK (content_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/svg+xml')),
+  data          bytea   NOT NULL,
+  updated_at    timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE colleges (

@@ -7,7 +7,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
 import type { Kind } from "../programs/schemas.ts";
-import { applyOf } from "../programs/service.ts";
+import { applyOf, logoOf } from "../programs/service.ts";
 import {
   type SchoolInput,
   type SchoolPatch,
@@ -23,6 +23,7 @@ import {
   type PublicSchool,
   type PublicProgramCohort,
 } from "./schemas.ts";
+import type { LogoType } from "./logo-files.ts";
 
 export type Actor = { user_id: number; via: "web" | "seed" };
 
@@ -41,21 +42,73 @@ async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
   }
 }
 
+// A school as admins see it, from a query on `schools`.
+const SCHOOL = ["id", "name", "short_names", "tier", logoOf("schools.id").as("logo")] as const;
+
+// Whether the school's name or one of its short names has `q` in it.
+function schoolNamed(q: string) {
+  const pattern = `%${q}%`;
+  return sql<boolean>`(schools.name ILIKE ${pattern} OR EXISTS (SELECT FROM unnest(schools.short_names) AS short_name WHERE short_name ILIKE ${pattern}))`;
+}
+
+export async function getLogo(schoolId: number) {
+  const row = await db
+    .selectFrom("school_logos")
+    .select(["content_type", "data"])
+    .where("school_id", "=", schoolId)
+    .executeTakeFirst();
+  if (!row) throw new AppError(404, "not_found", "该学校没有校徽");
+  return row;
+}
+
+export async function setLogo(
+  actor: Actor,
+  schoolId: number,
+  logo: { content_type: LogoType; data: Buffer },
+) {
+  await write(async (trx) => {
+    await trx
+      .insertInto("school_logos")
+      .values({ school_id: schoolId, ...logo })
+      .onConflict((conflict) =>
+        conflict.column("school_id").doUpdateSet({ ...logo, updated_at: sql`now()` }),
+      )
+      .execute();
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "update",
+      target_type: "school",
+      target_id: schoolId,
+      detail: { via: actor.via, logo: logo.content_type },
+    });
+  });
+}
+
+export async function removeLogo(actor: Actor, schoolId: number) {
+  await write(async (trx) => {
+    const result = await trx
+      .deleteFrom("school_logos")
+      .where("school_id", "=", schoolId)
+      .executeTakeFirst();
+    if (result.numDeletedRows === 0n) throw new AppError(404, "not_found", "该学校没有校徽");
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "update",
+      target_type: "school",
+      target_id: schoolId,
+      detail: { via: actor.via, logo: null },
+    });
+  });
+}
+
 export async function listSchools({ q, ...paging }: z.infer<typeof PageQuery>) {
-  let query = db.selectFrom("schools").select(["id", "name", "short_name", "tiers"]);
-  if (q)
-    query = query.where((eb) =>
-      eb.or([eb("name", "ilike", `%${q}%`), eb("short_name", "ilike", `%${q}%`)]),
-    );
+  let query = db.selectFrom("schools").select(SCHOOL);
+  if (q) query = query.where(schoolNamed(q));
   return pageOf(query.orderBy("id"), paging);
 }
 
 export async function getSchool(id: number) {
-  const row = await db
-    .selectFrom("schools")
-    .select(["id", "name", "short_name", "tiers"])
-    .where("id", "=", id)
-    .executeTakeFirst();
+  const row = await db.selectFrom("schools").select(SCHOOL).where("id", "=", id).executeTakeFirst();
   if (!row) throw new AppError(404, "not_found", "学校不存在");
   return row;
 }
@@ -65,7 +118,7 @@ export async function createSchool(actor: Actor, values: z.infer<typeof SchoolIn
     const row = await trx
       .insertInto("schools")
       .values(values)
-      .returning(["id", "name", "short_name", "tiers"])
+      .returning(SCHOOL)
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -82,7 +135,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
   return write(async (trx) => {
     const before = await trx
       .selectFrom("schools")
-      .select(["id", "name", "short_name", "tiers"])
+      .select(SCHOOL)
       .where("id", "=", id)
       .forUpdate()
       .executeTakeFirst();
@@ -91,7 +144,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
       .updateTable("schools")
       .set(values)
       .where("id", "=", id)
-      .returning(["id", "name", "short_name", "tiers"])
+      .returning(SCHOOL)
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -119,13 +172,7 @@ export async function listColleges({ q, school_id, ...paging }: z.infer<typeof C
     ]);
   if (school_id !== undefined) query = query.where("school_id", "=", school_id);
   if (q)
-    query = query.where((eb) =>
-      eb.or([
-        eb("colleges.name", "ilike", `%${q}%`),
-        eb("schools.name", "ilike", `%${q}%`),
-        eb("schools.short_name", "ilike", `%${q}%`),
-      ]),
-    );
+    query = query.where((eb) => eb.or([eb("colleges.name", "ilike", `%${q}%`), schoolNamed(q)]));
   return pageOf(query.orderBy("colleges.id"), paging);
 }
 
@@ -155,8 +202,9 @@ export async function listPublicColleges() {
     .select([
       "schools.id as school_id",
       "schools.name as school_name",
-      "schools.short_name as school_short_name",
-      "schools.tiers as school_tiers",
+      "schools.short_names as school_short_names",
+      "schools.tier as school_tier",
+      logoOf("schools.id").as("school_logo"),
       "colleges.id",
       "colleges.name",
       "colleges.kind",
@@ -175,8 +223,9 @@ export async function listPublicColleges() {
       school = {
         id: row.school_id,
         name: row.school_name,
-        short_name: row.school_short_name,
-        tiers: row.school_tiers,
+        short_names: row.school_short_names,
+        tier: row.school_tier,
+        logo: row.school_logo,
         colleges: [],
       };
       schools.set(row.school_id, school);
@@ -204,6 +253,8 @@ export async function getPublicCollege(id: number) {
       "colleges.directions",
       "schools.id as school_id",
       "schools.name as school_name",
+      "schools.tier as school_tier",
+      logoOf("schools.id").as("school_logo"),
     ])
     .where("colleges.id", "=", id)
     .executeTakeFirst();
@@ -244,6 +295,8 @@ export async function getPublicCollege(id: number) {
     school: {
       id: college.school_id,
       name: college.school_name,
+      tier: college.school_tier,
+      logo: college.school_logo,
     },
     name: college.name,
     kind: college.kind,

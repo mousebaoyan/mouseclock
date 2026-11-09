@@ -31,20 +31,26 @@ export const ListedItem = z
   })
   .openapi("ListedItem");
 export const Config = z.record(z.string(), z.unknown(), { error: "抓取配置要是 JSON 对象" });
+// Lists count each item once: the filters count a college once for each of its directions.
+const unique = (items: string[]) => new Set(items).size === items.length;
 // What admins fill in, named for validation messages (named in platform/http.ts).
 export const SchoolInput = z.strictObject({
   name: z.string(named("学校名称")).trim().min(1).max(200),
-  short_name: z.string(named("简称")).trim().max(100),
-  tiers: z
-    .array(z.enum(["c9", "985", "211", "double_first_class"], named("层次")), named("层次"))
-    .max(4),
+  short_names: z
+    .array(z.string(named("简称")).trim().min(1).max(100), named("简称"))
+    .max(20)
+    .refine(unique, "简称有重复"),
+  tier: z.enum(["c9", "985", "211", "double_first_class"], named("层次")).nullable(),
 });
 export const CollegeInput = z.strictObject({
   school_id: Int.positive(),
   name: z.string(named("学院名称")).trim().min(1).max(200),
   kind: z.enum(["college", "institute", "graduate_school"], named("学院类型")),
   region: z.string(named("地区")).trim().min(1).max(100),
-  directions: z.array(z.string(named("方向")).trim().min(1).max(100), named("方向")).max(30),
+  directions: z
+    .array(z.string(named("方向")).trim().min(1).max(100), named("方向"))
+    .max(30)
+    .refine(unique, "方向有重复"),
 });
 export const SourceInput = z.strictObject({
   college_id: Int.positive(),
@@ -61,11 +67,13 @@ export const SchoolPatch = SchoolInput.partial().refine(hasFields, "请填写要
 export const CollegePatch = CollegeInput.partial().refine(hasFields, "请填写要修改的字段");
 export const SourcePatch = SourceInput.partial().refine(hasFields, "请填写要修改的字段");
 
+const Logo = z.string().nullable().openapi({ description: "校徽的地址，没有为空" });
 export const School = z.object({
   id: Int,
   name: z.string(),
-  short_name: z.string(),
-  tiers: z.array(z.string()),
+  short_names: z.array(z.string()),
+  tier: z.string().nullable(),
+  logo: Logo,
 });
 export const College = z.object({
   id: Int,
@@ -129,8 +137,9 @@ export const PublicCollege = z.object({
 export const PublicSchool = z.object({
   id: Int,
   name: z.string(),
-  short_name: z.string(),
-  tiers: z.array(z.string()),
+  short_names: z.array(z.string()).openapi({ description: "简称，只用来搜索" }),
+  tier: z.string().nullable(),
+  logo: Logo,
   colleges: z.array(PublicCollege),
 });
 export const PublicCollegeList = z.object({ schools: z.array(PublicSchool) });
@@ -154,7 +163,7 @@ export const PublicProgramCohort = z.object({
 });
 export const PublicCollegeDetail = z.object({
   id: Int,
-  school: School.pick({ id: true, name: true }),
+  school: School.pick({ id: true, name: true, tier: true, logo: true }),
   name: z.string(),
   kind: z.string(),
   region: z.string(),

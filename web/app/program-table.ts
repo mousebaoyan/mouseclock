@@ -1,4 +1,5 @@
 import type { Kind } from "../server/modules/programs/schemas.ts";
+import { anyOf, choices, tally } from "./facets.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
 import { beijingYear, currentCohort, statusOf, type Status } from "./time.ts";
 
@@ -8,7 +9,7 @@ import { beijingYear, currentCohort, statusOf, type Status } from "./time.ts";
 
 type Program = {
   id: number;
-  school: { name: string; short_name: string; tiers: string[] };
+  school: { name: string; short_names: string[]; tier: string | null };
   college: { name: string; region: string; directions: string[] };
   kind: Kind;
   name: string;
@@ -34,8 +35,8 @@ export function readFilters(params: URLSearchParams) {
     q: params.get("q")?.trim() ?? "",
     tiers: params.getAll("tier"),
     kinds: params.getAll("kind"),
-    region: params.get("region") || null,
-    direction: params.get("direction") || null,
+    regions: params.getAll("region"),
+    directions: params.getAll("direction"),
     status: STATUS_FILTERS.find((s) => s === status) ?? null,
     sort: params.get("sort") === "published" ? ("published" as const) : ("deadline" as const),
     page: Number.isInteger(page) && page > 0 ? page : 1,
@@ -44,30 +45,52 @@ export function readFilters(params: URLSearchParams) {
 }
 export type Filters = ReturnType<typeof readFilters>;
 
-const collator = new Intl.Collator("zh-CN");
+// The filters that take any number of choices (facets.ts).
+const FACETS = ["kind", "tier", "region", "direction"] as const;
+type Facet = (typeof FACETS)[number];
 
-// What a select offers: each value once, in pinyin order.
-function choices(values: string[]) {
-  return [...new Set(values)].sort(collator.compare);
-}
+const VALUES: Record<Facet, (p: Program) => string[]> = {
+  kind: (p) => [p.kind],
+  tier: (p) => [p.school.tier ?? "other"],
+  region: (p) => [p.college.region],
+  direction: (p) => p.college.directions,
+};
 
 // The programs `filters` pick, as of `now` in Unix seconds. The API gives them by deadline.
+// Beside each choice of a filter goes how many it would show with the other filters as they are.
 export function tableView<P extends Program>(programs: P[], filters: Filters, now: number) {
   const q = filters.q.toLowerCase();
-  const matched = programs.filter((p) => {
-    if (!statusMatches(filters.status, statusOf(p, now))) return false;
-    if (filters.kinds.length > 0 && !filters.kinds.includes(p.kind)) return false;
-    if (filters.tiers.length > 0 && !filters.tiers.some((t) => p.school.tiers.includes(t)))
-      return false;
-    if (filters.region && p.college.region !== filters.region) return false;
-    if (filters.direction && !p.college.directions.includes(filters.direction)) return false;
-    return (
-      !q ||
-      [p.school.name, p.school.short_name, p.college.name, p.name].some((text) =>
+  const picks: Record<Facet, string[]> = {
+    kind: filters.kinds,
+    tier: filters.tiers,
+    region: filters.regions,
+    direction: filters.directions,
+  };
+  const rows = programs.map((program) => ({ program, status: statusOf(program, now) }));
+  // Whether a program passes every filter but `skip`.
+  const passes = ({ program: p, status }: (typeof rows)[number], skip?: Facet | "status") =>
+    (!q ||
+      [p.school.name, ...p.school.short_names, p.college.name, p.name].some((text) =>
         text.toLowerCase().includes(q),
-      )
-    );
-  });
+      )) &&
+    FACETS.every((facet) => facet === skip || anyOf(picks[facet], VALUES[facet](p))) &&
+    (skip === "status" || statusMatches(filters.status, status));
+  const tallyOf = (facet: Facet) =>
+    tally(rows.filter((row) => passes(row, facet)).flatMap((row) => VALUES[facet](row.program)));
+  const anyStatus = rows.filter((row) => passes(row, "status"));
+  const counts = {
+    status: Object.fromEntries(
+      [null, ...STATUS_FILTERS].map((filter) => [
+        filter ?? "",
+        anyStatus.filter((row) => statusMatches(filter, row.status)).length,
+      ]),
+    ),
+    kind: tallyOf("kind"),
+    tier: tallyOf("tier"),
+    region: tallyOf("region"),
+    direction: tallyOf("direction"),
+  };
+  const matched = rows.filter((row) => passes(row)).map((row) => row.program);
   // Newest first; those listed without a date last.
   if (filters.sort === "published") {
     matched.sort((a, b) =>
@@ -79,6 +102,7 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
   return {
     programs: matched.slice((page - 1) * filters.perPage, page * filters.perPage),
     total: matched.length,
+    counts,
     page,
     regions: choices(programs.map((p) => p.college.region)),
     directions: choices(programs.flatMap((p) => p.college.directions)),

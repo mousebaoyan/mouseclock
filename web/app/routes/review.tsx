@@ -1,12 +1,17 @@
 import type { InferResponseType } from "hono/client";
 import type { ReactNode } from "react";
 import { data, Form, Link, useNavigation } from "react-router";
+import { cn } from "~/cn";
+import { FormMessage } from "~/components/form";
+import { ExternalLink } from "~/components/icons";
+import { Page, Panel } from "~/components/page";
+import { Pagination } from "~/components/pagination";
+import { KindTag, PROGRAM_KINDS, type TagColor } from "~/components/tags";
+import { DateTime } from "~/components/time";
+import { Button, buttonVariants } from "~/components/ui/button";
+import { Select } from "~/components/ui/select";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { CrawlTime, inputClass, linkClass, panelClass } from "../components/admin.tsx";
-import { Pagination } from "../components/pagination.tsx";
-import { Chip, KindTag, PROGRAM_KINDS, type TagColor } from "../components/tags.tsx";
-import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { fieldLabel, formatValue } from "../fields.ts";
 import { beijingYear, formatApply } from "../time.ts";
 import { KINDS } from "../../server/modules/programs/schemas.ts";
@@ -21,50 +26,63 @@ type Edits = InferResponseType<Api["edits"]["$get"], 200>;
 // Why each item waits (design §8.3, §8.4), in the order the API lists them.
 const REASONS: Record<Reason, { label: string; color: TagColor; hint: string }> = {
   no_deadline: {
-    label: "没有截止",
+    label: "缺少截止时间",
     color: "red",
-    hint: "报名通知里没找到报名截止：原文确实没写的关掉；写了的到项目页补上报名时间。",
+    hint: "通知中未找到报名截止时间：原文确未写明的选择「原文未写明」，已写明的请到项目页补充",
   },
   conflicts_edit: {
-    label: "和人改的冲突",
+    label: "与人工修改冲突",
     color: "orange",
-    hint: "新的通知改了人改过的字段，表上先留着人改的：通过就换成通知里的。",
+    hint: "新通知改动了人工修改过的字段，总表暂时保留人工修改的值，通过后改用通知中的值",
   },
   implausible: {
-    label: "明显不对",
+    label: "数值异常",
     color: "amber",
-    hint: "报名截止早于通知的发布日期，多半抽错了：对照原文，对的再通过。",
+    hint: "报名截止早于通知发布日期，可能抽取有误，请对照原文确认",
   },
   evidence_not_found: {
-    label: "证据找不到",
+    label: "证据未找到",
     color: "violet",
-    hint: "抽取给的原文在快照里找不到：对照原文，值对的再通过。",
+    hint: "抽取给出的原文句子在快照中找不到，请对照原文确认",
   },
   low_confidence: {
-    label: "拿不准",
+    label: "置信度低",
     color: "sky",
-    hint: "模型拿不准的值：对照原文，对的再通过。",
+    hint: "模型对该值把握不足，请对照原文确认",
   },
   unknown_program: {
-    label: "编号对不上",
+    label: "项目编号不符",
     color: "blue",
-    hint: "抽取说是已有的项目，这所学校却没有这个编号：选一个项目并进去，或者新建。",
+    hint: "抽取认为这是已有项目，但该校没有对应编号，请选择要归入的项目或新建",
   },
   unknown_college: {
-    label: "学院对不上",
+    label: "学院不符",
     color: "teal",
-    hint: "抽出来的学院不是这所学校的：选一个项目并进去，或者选好学院新建。",
+    hint: "抽取出的学院不属于该校，请选择要归入的项目，或选择学院后新建",
   },
   implausible_cohort: {
-    label: "届不对",
+    label: "届别异常",
     color: "pink",
-    hint: "届应在通知发布的年份到之后两年之间：选一个项目并进去，或者改好届新建。",
+    hint: "届别应在通知发布年份到其后两年之间，请选择要归入的项目，或修正届别后新建",
   },
   possible_duplicate: {
-    label: "可能重复",
+    label: "疑似重复",
     color: "green",
-    hint: "新建的项目和已有的同一学院、同一届、同一类型：是同一个就并进原来的，第二批这类另算的就保留。",
+    hint: "与已有项目的学院、届别和类型相同：同一项目请合并，另一批次请保留",
   },
+};
+
+const DOTS: Record<TagColor, string> = {
+  red: "bg-tag-red",
+  orange: "bg-tag-orange",
+  amber: "bg-tag-amber",
+  green: "bg-tag-green",
+  teal: "bg-tag-teal",
+  sky: "bg-tag-sky",
+  blue: "bg-tag-blue",
+  violet: "bg-tag-violet",
+  pink: "bg-tag-pink",
+  gray: "bg-tag-gray",
 };
 
 function isReason(value: string | null): value is Reason {
@@ -119,7 +137,7 @@ export async function action({ request, context }: Route.ActionArgs) {
           cohort: number("cohort"),
           kind: KINDS.find((kind) => kind === formText(form, "kind")),
         };
-  if (intent !== "accept" && intent !== "reject") throw data("未知操作", { status: 400 });
+  if (intent !== "accept" && intent !== "reject") throw data("不支持的操作", { status: 400 });
   const res =
     intent === "accept"
       ? await api.accept.$post({ param, json: decision })
@@ -130,120 +148,159 @@ export async function action({ request, context }: Route.ActionArgs) {
 
 export default function Review({ loaderData, actionData }: Route.ComponentProps) {
   const { items, edits, thisYear } = loaderData;
+  const reason = REASONS[items.reason];
   return (
-    <main className="mx-auto max-w-4xl space-y-6 px-3 py-6 sm:px-5">
-      <header>
-        <h1 className="text-2xl font-semibold">审核</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          抽取拿不准的字段和项目在这里由人决定：对照原文，通过就上表，驳回就只关掉这一条（总体设计
-          §12.2）。每次处理都记进操作日志。
-        </p>
-      </header>
-
-      <section className={panelClass}>
-        <nav aria-label="待审的种类" className="flex flex-wrap gap-2">
-          {Object.entries(REASONS).map(([reason, { label, color }]) => (
-            <Chip key={reason} to={`?reason=${reason}`} on={reason === items.reason} color={color}>
-              {label} {items.counts[reason] ?? 0}
-            </Chip>
-          ))}
+    <Page title="审核" hideTitle>
+      <div className="grid items-start gap-5 lg:grid-cols-[14rem_minmax(0,1fr)]">
+        <nav
+          aria-label="待审核的类别"
+          className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:sticky lg:top-20 lg:flex lg:flex-col lg:gap-0.5 lg:rounded-lg lg:border lg:bg-card lg:p-1.5"
+        >
+          {Object.entries(REASONS).map(([key, { label, color }]) => {
+            const on = key === items.reason;
+            const count = items.counts[key] ?? 0;
+            return (
+              <Link
+                key={key}
+                to={`?reason=${key}`}
+                aria-current={on ? "page" : undefined}
+                className={cn(
+                  "flex h-9 shrink-0 items-center gap-2 rounded-md border px-3 text-[13px] whitespace-nowrap lg:border-transparent",
+                  on
+                    ? "border-primary/40 bg-primary-soft font-medium text-primary lg:border-primary/30"
+                    : "bg-card text-foreground/85 hover:bg-accent lg:bg-transparent",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn("size-1.5 shrink-0 rounded-full", DOTS[color])}
+                />
+                <span className="flex-1">{label}</span>
+                <span
+                  className={cn(
+                    "text-xs tabular-nums",
+                    count === 0
+                      ? "text-subtle-foreground"
+                      : on
+                        ? "text-primary"
+                        : "text-muted-foreground",
+                  )}
+                >
+                  {count}
+                </span>
+              </Link>
+            );
+          })}
         </nav>
-        {items.items.length > 0 && (
-          <p className="mt-3 text-sm text-muted-foreground">{REASONS[items.reason].hint}</p>
-        )}
-        {items.items.length === 0 ? (
-          <p className="mt-4 text-sm text-muted-foreground">
-            「{REASONS[items.reason].label}」的条目都处理完了。
-          </p>
-        ) : (
-          <ol className="mt-2 divide-y divide-border">
-            {items.items.map((item) => (
-              <li key={item.id} className="space-y-2 py-4 text-sm">
-                <ItemHeader item={item} />
-                {item.field ? (
-                  <FieldItem item={item} field={item.field} thisYear={thisYear} />
-                ) : (
-                  <ProgramItem item={item} reason={items.reason} thisYear={thisYear} />
-                )}
-                {actionData?.id === item.id && (
-                  <p role="alert" className="text-destructive">
-                    {actionData.error}
-                  </p>
-                )}
-              </li>
-            ))}
-          </ol>
-        )}
-        <Pagination total={items.total} page={items.page} perPage={items.per_page} />
-      </section>
-
-      <section className={panelClass}>
-        <h2 className="text-lg font-semibold">最近修改</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          全站的人工修改和撤销，在项目的详情页能撤销。
-        </p>
-        {edits.items.length === 0 ? (
-          <p className="mt-3 text-sm text-muted-foreground">还没有人改过。</p>
-        ) : (
-          <ol className="mt-2 divide-y divide-border">
-            {edits.items.map((edit) => (
-              <li key={edit.id} className="space-y-1 py-3 text-sm">
-                <p className="flex flex-wrap gap-x-2">
-                  <span className="font-medium">{edit.user.display_name}</span>
-                  <span className="text-muted-foreground">
-                    {edit.reverts_id === null ? "修改了" : `撤销了 #${edit.reverts_id}：`}
-                  </span>
-                  <Link to={`/programs/${edit.program.id}#edits`} className={linkClass}>
-                    {edit.program.school} · {edit.program.college} · {edit.program.name}
-                  </Link>
-                  <span className="text-muted-foreground">的{fieldLabel(edit.field)}</span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground line-through decoration-1">
-                    {formatValue(edit.field, edit.old_value, thisYear)}
-                  </span>
-                  {" → "}
-                  {formatValue(edit.field, edit.new_value, thisYear)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  #{edit.id} · <CrawlTime value={edit.created_at} />
-                  {edit.reason !== null && ` · 理由：${edit.reason}`}
-                </p>
-              </li>
-            ))}
-          </ol>
-        )}
-        <Pagination
-          total={edits.total}
-          page={edits.page}
-          perPage={edits.per_page}
-          prefix="edits_"
-        />
-      </section>
-    </main>
+        <div className="min-w-0 space-y-5">
+          <Panel title={reason.label} description={reason.hint} flush>
+            {items.items.length === 0 ? (
+              <p className="px-4 py-10 text-center text-[13px] text-muted-foreground sm:px-5">
+                「{reason.label}」类别下的条目已全部处理
+              </p>
+            ) : (
+              <ol className="divide-y">
+                {items.items.map((item) => (
+                  <li key={item.id} className="space-y-3 px-4 py-4 sm:px-5">
+                    <ItemHeader item={item} />
+                    {item.field ? (
+                      <FieldItem item={item} field={item.field} thisYear={thisYear} />
+                    ) : (
+                      <ProgramItem item={item} reason={items.reason} thisYear={thisYear} />
+                    )}
+                    {actionData?.id === item.id && <FormMessage error={actionData.error} />}
+                  </li>
+                ))}
+              </ol>
+            )}
+            <div className="px-4 pb-4 empty:hidden sm:px-5">
+              <Pagination total={items.total} page={items.page} perPage={items.per_page} />
+            </div>
+          </Panel>
+          <Panel title="最近修改" flush>
+            {edits.items.length === 0 ? (
+              <p className="px-4 py-4 text-[13px] text-muted-foreground sm:px-5">暂无修改记录</p>
+            ) : (
+              <ol className="divide-y">
+                {edits.items.map((edit) => (
+                  <li
+                    key={edit.id}
+                    className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:px-5"
+                  >
+                    <p className="min-w-0">
+                      <span className="font-medium">{edit.user.display_name}</span>
+                      <span className="text-muted-foreground">
+                        {edit.reverts_id === null
+                          ? " 修改了 "
+                          : ` 撤销了 #${edit.reverts_id}，涉及 `}
+                      </span>
+                      <Link to={`/programs/${edit.program.id}#edits`} className="link">
+                        {edit.program.school} {edit.program.college} {edit.program.name}
+                      </Link>
+                      <span className="text-muted-foreground"> 的{fieldLabel(edit.field)}</span>
+                    </p>
+                    <p className="text-xs text-subtle-foreground sm:row-span-2 sm:text-right">
+                      #{edit.id}　<DateTime value={edit.created_at} />
+                    </p>
+                    <p className="text-[13px]">
+                      <span className="text-muted-foreground line-through decoration-1">
+                        {formatValue(edit.field, edit.old_value, thisYear)}
+                      </span>
+                      <span className="mx-1.5 text-subtle-foreground">→</span>
+                      {formatValue(edit.field, edit.new_value, thisYear)}
+                      {edit.reason !== null && (
+                        <span className="ml-3 text-muted-foreground">理由：{edit.reason}</span>
+                      )}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            )}
+            <div className="px-4 pb-4 empty:hidden sm:px-5">
+              <Pagination
+                total={edits.total}
+                page={edits.page}
+                perPage={edits.per_page}
+                prefix="edits_"
+              />
+            </div>
+          </Panel>
+        </div>
+      </div>
+    </Page>
   );
 }
 
 function ItemHeader({ item }: { item: Item }) {
   return (
-    <div className="space-y-1">
-      {item.program && (
-        <p>
-          <Link to={`/programs/${item.program.id}`} className={`${linkClass} font-medium`}>
-            {item.program.school} · {item.program.college} · {item.program.name}
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+      <div className="min-w-0">
+        {item.program && (
+          <Link
+            to={`/programs/${item.program.id}`}
+            className="link font-medium break-keep wrap-anywhere"
+          >
+            {item.program.school} {item.program.college} {item.program.name}
           </Link>
+        )}
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
+          来源通知：
+          <Link to={`/snapshots/${item.notice.snapshot_id}`} className="link">
+            {item.notice.title}
+          </Link>
+          <a
+            href={item.notice.url}
+            target="_blank"
+            rel="nofollow noopener"
+            className="link ml-2 inline-flex items-center gap-0.5"
+          >
+            原文
+            <ExternalLink className="size-3" />
+          </a>
         </p>
-      )}
-      <p className="text-xs text-muted-foreground">
-        通知：
-        <Link to={`/snapshots/${item.notice.snapshot_id}`} className={linkClass}>
-          {item.notice.title}
-        </Link>
-        {" · "}
-        <a href={item.notice.url} target="_blank" rel="nofollow noopener" className={linkClass}>
-          原文
-        </a>
-        {" · "}#{item.id} · <CrawlTime value={item.created_at} />
+      </div>
+      <p className="text-xs text-subtle-foreground">
+        #{item.id}　<DateTime value={item.created_at} />
       </p>
     </div>
   );
@@ -261,36 +318,48 @@ function FieldItem({
   const { current } = field;
   return (
     <>
-      <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-[7rem_1fr]">
-        <dt className="text-muted-foreground">{fieldLabel(field.key)}</dt>
-        <dd>
-          第 {field.version} 版抽出来的：
-          <span className="font-medium">{formatValue(field.key, field.value, thisYear)}</span>
-          <span className="text-xs text-muted-foreground">
-            （置信度 {field.confidence.toFixed(2)}）
+      <div className="overflow-hidden rounded-md border">
+        <p className="flex items-center justify-between gap-3 border-b bg-muted/60 px-3 py-1.5 text-[13px]">
+          <span className="font-medium">{fieldLabel(field.key)}</span>
+          <span className="text-xs text-muted-foreground tabular-nums">
+            置信度 {field.confidence.toFixed(2)}
           </span>
-        </dd>
-        <dt className="text-muted-foreground">原文</dt>
-        <dd className="space-y-1">
+        </p>
+        <dl className="grid divide-y text-sm sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+          <div className="px-3 py-2.5">
+            <dt className="text-xs text-muted-foreground">抽取值（第 {field.version} 版）</dt>
+            <dd className="mt-1 font-medium">{formatValue(field.key, field.value, thisYear)}</dd>
+          </div>
+          <div className="px-3 py-2.5">
+            <dt className="text-xs text-muted-foreground">
+              当前值
+              {current !== null &&
+                (current.version === null ? "（人工修改）" : `（第 ${current.version} 版）`)}
+            </dt>
+            <dd className="mt-1">
+              {current === null ? (
+                <span className="text-subtle-foreground">总表中尚无此项</span>
+              ) : (
+                formatValue(field.key, current.value, thisYear)
+              )}
+            </dd>
+          </div>
+        </dl>
+        <div className="space-y-1.5 border-t px-3 py-2.5">
           {field.evidence.map(({ quote, attachment }) => (
-            <blockquote key={quote} className="border-l-2 border-brand/50 pl-3 text-pretty">
+            <blockquote
+              key={quote}
+              className="border-l-2 border-primary/50 pl-3 text-[13px] leading-relaxed text-pretty"
+            >
               {quote}
               {attachment !== undefined && (
                 <span className="text-muted-foreground">（第 {attachment + 1} 个附件）</span>
               )}
             </blockquote>
           ))}
-        </dd>
-        <dt className="text-muted-foreground">现在</dt>
-        <dd>
-          {current === null
-            ? "表上还没有"
-            : `${formatValue(field.key, current.value, thisYear)}（${
-                current.version === null ? "人改的" : `来自第 ${current.version} 版`
-              }）`}
-        </dd>
-      </dl>
-      <Decide id={item.id} accept="通过，上表" reject="驳回" />
+        </div>
+      </div>
+      <Decide id={item.id} accept="通过并写入总表" reject="驳回" />
     </>
   );
 }
@@ -303,32 +372,32 @@ function ProgramItem({ item, reason, thisYear }: { item: Item; reason: Reason; t
   const college = colleges.find((c) => c.id === program.college_id);
   const collegeName = (id: number) => colleges.find((c) => c.id === id)?.name ?? "";
   const summary = (
-    <p className="flex flex-wrap items-center gap-2">
-      抽出来的：
-      <KindTag kind={program.kind} />
-      <span className="font-medium">{program.name}</span>
-      <span className="text-muted-foreground">
-        {program.cohort} 届 ·{" "}
-        {college?.name ?? `学院 ${program.college_id}（不在这所学校的清单里）`}
-        {program.program_id !== undefined && ` · 编号 ${program.program_id}`} · 报名时间{" "}
+    <div className="rounded-md border px-3 py-2.5 text-sm">
+      <p className="text-xs text-muted-foreground">抽取结果</p>
+      <p className="mt-1 flex flex-wrap items-center gap-2">
+        <KindTag kind={program.kind} />
+        <span className="font-medium">{program.name}</span>
+      </p>
+      <p className="mt-1 text-[13px] text-muted-foreground">
+        {program.cohort} 届　
+        {college?.name ?? `学院编号 ${program.college_id}（不在该校的学院清单中）`}
+        {program.program_id !== undefined && `　项目编号 ${program.program_id}`}　报名时间：
         {formatApply(program.fields.apply?.value ?? null, thisYear)}
-      </span>
-    </p>
+      </p>
+    </div>
   );
   if (reason === "no_deadline") {
     return (
-      <>
-        <Decide id={item.id} accept="原文确实没写" reject="已改好，关掉">
-          {item.program && (
-            <Link
-              to={`/programs/${item.program.id}?edit=apply`}
-              className={buttonVariants({ variant: "ghost", size: "sm" })}
-            >
-              原文写了，去改报名时间
-            </Link>
-          )}
-        </Decide>
-      </>
+      <Decide id={item.id} accept="原文未写明" reject="已补充，关闭此条">
+        {item.program && (
+          <Link
+            to={`/programs/${item.program.id}?edit=apply`}
+            className={buttonVariants({ variant: "outline", size: "sm" })}
+          >
+            前往补充报名时间
+          </Link>
+        )}
+      </Decide>
     );
   }
   if (reason === "possible_duplicate") {
@@ -343,81 +412,86 @@ function ProgramItem({ item, reason, thisYear }: { item: Item; reason: Reason; t
     return (
       <>
         {summary}
-        <Form method="post" preventScrollReset className="flex flex-wrap items-center gap-2">
-          <input type="hidden" name="intent" value="accept" />
-          <input type="hidden" name="id" value={item.id} />
-          <select name="program_id" aria-label="原来的项目" className={`${inputClass} w-auto`}>
-            {similar.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}（报名 {formatApply(p.apply, thisYear)}）
-              </option>
-            ))}
-          </select>
-          <Button size="sm" variant="outline" disabled={busy || similar.length === 0}>
-            是重复的，并进去
-          </Button>
-        </Form>
-        <Decide id={item.id} accept="不是重复的，保留" />
+        <div className="flex flex-wrap items-center gap-2">
+          <Form
+            method="post"
+            preventScrollReset
+            className="flex min-w-0 flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="intent" value="accept" />
+            <input type="hidden" name="id" value={item.id} />
+            {similar.length > 0 && (
+              <Select
+                name="program_id"
+                aria-label="原项目"
+                options={similar.map((p) => ({
+                  value: String(p.id),
+                  label: `${p.name}（报名时间：${formatApply(p.apply, thisYear)}）`,
+                }))}
+                className="h-8 w-auto max-w-full"
+              />
+            )}
+            <Button size="sm" disabled={busy || similar.length === 0}>
+              合并到所选项目
+            </Button>
+          </Form>
+          <Decide id={item.id} accept="不是重复，保留" acceptVariant="outline" />
+        </div>
       </>
     );
   }
   return (
     <>
       {summary}
-      <Form method="post" preventScrollReset className="space-y-2">
+      <Form method="post" preventScrollReset className="space-y-3">
         <input type="hidden" name="id" value={item.id} />
-        <Choice title="并进已有的项目">
-          <select name="program_id" aria-label="已有的项目" className={inputClass}>
-            <option value="">新建一个（在下面选学院和届）</option>
-            {programs.map((p) => (
-              <option key={p.id} value={p.id}>
-                {collegeName(p.college_id)} · {p.cohort} 届 · {PROGRAM_KINDS[p.kind].label} ·{" "}
-                {p.name}
-              </option>
-            ))}
-          </select>
+        <Choice title="归入已有项目">
+          <Select
+            name="program_id"
+            aria-label="已有项目"
+            defaultValue=""
+            options={[
+              { value: "", label: "不归入，新建项目（在下方选择学院与届别）" },
+              ...programs.map((p) => ({
+                value: String(p.id),
+                label: `${collegeName(p.college_id)}　${p.cohort} 届　${PROGRAM_KINDS[p.kind].label}　${p.name}`,
+              })),
+            ]}
+          />
         </Choice>
-        <Choice title="或者新建">
-          <div className="grid gap-2 sm:grid-cols-[1fr_6rem_7rem]">
-            <select
+        <Choice title="或新建项目">
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_6rem_8rem]">
+            <Select
               name="college_id"
               aria-label="学院"
-              defaultValue={college?.id}
-              className={inputClass}
-            >
-              {colleges.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
+              defaultValue={String(college?.id ?? colleges[0].id)}
+              options={colleges.map((c) => ({ value: String(c.id), label: c.name }))}
+            />
             <input
               name="cohort"
-              type="number"
+              inputMode="numeric"
+              pattern="\d{4}"
               aria-label="届"
               defaultValue={program.cohort}
-              className={inputClass}
+              className="field"
             />
-            <select
+            <Select
               name="kind"
               aria-label="类型"
               defaultValue={program.kind}
-              className={inputClass}
-            >
-              {Object.entries(PROGRAM_KINDS).map(([kind, { label }]) => (
-                <option key={kind} value={kind}>
-                  {label}
-                </option>
-              ))}
-            </select>
+              options={Object.entries(PROGRAM_KINDS).map(([value, { label }]) => ({
+                value,
+                label,
+              }))}
+            />
           </div>
         </Choice>
         <div className="flex flex-wrap gap-2">
           <Button size="sm" name="intent" value="accept" disabled={busy}>
-            通过，归并
+            通过并归并
           </Button>
-          <Button size="sm" variant="ghost" name="intent" value="reject" disabled={busy}>
-            驳回，这条通知不归并
+          <Button size="sm" variant="outline" name="intent" value="reject" disabled={busy}>
+            驳回，不归并此通知
           </Button>
         </div>
       </Form>
@@ -427,8 +501,8 @@ function ProgramItem({ item, reason, thisYear }: { item: Item; reason: Reason; t
 
 function Choice({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <div className="space-y-1">
-      <p className="text-xs text-muted-foreground">{title}</p>
+    <div className="space-y-1.5">
+      <p className="text-[13px] font-medium">{title}</p>
       {children}
     </div>
   );
@@ -438,11 +512,13 @@ function Choice({ title, children }: { title: string; children: ReactNode }) {
 function Decide({
   id,
   accept,
+  acceptVariant,
   reject,
   children,
 }: {
   id: number;
   accept?: string;
+  acceptVariant?: "outline";
   reject?: string;
   children?: ReactNode;
 }) {
@@ -451,12 +527,12 @@ function Decide({
     <Form method="post" preventScrollReset className="flex flex-wrap items-center gap-2">
       <input type="hidden" name="id" value={id} />
       {accept && (
-        <Button size="sm" name="intent" value="accept" disabled={busy}>
+        <Button size="sm" variant={acceptVariant} name="intent" value="accept" disabled={busy}>
           {accept}
         </Button>
       )}
       {reject && (
-        <Button size="sm" variant="ghost" name="intent" value="reject" disabled={busy}>
+        <Button size="sm" variant="outline" name="intent" value="reject" disabled={busy}>
           {reject}
         </Button>
       )}

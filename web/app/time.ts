@@ -25,7 +25,7 @@ export function formatTime(value: TimeValue, thisYear: number) {
 // A time as editors type it, as precise as the notice and no more: 2026-06-30 17:00,
 // 2026-06-30, 2026-06-30 前, 2026-06-30 前后, 2026-06 上旬 (中旬, 下旬) or 2026-06.
 export const TIME_HINT =
-  "写成 2026-06-30 17:00、2026-06-30、2026-06-30 前、2026-06 下旬 或 2026-06";
+  "格式：2026-06-30 17:00、2026-06-30、2026-06-30 前、2026-06 下旬或 2026-06";
 
 export function timeText(value: TimeValue) {
   if ("month" in value) return value.part ? `${value.month} ${PARTS[value.part]}` : value.month;
