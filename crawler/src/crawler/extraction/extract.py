@@ -1,3 +1,4 @@
+import asyncio
 from types import TracebackType
 from typing import Annotated, Literal, Self
 
@@ -18,6 +19,9 @@ from crawler.extraction.prompt import INSTRUCTIONS
 from crawler.extraction.responses import Responses, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.indexing import Document, NoticeIndex, index_documents
+
+# Calls in flight at once, across all the rounds that share this Extract.
+CONCURRENCY = 2
 
 
 class UnresolvedSelection(BaseModel):
@@ -132,6 +136,7 @@ def resolve_programs(
 class Extract:
     def __init__(self, key: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
         self.llm = Responses(key, transport)
+        self.slots = asyncio.Semaphore(CONCURRENCY)
 
     async def __aenter__(self) -> Self:
         await self.llm.__aenter__()
@@ -149,15 +154,18 @@ class Extract:
         self, title: str, page: NoticePage, context: ExtractionContext
     ) -> tuple[list[ExtractedProgram], list[Usage]]:
         payload, index = prepare(title, page, context)
-        response = await self.llm.generate(payload)
+        async with self.slots:
+            response = await self.llm.generate(payload)
         try:
             selected = RoundSelection.model_validate_json(response.output_text(), strict=True)
             programs = resolve_programs(selected, index, context)
-        except (ValidationError, SelectionError) as error:
-            raise StepError("error", "Invalid extraction selection") from error
+        except ValidationError as error:
+            raise StepError("error", "抽取失败: invalid_selection") from error
+        except SelectionError as error:
+            raise StepError("error", f"抽取失败: {error}") from error
         usage = response.usage
         if usage is None:
-            raise StepError("error", "LLM did not return usage")
+            raise StepError("error", "抽取失败: missing_usage")
         return programs, [
             Usage(
                 model=response.model,

@@ -14,12 +14,13 @@ import httpx
 from pydantic import BaseModel, ConfigDict, HttpUrl, StringConstraints, ValidationError
 
 from crawler.crawl.browser import Browser
-from crawler.crawl.contract import ExtractedProgram, ExtractionContext, Usage, WorkSource
+from crawler.crawl.contract import WorkSource
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.listing import list_items
 from crawler.crawl.notice import read_notice
-from crawler.crawl.rounds import NoticePage, StepError, Steps, crawl_source
+from crawler.crawl.rounds import Steps, crawl_source
 from crawler.crawl.website import Website
+from crawler.extraction.extract import Extract
 from crawler.log import JsonFormatter
 from crawler.screening.screen import Screen
 from crawler.screening.system_one import SystemOne
@@ -37,6 +38,7 @@ class Config(BaseModel):
     mouseclock_url: HttpUrl
     mouseclock_token: Secret
     system_one_api_key: Secret
+    llm_api_key: Secret
 
 
 def load_config(environ: Mapping[str, str]) -> Config:
@@ -74,12 +76,6 @@ async def _crawl(source: WorkSource, browser: Browser, website: Website, steps: 
         logger.exception("Round failed")
 
 
-async def _extract(
-    _page: NoticePage, _context: ExtractionContext
-) -> tuple[list[ExtractedProgram], list[Usage]]:
-    raise StepError("error", "抽取还没接上")
-
-
 async def _run(config: Config) -> None:
     stopping = asyncio.Event()
 
@@ -94,9 +90,10 @@ async def _run(config: Config) -> None:
             Fetcher() as fetcher,
             Browser(fetcher) as browser,
             Website(str(config.mouseclock_url), config.mouseclock_token) as website,
+            Extract(config.llm_api_key) as extract,
         ):
             steps = Steps(
-                list_items=list_items, screen=Screen(system_one), read=read_notice, extract=_extract
+                list_items=list_items, screen=Screen(system_one), read=read_notice, extract=extract
             )
             await serve(website, browser, steps, stopping)
     finally:

@@ -23,7 +23,11 @@ def test_bad_configuration_is_named_without_its_values(caplog: pytest.LogCapture
         load_config(environ)
 
     line = JsonFormatter().format(caplog.records[0])
-    assert json.loads(line)["variables"].keys() == {"MOUSECLOCK_URL", "SYSTEM_ONE_API_KEY"}
+    assert json.loads(line)["variables"].keys() == {
+        "MOUSECLOCK_URL",
+        "SYSTEM_ONE_API_KEY",
+        "LLM_API_KEY",
+    }
     assert "secret" not in line
 
 
