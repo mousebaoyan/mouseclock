@@ -118,14 +118,24 @@ async def crawl_source(
         listing = await website.listing(source.id, Listing(items=items))
         new = [notice for notice in listing.pending if notice.step == "screen"]
         to_fetch = [notice for notice in listing.pending if notice.step == "fetch"]
+        failures: list[NoticeFailure] = []
         if new:
-            results, usage = await steps.screen(source, new)
-            await website.screening(source.id, Screening(results=results, usage=usage))
-            screened_in = {result.notice_id for result in results if result.screened_in}
-            to_fetch += [notice for notice in new if notice.id in screened_in]
+            try:
+                results, usage = await steps.screen(source, new)
+            except StepError as error:
+                # They stay unscreened and come back next round; the open programs' notices
+                # are still fetched.
+                logger.warning("Screening failed: %s", error)
+                failures += [
+                    NoticeFailure(url=notice.url, failure=error.failure, detail=error.detail)
+                    for notice in new
+                ]
+            else:
+                await website.screening(source.id, Screening(results=results, usage=usage))
+                screened_in = {result.notice_id for result in results if result.screened_in}
+                to_fetch += [notice for notice in new if notice.id in screened_in]
 
         useful = 0
-        failures: list[NoticeFailure] = []
         for notice in to_fetch:
             try:
                 programs = await _fetch_notice(notice, source, pages, website, steps, clock)

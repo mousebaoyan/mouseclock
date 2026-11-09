@@ -1,32 +1,34 @@
 import asyncio
 
 from crawler.crawl.contract import PendingNotice, ScreeningResult, Usage, WorkSource
+from crawler.crawl.rounds import StepError
 from crawler.screening.system_one import Call, SystemOne
 
 # Calibrated on this model's labeled titles (design §8.1); changing the model requires
 # rerunning crawler.screening.evaluate and selecting its threshold again.
 MODEL = "SemIf"
 THRESHOLD = 0.1
+# Calls in flight at once, across all the rounds that share this Screen.
 CONCURRENCY = 2
-
-
-class ScreeningError(Exception):
-    pass
 
 
 class Screen:
     def __init__(self, provider: SystemOne) -> None:
         self.provider = provider
+        self.slots = asyncio.Semaphore(CONCURRENCY)
 
     async def __call__(
         self, source: WorkSource, notices: list[PendingNotice]
     ) -> tuple[list[ScreeningResult], list[Usage]]:
         async def score(notice: PendingNotice) -> tuple[ScreeningResult, Usage]:
-            result = await self.provider.score(Call(model=MODEL, title=notice.title, section=None))
+            async with self.slots:
+                result = await self.provider.score(
+                    Call(model=MODEL, title=notice.title, section=None)
+                )
             if result.error is not None:
-                raise ScreeningError(result.error)
+                raise StepError("error", f"初筛失败: {result.error}")
             if result.score is None or result.usage is None or result.returned_model is None:
-                raise ScreeningError("invalid_response")
+                raise StepError("error", "初筛失败: invalid_response")
             return (
                 ScreeningResult(
                     notice_id=notice.id,

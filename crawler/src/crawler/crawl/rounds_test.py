@@ -198,6 +198,32 @@ def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
     ]
 
 
+def test_notices_screening_failed_for_are_reported_and_the_round_goes_on() -> None:
+    site = FakeWebsite([pending(1, "screen"), pending(2, "fetch")], extracted=frozenset())
+
+    async def failing(
+        _source: WorkSource, _notices: list[PendingNotice]
+    ) -> tuple[list[ScreeningResult], list[Usage]]:
+        raise StepError("error", "http_429")
+
+    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage | None:
+        return page("冬令营")
+
+    site.run(Steps(list_items, failing, read, extract))
+
+    assert [call for call, _ in site.calls] == [
+        "POST /sources/7/listing",
+        "POST /notices/2/snapshot",
+        "POST /snapshots/20/extraction",
+        "POST /runs",
+    ]
+    [run] = site.called("POST /runs")
+    assert "failure" not in run
+    assert run["notice_failures"] == [
+        {"url": "http://a/1.htm", "failure": "error", "detail": "http_429"}
+    ]
+
+
 def test_a_list_that_cant_be_read_ends_the_round_with_the_reason() -> None:
     async def unreachable(_pages: PageSession, source: WorkSource) -> list[ListedItem]:
         raise FetchError("unreachable", source.url)
