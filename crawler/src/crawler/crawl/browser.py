@@ -136,6 +136,7 @@ class BrowserSession:
     async def download(self, url: str, *, page_url: str) -> Response:
         for _ in range(MAX_REDIRECTS + 1):
             async with self._owner.fetcher.permit(url):
+                started = time.monotonic()
                 try:
                     response = await self._context.request.get(
                         url,
@@ -146,6 +147,14 @@ class BrowserSession:
                         fail_on_status_code=False,
                     )
                     try:
+                        logger.info(
+                            "Browser downloaded",
+                            extra={
+                                "url": url,
+                                "status": response.status,
+                                "elapsed": time.monotonic() - started,
+                            },
+                        )
                         location = response.headers.get("location")
                         if response.status in _REDIRECTS and location is not None:
                             url = urljoin(response.url, location)

@@ -2,6 +2,7 @@
 page visit or HTTP request at a time per site, with a pause between them."""
 
 import asyncio
+import logging
 import time
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
@@ -15,6 +16,7 @@ USER_AGENT = "mouseclock/0.1 (+https://github.com/mousebaoyan/mouseclock)"
 INTERVAL = 5.0
 MAX_REDIRECTS = 5
 TIMEOUT = 30.0
+logger = logging.getLogger(__name__)
 
 type Failure = Literal["timeout", "unreachable", "too_many_redirects"]
 
@@ -90,9 +92,19 @@ class Fetcher:
 
     async def _send(self, url: str) -> httpx.Response:
         async with self.permit(url):
+            started = self._clock()
             try:
-                return await self._client.get(url)
+                response = await self._client.get(url)
             except httpx.TimeoutException as error:
                 raise FetchError("timeout", url) from error
             except httpx.TransportError as error:
                 raise FetchError("unreachable", url) from error
+            logger.info(
+                "Fetched",
+                extra={
+                    "url": url,
+                    "status": response.status_code,
+                    "elapsed": self._clock() - started,
+                },
+            )
+            return response

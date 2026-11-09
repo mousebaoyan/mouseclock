@@ -27,6 +27,7 @@ from crawler.crawl.contract import (
 )
 from crawler.crawl.fetch import FetchError
 from crawler.crawl.website import Website
+from crawler.log import crawl_round
 from crawler.parse.indexing import Hyperlink
 
 logger = logging.getLogger(__name__)
@@ -90,13 +91,14 @@ async def crawl_source(
     clock: Callable[[], float] = time.time,
 ) -> None:
     started_at = int(clock())
+    crawl_round.set((source.id, started_at))
     async with browser.session(source) as pages:
         try:
             items = await steps.list_items(pages, source)
             if not items:
                 raise StepError("no_items")
         except (FetchError, StepError) as error:
-            logger.warning("Listing failed: %s", error, extra={"source_id": source.id})
+            logger.warning("Listing failed: %s", error)
             failure, detail = _failure(error)
             await website.run(
                 Run(
