@@ -1,4 +1,6 @@
 import asyncio
+import logging
+import time
 
 from crawler.crawl.contract import PendingNotice, ScreeningResult, Usage, WorkSource
 from crawler.crawl.rounds import StepError
@@ -10,6 +12,7 @@ MODEL = "SemIf"
 THRESHOLD = 0.1
 # Calls in flight at once, across all the rounds that share this Screen.
 CONCURRENCY = 2
+logger = logging.getLogger(__name__)
 
 
 class Screen:
@@ -42,6 +45,7 @@ class Screen:
                 ),
             )
 
+        started = time.monotonic()
         results: list[ScreeningResult] = []
         usage: list[Usage] = []
         for offset in range(0, len(notices), CONCURRENCY):
@@ -52,4 +56,14 @@ class Screen:
             for result, tokens in outcomes:
                 results.append(result)
                 usage.append(tokens)
+        logger.info(
+            "Screened",
+            extra={
+                "model": MODEL,
+                "notices": len(results),
+                "input_tokens": sum(u.input_tokens for u in usage),
+                "output_tokens": sum(u.output_tokens for u in usage),
+                "elapsed": time.monotonic() - started,
+            },
+        )
         return results, usage

@@ -16,6 +16,10 @@ from crawler.log import JsonFormatter
 from crawler.main import load_config, serve
 
 
+async def unused(*_: object) -> Never:
+    raise AssertionError
+
+
 def test_bad_configuration_is_named_without_its_values(caplog: pytest.LogCaptureFixture) -> None:
     environ = {"MOUSECLOCK_URL": "ftp://user:secret@site", "MOUSECLOCK_TOKEN": "token"}
 
@@ -51,9 +55,6 @@ def test_a_failing_round_leaves_the_others_and_stopping_waits_for_them() -> None
             raise RuntimeError("bug")
         raise StepError("no_items")
 
-    async def unused(*_: object) -> Never:
-        raise AssertionError
-
     async def main() -> None:
         stopping = asyncio.Event()
         stopping.set()
@@ -83,3 +84,51 @@ def test_a_failing_round_leaves_the_others_and_stopping_waits_for_them() -> None
     assert failed["source_id"] == 1
     assert isinstance(failed["started_at"], int)
     assert "RuntimeError: bug" in failed["stack"]
+
+
+def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr("crawler.main.POLL", 0)
+    source = WorkSource(id=1, url="http://a/list.htm", browser=False, config=None, backfill=False)
+    calls: list[str] = []
+    stopping = asyncio.Event()
+    failed_twice = asyncio.Event()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/api/v1/crawler")
+        calls.append(f"{request.method} {path}")
+        if path != "/work":
+            return httpx.Response(204)
+        polls = calls.count("GET /work")
+        if polls == 1:
+            work = {"sources": [source.model_dump(mode="json")], "probes": []}
+            return httpx.Response(200, json=work)
+        if polls == 2:
+            # A website that no longer matches this crawler's contract.
+            return httpx.Response(200, json={"sources": "invalid", "probes": []})
+        failed_twice.set()
+        raise httpx.LocalProtocolError(f"Illegal header value {request.headers['authorization']}")
+
+    # Still in progress while the next two asks fail.
+    async def list_items(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
+        await failed_twice.wait()
+        stopping.set()
+        raise StepError("no_items")
+
+    async def main() -> None:
+        nowhere = httpx.MockTransport(lambda _: httpx.Response(500))
+        async with (
+            Fetcher(nowhere) as fetcher,
+            Website("http://site", "token-secret", httpx.MockTransport(handle)) as website,
+        ):
+            await serve(
+                website, Browser(fetcher), Steps(list_items, unused, unused, unused), stopping
+            )
+
+    asyncio.run(main())
+
+    assert "POST /runs" in calls
+    failures = [r for r in caplog.records if r.getMessage() == "Asking for work failed"]
+    assert [vars(r)["error"] for r in failures[:2]] == ["ValidationError", "LocalProtocolError"]
+    assert all("token-secret" not in JsonFormatter().format(r) for r in caplog.records)

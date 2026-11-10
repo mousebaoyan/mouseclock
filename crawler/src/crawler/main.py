@@ -57,8 +57,16 @@ async def serve(website: Website, browser: Browser, steps: Steps, stopping: asyn
         while True:
             try:
                 work = await website.work()
-            except httpx.HTTPError as error:
-                logger.warning("Asking for work failed: %s", error)
+            except (httpx.HTTPError, ValidationError) as error:
+                # By kind only: the text may carry the token (development §4). A website that no
+                # longer matches this crawler is asked again next minute, like one that's down.
+                status = (
+                    error.response.status_code if isinstance(error, httpx.HTTPStatusError) else None
+                )
+                logger.warning(
+                    "Asking for work failed",
+                    extra={"error": type(error).__name__, "status": status},
+                )
             else:
                 for source in work.sources:
                     rounds.create_task(_crawl(source, browser, website, steps))
