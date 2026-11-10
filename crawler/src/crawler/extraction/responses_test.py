@@ -103,6 +103,6 @@ def test_http_failure_reports_status_without_response_body_or_key(status: int) -
         async with client:
             with pytest.raises(StepError) as caught:
                 await client.generate({})
-            assert caught.value.detail == f"抽取失败: http_{status}"
+            assert caught.value.detail == f"模型调用失败: http_{status}"
 
     asyncio.run(run())

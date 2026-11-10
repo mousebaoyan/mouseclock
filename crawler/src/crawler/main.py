@@ -1,5 +1,5 @@
-"""The crawler process: asks the website for work every minute and crawls each source it hands out,
-all at once; on SIGTERM it stops asking and exits once the rounds in progress are done."""
+"""Ask the website for work every minute and run sources and probes concurrently; on SIGTERM,
+stop asking and exit once the tasks in progress are done."""
 
 import asyncio
 import logging
@@ -14,14 +14,17 @@ import httpx
 from pydantic import BaseModel, ConfigDict, HttpUrl, StringConstraints, ValidationError
 
 from crawler.crawl.browser import Browser
-from crawler.crawl.contract import WorkSource
+from crawler.crawl.contract import WorkProbe, WorkSource
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.listing import list_items
 from crawler.crawl.notice import read_notice
+from crawler.crawl.probe import GenerateConfig, probe_source
 from crawler.crawl.rounds import Steps, crawl_source
 from crawler.crawl.website import Website
 from crawler.extraction.extract import Extract
-from crawler.log import JsonFormatter
+from crawler.extraction.probe import ProbeConfig
+from crawler.extraction.responses import Responses
+from crawler.log import JsonFormatter, current_probe
 from crawler.screening.screen import Screen
 from crawler.screening.system_one import SystemOne
 
@@ -51,7 +54,13 @@ def load_config(environ: Mapping[str, str]) -> Config:
         raise SystemExit(1) from None
 
 
-async def serve(website: Website, browser: Browser, steps: Steps, stopping: asyncio.Event) -> None:
+async def serve(
+    website: Website,
+    browser: Browser,
+    steps: Steps,
+    stopping: asyncio.Event,
+    generate: GenerateConfig,
+) -> None:
     # Leaving the group waits for the rounds still running.
     async with asyncio.TaskGroup() as rounds:
         while True:
@@ -70,6 +79,8 @@ async def serve(website: Website, browser: Browser, steps: Steps, stopping: asyn
             else:
                 for source in work.sources:
                     rounds.create_task(_crawl(source, browser, website, steps))
+                for probe in work.probes:
+                    rounds.create_task(_probe(probe, browser, website, generate))
             with suppress(TimeoutError):
                 await asyncio.wait_for(stopping.wait(), POLL)
             if stopping.is_set():
@@ -82,6 +93,19 @@ async def _crawl(source: WorkSource, browser: Browser, website: Website, steps: 
     except Exception:
         # A bug or an outage in this round; the others go on, and the lease hands it out again.
         logger.exception("Round failed")
+
+
+async def _probe(
+    probe: WorkProbe, browser: Browser, website: Website, generate: GenerateConfig
+) -> None:
+    token = current_probe.set(probe.id)
+    try:
+        await probe_source(probe, browser, website, generate)
+    except Exception as error:
+        # An upstream exception may contain model output or credentials; log only its kind.
+        logger.exception("Probe failed", exc_info=False, extra={"error": type(error).__name__})
+    finally:
+        current_probe.reset(token)
 
 
 async def _run(config: Config) -> None:
@@ -98,12 +122,15 @@ async def _run(config: Config) -> None:
             Fetcher() as fetcher,
             Browser(fetcher) as browser,
             Website(str(config.mouseclock_url), config.mouseclock_token) as website,
-            Extract(config.llm_api_key) as extract,
+            Responses(config.llm_api_key) as llm,
         ):
             steps = Steps(
-                list_items=list_items, screen=Screen(system_one), read=read_notice, extract=extract
+                list_items=list_items,
+                screen=Screen(system_one),
+                read=read_notice,
+                extract=Extract(llm),
             )
-            await serve(website, browser, steps, stopping)
+            await serve(website, browser, steps, stopping, ProbeConfig(llm).generate)
     finally:
         await system_one.close()
 

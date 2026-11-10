@@ -8,10 +8,13 @@ import httpx
 import pytest
 
 from crawler.crawl.browser import Browser, PageSession
-from crawler.crawl.contract import ListedItem, WorkSource
+from crawler.crawl.contract import ListedItem, ProbeReport, Run, WorkProbe, WorkSource
 from crawler.crawl.fetch import Fetcher
+from crawler.crawl.probe_test import BODY, CONFIG
 from crawler.crawl.rounds import StepError, Steps
 from crawler.crawl.website import Website
+from crawler.extraction.probe import ProbeConfig
+from crawler.extraction.responses import Responses
 from crawler.log import JsonFormatter
 from crawler.main import load_config, serve
 
@@ -64,7 +67,11 @@ def test_a_failing_round_leaves_the_others_and_stopping_waits_for_them() -> None
             Website("http://site", "token", httpx.MockTransport(handle)) as website,
         ):
             await serve(
-                website, Browser(fetcher), Steps(list_items, unused, unused, unused), stopping
+                website,
+                Browser(fetcher),
+                Steps(list_items, unused, unused, unused),
+                stopping,
+                unused,
             )
 
     # Formatted as they are logged, inside the round.
@@ -123,7 +130,11 @@ def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
             Website("http://site", "token-secret", httpx.MockTransport(handle)) as website,
         ):
             await serve(
-                website, Browser(fetcher), Steps(list_items, unused, unused, unused), stopping
+                website,
+                Browser(fetcher),
+                Steps(list_items, unused, unused, unused),
+                stopping,
+                unused,
             )
 
     asyncio.run(main())
@@ -132,3 +143,108 @@ def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
     failures = [r for r in caplog.records if r.getMessage() == "Asking for work failed"]
     assert [vars(r)["error"] for r in failures[:2]] == ["ValidationError", "LocalProtocolError"]
     assert all("token-secret" not in JsonFormatter().format(r) for r in caplog.records)
+
+
+def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    source = WorkSource(
+        id=1, url="https://regular.example/list", browser=False, config=None, backfill=False
+    )
+    probes = [
+        WorkProbe(id=46, url="https://probe.example/list", browser=False, config=None),
+        WorkProbe(id=47, url="https://broken.example/list", browser=False, config=None),
+    ]
+    reports: list[ProbeReport] = []
+    runs: list[Run] = []
+    requests: list[str] = []
+    at_model = asyncio.Event()
+    release_model = asyncio.Event()
+
+    def website_response(request: httpx.Request) -> httpx.Response:
+        path = request.url.path.removeprefix("/api/v1/crawler")
+        if path == "/work":
+            return httpx.Response(
+                200,
+                json={
+                    "sources": [source.model_dump(mode="json")],
+                    "probes": [probe.model_dump(mode="json") for probe in probes],
+                },
+            )
+        if path == "/probes/46":
+            reports.append(ProbeReport.model_validate_json(request.content))
+        elif path == "/runs":
+            runs.append(Run.model_validate_json(request.content))
+        else:
+            raise AssertionError(f"Unexpected submission: {path}")
+        return httpx.Response(204)
+
+    def source_response(request: httpx.Request) -> httpx.Response:
+        requests.append(str(request.url))
+        if request.url.host == "broken.example":
+            raise RuntimeError("private model output or token-secret")
+        return httpx.Response(200, content=BODY)
+
+    async def model_response(_request: httpx.Request) -> httpx.Response:
+        at_model.set()
+        await release_model.wait()
+        return httpx.Response(
+            200,
+            json={
+                "model": "fixed-model",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [{"type": "output_text", "text": CONFIG.model_dump_json()}],
+                    }
+                ],
+                "usage": {"input_tokens": 120, "output_tokens": 40},
+            },
+        )
+
+    async def list_items(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
+        raise StepError("no_items")
+
+    async def main() -> None:
+        stopping = asyncio.Event()
+        async with (
+            asyncio.timeout(5),
+            Fetcher(httpx.MockTransport(source_response)) as fetcher,
+            Website(
+                "https://website.example", "fake-token", httpx.MockTransport(website_response)
+            ) as website,
+            Responses("fake-key", httpx.MockTransport(model_response)) as model,
+        ):
+            running = asyncio.create_task(
+                serve(
+                    website,
+                    Browser(fetcher),
+                    Steps(list_items, unused, unused, unused),
+                    stopping,
+                    ProbeConfig(model).generate,
+                )
+            )
+            await at_model.wait()
+            stopping.set()
+            await asyncio.sleep(0)
+            assert not running.done()
+            release_model.set()
+            await running
+
+    asyncio.run(main())
+    [report] = reports
+    assert report.failure is None
+    assert [item.title for item in report.items] == ["自编招生通知甲", "自编招生通知乙"]
+    assert report.items[0].url == "https://probe.example/notice/101.html"
+    assert report.suggested_config is not None
+    assert report.usage[0].input_tokens == 120
+    assert report.usage[0].output_tokens == 40
+    assert sorted(requests) == ["https://broken.example/list", "https://probe.example/list"]
+    [run] = runs
+    assert run.source_id == 1
+    assert run.failure == "no_items"
+    [failed] = [record for record in caplog.records if record.getMessage() == "Probe failed"]
+    assert vars(failed)["error"] == "RuntimeError"
+    assert "private model output" not in JsonFormatter().format(failed)
+    assert "token-secret" not in JsonFormatter().format(failed)

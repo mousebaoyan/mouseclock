@@ -52,12 +52,19 @@ class Notice(BaseModel):
 
 
 def response_schema(output: type[BaseModel]) -> dict[str, JsonValue]:
-    def strict(node: JsonValue) -> JsonValue:
+    def strict(node: JsonValue, *, named: bool = False) -> JsonValue:
         if isinstance(node, list):
             return [strict(item) for item in node]
         if not isinstance(node, dict):
             return node
-        result = {k: strict(v) for k, v in node.items() if k not in {"default", "title"}}
+        # Names inside properties and definitions are user fields, not schema keywords.
+        if named:
+            return {k: strict(v) for k, v in node.items()}
+        result = {
+            k: strict(v, named=k in {"properties", "$defs"})
+            for k, v in node.items()
+            if k not in {"default", "title"}
+        }
         properties = result.get("properties")
         if isinstance(properties, dict):
             result["required"] = list(properties)
@@ -65,4 +72,12 @@ def response_schema(output: type[BaseModel]) -> dict[str, JsonValue]:
         return result
 
     schema: dict[str, JsonValue] = output.model_json_schema()
-    return {k: strict(v) for k, v in schema.items()}
+    properties = schema.get("properties")
+    if isinstance(properties, dict):
+        schema["required"] = list(properties)
+        schema["additionalProperties"] = False
+    return {
+        k: strict(v, named=k in {"properties", "$defs"})
+        for k, v in schema.items()
+        if k not in {"default", "title"}
+    }

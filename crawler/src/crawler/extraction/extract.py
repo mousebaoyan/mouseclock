@@ -1,10 +1,7 @@
-import asyncio
 import logging
 import time
-from types import TracebackType
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal
 
-import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, ValidationError
 
 from crawler.crawl.contract import ExtractedProgram, ExtractionContext, UnresolvedDate, Usage
@@ -22,8 +19,6 @@ from crawler.extraction.responses import Responses, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.indexing import Document, NoticeIndex, index_documents
 
-# Calls in flight at once, across all the rounds that share this Extract.
-CONCURRENCY = 2
 logger = logging.getLogger(__name__)
 
 
@@ -137,30 +132,16 @@ def resolve_programs(
 
 
 class Extract:
-    def __init__(self, key: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self.llm = Responses(key, transport)
-        self.slots = asyncio.Semaphore(CONCURRENCY)
-
-    async def __aenter__(self) -> Self:
-        await self.llm.__aenter__()
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        await self.llm.__aexit__(exc_type, exc, tb)
+    def __init__(self, llm: Responses) -> None:
+        self.llm = llm
 
     async def __call__(
         self, title: str, page: NoticePage, context: ExtractionContext
     ) -> tuple[list[ExtractedProgram], list[Usage]]:
         payload, index = prepare(title, page, context)
-        async with self.slots:
-            started = time.monotonic()
-            response = await self.llm.generate(payload)
-            elapsed = time.monotonic() - started
+        started = time.monotonic()
+        response = await self.llm.generate(payload)
+        elapsed = time.monotonic() - started
         usage = response.usage
         if usage is None:
             raise StepError("error", "抽取失败: missing_usage")
