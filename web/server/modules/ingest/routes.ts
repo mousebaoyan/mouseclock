@@ -22,6 +22,7 @@ import {
   Role,
 } from "../programs/schemas.ts";
 import { Failure, ListedItem } from "../sources/schemas.ts";
+import { UnresolvedDate } from "./schemas.ts";
 import {
   crawlerTokenId,
   markRemoved,
@@ -79,6 +80,7 @@ export const ExtractedProgram = z
     name: ProgramName,
     role: Role.openapi({ description: "call：报名；update：补充；result：名单" }),
     fields: ExtractedFields,
+    unresolved_dates: z.array(UnresolvedDate).max(30).optional(),
   })
   .openapi("ExtractedProgram");
 
@@ -89,7 +91,6 @@ const Work = z
         .object({
           id: Int,
           url: z.string(),
-          section: z.string(),
           browser: z.boolean(),
           config: z.union([Config, z.null()]),
           backfill: z.boolean().openapi({ description: "第一次抓：往回翻页，补上前两年的通知" }),

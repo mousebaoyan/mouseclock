@@ -5,6 +5,7 @@ from typing import Any
 
 import httpx
 
+from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import (
     AttachmentInfo,
     ExtractedFields,
@@ -19,10 +20,10 @@ from crawler.crawl.contract import (
 from crawler.crawl.fetch import Fetcher, FetchError
 from crawler.crawl.rounds import Attachment, NoticePage, StepError, Steps, crawl_source
 from crawler.crawl.website import Website
+from crawler.extraction.extract import Extract
+from crawler.extraction.numbered import SelectedFields
 
-SOURCE = WorkSource(
-    id=7, url="http://a/list.htm", section="通知公告", browser=False, config=None, backfill=False
-)
+SOURCE = WorkSource(id=7, url="http://a/list.htm", browser=False, config=None, backfill=False)
 ITEMS = [ListedItem(url=f"http://a/{n}.htm", title=f"通知 {n}") for n in range(1, 5)]
 CONTEXT = ExtractionContext(published_on=None, colleges=[], programs=[])
 USAGE = [Usage(model="m", input_tokens=10, output_tokens=1)]
@@ -70,7 +71,9 @@ class FakeWebsite:
                 Fetcher(nowhere) as fetcher,
                 Website("http://site", "token", httpx.MockTransport(self.handle)) as website,
             ):
-                await crawl_source(SOURCE, fetcher, website, steps, clock=lambda: 1_800_000_000)
+                await crawl_source(
+                    SOURCE, Browser(fetcher), website, steps, clock=lambda: 1_800_000_000
+                )
 
         asyncio.run(main())
 
@@ -78,7 +81,7 @@ class FakeWebsite:
         return [body for call, body in self.calls if call.startswith(prefix)]
 
 
-async def list_items(_fetcher: Fetcher, _source: WorkSource) -> list[ListedItem]:
+async def list_items(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
     return ITEMS
 
 
@@ -100,11 +103,11 @@ def page(text: str, files: int = 0) -> NoticePage:
         )
         for n in range(files)
     ]
-    return NoticePage(html=f"<p>{text}</p>", text=text, attachments=attachments)
+    return NoticePage(html=f"<p>{text}</p>", text=text, hyperlinks=(), attachments=attachments)
 
 
 async def extract(
-    _page: NoticePage, _context: ExtractionContext
+    _title: str, _page: NoticePage, _context: ExtractionContext
 ) -> tuple[list[ExtractedProgram], list[Usage]]:
     program = ExtractedProgram(
         college_id=1,
@@ -124,10 +127,14 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         extracted=frozenset({3}),
     )
 
-    async def read(_fetcher: Fetcher, _source: WorkSource, url: str) -> NoticePage | None:
-        return {"http://a/1.htm": page("冬令营", files=1), "http://a/3.htm": page("夏令营")}.get(
-            url
-        )
+    behind_captcha = Attachment(
+        AttachmentInfo(name="表.doc", url="http://a/表.doc", content_type="doc", text=""), None
+    )
+    with_files = page("冬令营", files=1)
+    with_files.attachments.append(behind_captcha)
+
+    async def read(_pages: PageSession, _source: WorkSource, url: str) -> NoticePage | None:
+        return {"http://a/1.htm": with_files, "http://a/3.htm": page("夏令营")}.get(url)
 
     site.run(Steps(list_items, screen, read, extract))
 
@@ -151,6 +158,8 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         "content_type": "pdf",
         "text": "表",
     }
+    # The one behind a captcha is listed, and there is no file to send.
+    assert snapshot["attachments"][1]["url"] == "http://a/表.doc"
     assert site.called("PUT /snapshots/10/attachments/0") == [b"%PDF"]
     [run] = site.called("POST /runs")
     assert run == {
@@ -164,33 +173,151 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     }
 
 
-def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
-    site = FakeWebsite(
-        [pending(1, "fetch"), pending(2, "fetch"), pending(3, "fetch")], extracted=frozenset()
+def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> None:
+    site = FakeWebsite([pending(1, "fetch")], frozenset())
+    context = ExtractionContext.model_validate(
+        {
+            "published_on": "2026-06-01",
+            "colleges": [{"id": 12, "name": "计算机学院"}],
+            "programs": [],
+        }
     )
+    fields = dict.fromkeys(SelectedFields.model_fields)
+    fields["apply"] = {
+        "value": {"start": None, "end": {"date_id": "D1", "edge": "first"}, "rolling": None},
+        "evidence": ["S1"],
+        "confidence": 0.95,
+    }
 
-    async def read(_fetcher: Fetcher, _source: WorkSource, url: str) -> NoticePage | None:
+    def model(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        assert json.loads(payload["input"][1]["content"])["title"] == "t"
+        return httpx.Response(
+            200,
+            json={
+                "model": "deepseek-flash",
+                "status": "completed",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": json.dumps(
+                                    {
+                                        "programs": [
+                                            {
+                                                "college_id": 12,
+                                                "program_id": None,
+                                                "cohort": 2027,
+                                                "kind": "summer_camp",
+                                                "role": "call",
+                                                "name": "夏令营",
+                                                "fields": fields,
+                                                "unresolved_dates": [],
+                                            }
+                                        ]
+                                    }
+                                ),
+                            }
+                        ],
+                    }
+                ],
+                "usage": {"input_tokens": 200, "output_tokens": 50},
+            },
+        )
+
+    def website(request: httpx.Request) -> httpx.Response:
+        response = site.handle(request)
+        if request.url.path.endswith("/snapshot"):
+            body = response.json()
+            body["extraction"] = context.model_dump(mode="json")
+            return httpx.Response(200, json=body)
+        return response
+
+    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
+        return page("报名截止6月30日24点。")
+
+    async def run() -> None:
+        extractor = Extract("local-test", httpx.MockTransport(model))
+        async with (
+            extractor,
+            Fetcher(httpx.MockTransport(lambda _: httpx.Response(500))) as fetcher,
+            Website("http://site", "token", httpx.MockTransport(website)) as client,
+        ):
+            await crawl_source(
+                SOURCE, Browser(fetcher), client, Steps(list_items, screen, read, extractor)
+            )
+
+    asyncio.run(run())
+    [posted] = site.called("POST /snapshots/10/extraction")
+    assert posted["programs"][0]["college_id"] == 12
+    assert posted["programs"][0]["fields"]["apply"]["value"] == {
+        "end": {"date": "2026-06-30", "time": "24:00"}
+    }
+    assert posted["usage"] == [
+        {"model": "deepseek-flash", "input_tokens": 200, "output_tokens": 50}
+    ]
+
+
+def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
+    site = FakeWebsite([pending(n, "fetch") for n in range(1, 5)], extracted=frozenset())
+
+    async def read(_pages: PageSession, _source: WorkSource, url: str) -> NoticePage | None:
         if url == "http://a/1.htm":
             raise FetchError("timeout", url)
         if url == "http://a/2.htm":
             raise StepError("http_status", "HTTP 403")
+        if url == "http://a/3.htm":
+            raise FetchError("unreachable", "http://a/files/application.pdf")
         return page("冬令营")
 
     site.run(Steps(list_items, screen, read, extract))
 
-    assert len(site.called("POST /snapshots/30/extraction")) == 1
+    assert len(site.called("POST /snapshots/40/extraction")) == 1
     [run] = site.called("POST /runs")
     assert run["notice_failures"] == [
         {"url": "http://a/1.htm", "failure": "timeout", "detail": "http://a/1.htm"},
         {"url": "http://a/2.htm", "failure": "http_status", "detail": "HTTP 403"},
+        {
+            "url": "http://a/3.htm",
+            "failure": "unreachable",
+            "detail": "http://a/files/application.pdf",
+        },
+    ]
+
+
+def test_notices_screening_failed_for_are_reported_and_the_round_goes_on() -> None:
+    site = FakeWebsite([pending(1, "screen"), pending(2, "fetch")], extracted=frozenset())
+
+    async def failing(
+        _source: WorkSource, _notices: list[PendingNotice]
+    ) -> tuple[list[ScreeningResult], list[Usage]]:
+        raise StepError("error", "http_429")
+
+    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage | None:
+        return page("冬令营")
+
+    site.run(Steps(list_items, failing, read, extract))
+
+    assert [call for call, _ in site.calls] == [
+        "POST /sources/7/listing",
+        "POST /notices/2/snapshot",
+        "POST /snapshots/20/extraction",
+        "POST /runs",
+    ]
+    [run] = site.called("POST /runs")
+    assert "failure" not in run
+    assert run["notice_failures"] == [
+        {"url": "http://a/1.htm", "failure": "error", "detail": "http_429"}
     ]
 
 
 def test_a_list_that_cant_be_read_ends_the_round_with_the_reason() -> None:
-    async def unreachable(_fetcher: Fetcher, source: WorkSource) -> list[ListedItem]:
+    async def unreachable(_pages: PageSession, source: WorkSource) -> list[ListedItem]:
         raise FetchError("unreachable", source.url)
 
-    async def empty(_fetcher: Fetcher, _source: WorkSource) -> list[ListedItem]:
+    async def empty(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
         return []
 
     async def unused(*_: object) -> Any:

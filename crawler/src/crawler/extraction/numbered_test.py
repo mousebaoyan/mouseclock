@@ -2,9 +2,37 @@ from datetime import date
 
 import pytest
 
-from crawler.extraction.evaluate_test import selected_extraction
-from crawler.extraction.numbered import DateRef, SelectionError, resolve
+from crawler.extraction.numbered import (
+    DateRef,
+    SelectedExtraction,
+    SelectedFields,
+    SelectionError,
+    resolve,
+)
 from crawler.parse.indexing import Document, index_documents
+
+
+def selected_extraction() -> SelectedExtraction:
+    fields = dict.fromkeys(SelectedFields.model_fields)
+    fields["apply"] = {
+        "value": {"start": None, "end": {"date_id": "D1", "edge": "first"}, "rolling": None},
+        "evidence": ["S1"],
+        "confidence": 0.9,
+    }
+    return SelectedExtraction.model_validate(
+        {
+            "programs": [
+                {
+                    "college": "Computer Science",
+                    "cohort": 2027,
+                    "kind": "summer_camp",
+                    "role": "call",
+                    "name": "Summer camp",
+                    "fields": fields,
+                }
+            ]
+        }
+    )
 
 
 @pytest.mark.parametrize(
@@ -14,7 +42,6 @@ from crawler.parse.indexing import Document, index_documents
         "2026-06-30 24:00",
         "二\u3007二六年六月三十日24时",
         "\uff086月30日\uff0924:00",
-        "6.30日24时",
     ],
 )
 def test_selected_deadline_keeps_minutes_and_evidence_is_original_text(expression: str) -> None:

@@ -27,8 +27,8 @@ _MONTH = (
     rf"(?:[ \t]*(?:{_DAY}|中下旬|上旬|中旬|下旬|初|底))?"
 )
 _NUMERIC_DATE = (
-    r"(?:(?<![A-Za-z0-9/])[0-9]{4}[ \t]*[-/.][ \t]*[0-9]{1,2}[ \t]*[-/.][ \t]*"
-    r"[0-9]{1,2}|(?<![A-Za-z0-9./])[0-9]{1,2}[ \t]*[-/.][ \t]*[0-9]{1,2})"
+    r"(?<![A-Za-z0-9/])[0-9]{4}[ \t]*[-/.][ \t]*[0-9]{1,2}[ \t]*[-/.][ \t]*"
+    r"[0-9]{1,2}"
     r"(?![0-9年月]|[./][0-9])"
 )
 _NUMERIC = rf"{_NUMERIC_DATE}[日号]?{_TIME}{_MARK}"
@@ -50,11 +50,6 @@ _EXPRESSION = re.compile(
     rf"(?:[ \t]*{_SEPARATOR}[ \t]*(?P<last>{_ATOM}|{_DAY}|{_GAP}{_CLOCK}(?:前后|左右|之前|前)?))?"
     r"(?!(?<=[0-9])[0-9])(?!(?<=月)[ \t]*[0-9一二三四五六七八九十])"
 )
-_DATE_LABEL = re.compile(
-    r"(?:截止(?:时间|日期)?|(?:报名|申请|活动|考核|面试)(?:时间|日期)|日期|请于|定于)"
-    r"[ \t为是自从\uff1a:]*\Z"
-)
-_SHORT_DATE = re.compile(r"[0-9]{1,2}[ \t]*[-/.]")
 _POINT = re.compile(
     r"(?:(?P<year>[0-9]{4})年)?(?:(?P<month>[0-9]{1,2})月)?"
     r"(?:(?P<day>[0-9]{1,2})日)?"
@@ -92,68 +87,23 @@ def _chinese_number(match: re.Match[str]) -> str:
 
 
 def _numeric_date_context(match: re.Match[str], text: str) -> bool:
-    first, last = match["first"], match["last"]
-    parenthesized = first.startswith(("(", "\uff08"))
-    point = first[1:].lstrip(" \t") if parenthesized else first
-    first_is_numeric = re.match(_NUMERIC_DATE, point) is not None
-    last_is_short = last is not None and _SHORT_DATE.match(last) is not None
-    if not first_is_numeric and not last_is_short:
+    first = match["first"]
+    point = first[1:].lstrip(" \t") if first.startswith(("(", "\uff08")) else first
+    if re.match(_NUMERIC_DATE, point) is None:
         return True
     before = text[: match.start()]
-    if first_is_numeric:
-        if re.search(
-            r"(?:版本(?:号)?|版|(?<![A-Za-z])(?:v|version))[ \t为是:\uff1a=(\uff08]*\Z",
-            before,
-            re.IGNORECASE,
-        ):
-            return False
-        if re.search(r"[A-Za-z0-9][ \t]*[-./][ \t]*\Z", before) and not re.search(
+    if re.search(
+        r"(?:版本(?:号)?|版|(?<![A-Za-z])(?:v|version))[ \t为是:\uff1a=(\uff08]*\Z",
+        before,
+        re.IGNORECASE,
+    ):
+        return False
+    return not (
+        re.search(r"[A-Za-z0-9][ \t]*[-./][ \t]*\Z", before)
+        and not re.search(
             r"(?:^|[。\uff01\uff1f!?\uff1b;\r\n]|\.[ \t]+)[ \t]*[0-9]+[ \t]*\.[ \t]*\Z",
             before,
-        ):
-            return False
-    first_is_short = _SHORT_DATE.match(point) is not None
-    if not first_is_short and not last_is_short:
-        return True
-    if (
-        first_is_short
-        and not re.search(r"[日号]", first)
-        and re.search(rf"{_PERIOD}[ \t]*\Z", before)
-    ):
-        return False
-    after = text[match.end() :]
-    last_point = last or first
-    if (
-        _SHORT_DATE.match(last_point)
-        and not re.search(r"[日号]", last_point)
-        and re.match(r"[ \t]*(?:元|分(?!别|批|为|组|配|开|阶段)|万|亿|%|\uff05|倍|米|克|版)", after)
-    ):
-        return False
-    label = _DATE_LABEL.search(before)
-    # A clock such as 17:00 does not disambiguate 8.30 from 08:30.
-    if (
-        first_is_short
-        and last is not None
-        and re.fullmatch(rf"{_GAP}{_CLOCK}{_MARK}", last)
-        and not (
-            re.search(r"[日号]", first)
-            or re.search(_CLOCK, first)
-            or (label is not None and "日期" in label[0])
         )
-    ):
-        return False
-    return bool(
-        not first_is_short
-        or parenthesized
-        or label
-        or re.search(r"[日号]", first + (last or ""))
-        or re.match(
-            r"[ \t]*(?:截止[ \t]*(?=\Z|[^\w \t])"
-            r"|(?:开始|结束|截止)?(?:报名|申请|提交(?:材料|申请)|面试|考核|开营|报到)"
-            r"|(?:举行|举办)(?:活动|面试|考核|(?:夏|冬)令营))",
-            after,
-        )
-        or (last is not None and not last_is_short)
     )
 
 
@@ -183,17 +133,16 @@ def _point(
     # Add calendar units before removing delimiters so a clock digit cannot become part of the day.
     numeric = re.match(
         r"(?P<opening>[\uff08(][ \t]*)?"
-        r"(?:(?P<year>[0-9]{4})[ \t]*(?P<year_separator>[-/.])[ \t]*)?"
+        r"(?P<year>[0-9]{4})[ \t]*(?P<year_separator>[-/.])[ \t]*"
         r"(?P<month>[0-9]{1,2})[ \t]*(?P<day_separator>[-/.])[ \t]*"
         r"(?P<day>[0-9]{1,2})[日号]?",
         text,
     )
     if numeric is not None:
-        if numeric["year"] and numeric["year_separator"] != numeric["day_separator"]:
+        if numeric["year_separator"] != numeric["day_separator"]:
             raise ValueError("Mixed numeric date separators")
-        year = f"{numeric['year']}年" if numeric["year"] else ""
         text = (
-            f"{numeric['opening'] or ''}{year}{numeric['month']}月{numeric['day']}日"
+            f"{numeric['opening'] or ''}{numeric['year']}年{numeric['month']}月{numeric['day']}日"
             f"{text[numeric.end() :]}"
         )
     compact = re.sub(r"[ \t]", "", text)

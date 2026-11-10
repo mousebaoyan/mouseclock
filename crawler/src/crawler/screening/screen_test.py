@@ -5,7 +5,8 @@ import httpx
 import pytest
 
 from crawler.crawl.contract import PendingNotice, ScreeningResult, Usage, WorkSource
-from crawler.screening.screen import THRESHOLD, Screen, ScreeningError
+from crawler.crawl.rounds import StepError
+from crawler.screening.screen import CONCURRENCY, THRESHOLD, Screen
 from crawler.screening.system_one import SystemOne
 
 
@@ -13,7 +14,6 @@ def source() -> WorkSource:
     return WorkSource(
         id=7,
         url="https://example.edu.cn",
-        section="招生",
         browser=False,
         config=None,
         backfill=False,
@@ -72,7 +72,7 @@ def test_batch_preserves_notice_mapping_threshold_boundary_and_usage() -> None:
     assert {u.model for u in usage} == {"SemIf"}
 
 
-def test_provider_failure_raises_screening_error() -> None:
+def test_provider_failure_fails_the_screening() -> None:
     async def run() -> None:
         provider = SystemOne(
             "local-test", httpx.MockTransport(lambda _: httpx.Response(503, text="private body"))
@@ -93,5 +93,37 @@ def test_provider_failure_raises_screening_error() -> None:
         finally:
             await provider.close()
 
-    with pytest.raises(ScreeningError, match="http_503"):
+    with pytest.raises(StepError, match="http_503"):
         asyncio.run(run())
+
+
+def test_rounds_sharing_a_screen_share_its_limit() -> None:
+    in_flight = 0
+    most = 0
+
+    async def handle(_request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, most
+        in_flight += 1
+        most = max(most, in_flight)
+        # Lets every other call that can start get as far as here first.
+        for _ in range(20):
+            await asyncio.sleep(0)
+        in_flight -= 1
+        return response(0.5)
+
+    async def run() -> None:
+        provider = SystemOne("local-test", httpx.MockTransport(handle))
+        screen = Screen(provider)
+        notices = [
+            PendingNotice(
+                id=n, url=f"https://example.edu.cn/{n}", title="t", published_on=None, step="screen"
+            )
+            for n in range(4)
+        ]
+        try:
+            await asyncio.gather(screen(source(), notices[:2]), screen(source(), notices[2:]))
+        finally:
+            await provider.close()
+
+    asyncio.run(run())
+    assert most == CONCURRENCY

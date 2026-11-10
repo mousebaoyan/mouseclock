@@ -6,14 +6,14 @@ from urllib.parse import urlsplit, urlunsplit
 
 from pydantic import ValidationError
 
+from crawler.crawl.browser import PageSession
 from crawler.crawl.contract import ListedItem, WorkSource
-from crawler.crawl.fetch import Fetcher
 from crawler.crawl.rounds import StepError
 from crawler.parse.listing import ListConfig, parse_listing
 
 
 async def list_items(
-    fetcher: Fetcher, source: WorkSource, clock: Callable[[], float] = time.time
+    pages: PageSession, source: WorkSource, clock: Callable[[], float] = time.time
 ) -> list[ListedItem]:
     try:
         config = ListConfig.model_validate(source.config or {})
@@ -37,7 +37,7 @@ async def list_items(
         if current in visited:
             break
         visited.add(current)
-        response = await fetcher.get(current)
+        response = await pages.get(current)
         visited.add(response.url)
         if not 200 <= response.status < 300:
             raise StepError("http_status", f"HTTP {response.status}")

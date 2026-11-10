@@ -27,6 +27,7 @@ export type Decision = { program_id?: number; college_id?: number; cohort?: numb
 
 // In the order the review page lists them.
 export const REASONS = [
+  "unparsed_date",
   "no_deadline",
   "conflicts_edit",
   "implausible",
@@ -421,6 +422,13 @@ async function mergeDuplicate(
       ),
     );
   }
+  await trx
+    .updateTable("review_items")
+    .set({ program_id: targetId })
+    .where("program_id", "=", duplicateId)
+    .where("reason", "=", "unparsed_date")
+    .where("status", "=", "pending")
+    .execute();
   await deleteProgram(trx, duplicateId);
   await trx
     .updateTable("review_items")

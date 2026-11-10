@@ -5,6 +5,7 @@ import httpx
 import pytest
 from pydantic import JsonValue
 
+from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import WorkSource
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.fetch_test import FakeSites
@@ -20,9 +21,7 @@ TODAY = date(2026, 11, 7)
 
 
 def source(*, backfill: bool = False, config: dict[str, JsonValue] | None = None) -> WorkSource:
-    return WorkSource(
-        id=7, url=BASE, section="招生信息", browser=False, config=config, backfill=backfill
-    )
+    return WorkSource(id=7, url=BASE, browser=False, config=config, backfill=backfill)
 
 
 def page(rows: list[tuple[str, str | None]], following: str | None = None) -> bytes:
@@ -107,7 +106,7 @@ def test_documented_http_configuration_reads_the_real_page_structure() -> None:
     )
     result = sites.run(
         lambda f: list_items(
-            f,
+            PageSession(f, None),
             source(config=config),
             clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
@@ -144,7 +143,7 @@ def test_backfill_keeps_boundary_and_unknown_dates_and_ignores_repeated_pinned_r
     )
     result = sites.run(
         lambda f: list_items(
-            f,
+            PageSession(f, None),
             source(backfill=backfill),
             clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
@@ -168,7 +167,7 @@ def test_leap_day_backfill_uses_calendar_years() -> None:
     )
     result = sites.run(
         lambda f: list_items(
-            f,
+            PageSession(f, None),
             source(backfill=True),
             clock=lambda: datetime(2024, 2, 29, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
@@ -199,7 +198,7 @@ def test_numbered_pager_advances_one_page_and_stops_at_last() -> None:
     )
     result = sites.run(
         lambda f: list_items(
-            f,
+            PageSession(f, None),
             source(backfill=True),
             clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
@@ -240,7 +239,7 @@ def test_explicit_http_config_and_redirect_base_are_used_for_pagination_and_link
         config["selectors"] = selectors
     result = sites.run(
         lambda f: list_items(
-            f,
+            PageSession(f, None),
             source(backfill=True, config=config),
             clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
@@ -274,7 +273,7 @@ def test_bad_configuration_is_recorded_by_the_round(
     sites = FakeSites({BASE: httpx.Response(200, content=page([("1", "2026-09-10")]))})
     website = FakeWebsite([], frozenset())
 
-    async def read(_fetcher: Fetcher, _source: WorkSource, _url: str) -> NoticePage:
+    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
         raise AssertionError("a failed list must not read notices")
 
     async def run(fetcher: Fetcher) -> None:
@@ -282,7 +281,10 @@ def test_bad_configuration_is_recorded_by_the_round(
             "http://site", "local-test", httpx.MockTransport(website.handle)
         ) as client:
             await crawl_source(
-                source(config=config), fetcher, client, Steps(list_items, screen, read, extract)
+                source(config=config),
+                Browser(fetcher),
+                client,
+                Steps(list_items, screen, read, extract),
             )
 
     sites.run(run)
@@ -303,7 +305,7 @@ def test_historical_http_failure_does_not_return_partial_backfill(status: int) -
     with pytest.raises(StepError, match=f"HTTP {status}") as caught:
         sites.run(
             lambda f: list_items(
-                f,
+                PageSession(f, None),
                 source(backfill=True),
                 clock=lambda: datetime(
                     2026, 11, 7, tzinfo=timezone(timedelta(hours=8))
@@ -332,7 +334,7 @@ def test_cyclic_pagination_finishes_backfill_without_discarding_items() -> None:
     )
     result = sites.run(
         lambda f: list_items(
-            f,
+            PageSession(f, None),
             source(backfill=True),
             clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
@@ -371,7 +373,7 @@ def test_empty_historical_page_finishes_backfill_without_discarding_items() -> N
     )
     result = sites.run(
         lambda f: list_items(
-            f,
+            PageSession(f, None),
             source(backfill=True),
             clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
         )
@@ -451,8 +453,8 @@ def test_page_parse_failure_is_not_reported_as_a_configuration_error() -> None:
         }
     )
     with pytest.raises(StepError) as caught:
-        sites.run(lambda f: list_items(f, source()))
-    assert caught.value.detail == "列表页无法解析"
+        sites.run(lambda f: list_items(PageSession(f, None), source()))
+    assert caught.value.detail == "网页无法解析"
 
 
 def test_repeated_links_can_be_the_list_rows() -> None:

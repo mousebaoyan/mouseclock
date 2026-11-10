@@ -141,11 +141,11 @@ def test_extended_dates_preserve_document_offsets_and_exclude_numeric_addresses(
         Document(
             body, hyperlinks=(Hyperlink(start, start + len(label), "https://apply.example.org"),)
         ),
-        Document("七月上旬举办。\r\n报名截止7.5前。", attachment=0),
+        Document("七月上旬举办。\r\n报名截止7月5日前。", attachment=0),
     ]
     index = index_documents(documents, published_on=date(2028, 6, 1))
     mentions = list(index.dates.values())
-    assert [m.match.text for m in mentions] == [label, "七月上旬", "7.5前"]
+    assert [m.match.text for m in mentions] == [label, "七月上旬", "7月5日前"]
     assert [m.match.value for m in mentions] == [
         TimeToMinute(date=date(2028, 6, 30), time="17:00"),
         TimeToMonth(month="2028-07", part="early"),
@@ -165,8 +165,12 @@ def test_extended_dates_preserve_document_offsets_and_exclude_numeric_addresses(
     ("expression", "start", "end"),
     [
         ("2027. 6. 30 17:00", TimeToMinute(date=date(2027, 6, 30), time="17:00"), None),
-        ("6. 30", TimeToDay(date=date(2027, 6, 30)), None),
-        ("6. 30至7. 1", TimeToDay(date=date(2027, 6, 30)), TimeToDay(date=date(2027, 7, 1))),
+        ("2027. 6. 30", TimeToDay(date=date(2027, 6, 30)), None),
+        (
+            "2027. 6. 30至2027. 7. 1",
+            TimeToDay(date=date(2027, 6, 30)),
+            TimeToDay(date=date(2027, 7, 1)),
+        ),
     ],
 )
 def test_spaced_numeric_dates_stay_in_their_evidence_sentence(
@@ -200,12 +204,25 @@ def test_rejected_numeric_versions_do_not_hide_later_date_ids(text: str, expecte
     assert text[mention.match.start : mention.match.end] == expected
 
 
+def test_short_numeric_dates_keep_original_body_and_attachment_evidence() -> None:
+    documents = [
+        Document("报名截止6.30。"),
+        Document("\uff086/30\uff0917:00报到。", attachment=0),
+    ]
+    index = index_documents(documents, published_on=PUBLISHED)
+    assert not index.dates
+    assert [index.evidence(sentence.id).quote for sentence in index.sentences.values()] == [
+        document.text for document in documents
+    ]
+    assert [sentence.attachment for sentence in index.sentences.values()] == [None, 0]
+
+
 @pytest.mark.parametrize(
     ("text", "expected"),
     [
         ("版本2027. 6. 30截止支持", []),
         ("版本2027. 6. 30-7月1日发布", ["7月1日"]),
-        ("版本2027. 6. 30发布。报名截止7. 1。", ["7. 1"]),
+        ("版本2027. 6. 30发布。报名截止7. 1。", []),
     ],
 )
 def test_sentence_boundaries_keep_the_full_numeric_rejection_context(
