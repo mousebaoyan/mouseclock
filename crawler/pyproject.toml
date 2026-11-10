@@ -15,6 +15,9 @@ dependencies = [
     "xlrd>=2.0.2",
 ]
 
+[project.scripts]
+crawler = "crawler.main:main"
+
 [dependency-groups]
 dev = [
     "datamodel-code-generator>=0.86.0",

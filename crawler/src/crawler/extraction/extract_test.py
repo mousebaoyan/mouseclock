@@ -7,7 +7,13 @@ import pytest
 
 from crawler.crawl.contract import AttachmentInfo, ExtractionContext
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
-from crawler.extraction.extract import Extract, RoundSelection, prepare, resolve_programs
+from crawler.extraction.extract import (
+    CONCURRENCY,
+    Extract,
+    RoundSelection,
+    prepare,
+    resolve_programs,
+)
 from crawler.extraction.numbered import SelectedFields, SelectionError
 
 
@@ -147,25 +153,31 @@ def test_raw_date_cannot_be_fabricated_or_replace_a_resolved_time() -> None:
             resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
 
 
-def test_invalid_selection_fails_the_entire_step() -> None:
+def answer(text: str) -> httpx.Response:
+    return httpx.Response(
+        200,
+        json={
+            "model": "deepseek-flash",
+            "status": "completed",
+            "output": [{"type": "message", "content": [{"type": "output_text", "text": text}]}],
+            "usage": {"input_tokens": 100, "output_tokens": 10},
+        },
+    )
+
+
+# The code is what the dashboard shows for the notice, so it says what the model got wrong.
+@pytest.mark.parametrize(
+    ("text", "code"),
+    [
+        ("{}", "invalid_selection"),
+        (json.dumps({"programs": [selection() | {"college_id": 99}]}), "unknown_college"),
+    ],
+)
+def test_invalid_selection_fails_the_entire_step(text: str, code: str) -> None:
     async def run() -> None:
-        extract = Extract(
-            "local-test",
-            httpx.MockTransport(
-                lambda _: httpx.Response(
-                    200,
-                    json={
-                        "model": "deepseek-flash",
-                        "status": "completed",
-                        "output": [
-                            {"type": "message", "content": [{"type": "output_text", "text": "{}"}]}
-                        ],
-                    },
-                )
-            ),
-        )
+        extract = Extract("local-test", httpx.MockTransport(lambda _: answer(text)))
         async with extract:
-            with pytest.raises(StepError, match="Invalid extraction selection"):
+            with pytest.raises(StepError, match=f"抽取失败: {code}"):
                 await extract(
                     "通知",
                     NoticePage("", "报名截止6月30日。", hyperlinks=(), attachments=[]),
@@ -196,9 +208,32 @@ def test_missing_usage_is_not_reported_as_a_free_success() -> None:
             ),
         )
         async with extract:
-            with pytest.raises(StepError, match="LLM did not return usage"):
+            with pytest.raises(StepError, match="missing_usage"):
                 await extract(
                     "通知", NoticePage("", "无关材料。", hyperlinks=(), attachments=[]), context()
                 )
 
     asyncio.run(run())
+
+
+def test_rounds_sharing_an_extract_share_its_limit() -> None:
+    in_flight = 0
+    most = 0
+
+    async def handle(_request: httpx.Request) -> httpx.Response:
+        nonlocal in_flight, most
+        in_flight += 1
+        most = max(most, in_flight)
+        # Lets every other call that can start get as far as here first.
+        for _ in range(20):
+            await asyncio.sleep(0)
+        in_flight -= 1
+        return answer('{"programs":[]}')
+
+    async def run() -> None:
+        async with Extract("local-test", httpx.MockTransport(handle)) as extract:
+            page = NoticePage("", "无关材料。", hyperlinks=(), attachments=[])
+            await asyncio.gather(*(extract("通知", page, context()) for _ in range(4)))
+
+    asyncio.run(run())
+    assert most == CONCURRENCY

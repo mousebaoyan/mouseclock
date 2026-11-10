@@ -44,13 +44,13 @@ class Response(BaseModel):
 
     def output_text(self) -> str:
         if self.status != "completed":
-            raise StepError("error", "LLM response " + self.status)
+            raise StepError("error", f"抽取失败: {self.status}")
         parts = [part for item in self.output if item.type == "message" for part in item.content]
         if any(part.type != "output_text" or part.text is None for part in parts):
-            raise StepError("error", "LLM refused or returned non-text content")
+            raise StepError("error", "抽取失败: non_text_output")
         text = "".join(part.text for part in parts if part.text is not None)
         if not text:
-            raise StepError("error", "LLM returned empty content")
+            raise StepError("error", "抽取失败: empty_output")
         return text
 
 
@@ -105,10 +105,10 @@ class Responses:
         try:
             response = await self.client.post(API_URL, json=payload)
         except httpx.HTTPError as error:
-            raise StepError("error", type(error).__name__) from error
+            raise StepError("error", f"抽取失败: {type(error).__name__}") from error
         if response.status_code != 200:
-            raise StepError("error", f"LLM HTTP {response.status_code}")
+            raise StepError("error", f"抽取失败: http_{response.status_code}")
         try:
             return Response.model_validate_json(response.content)
         except ValidationError as error:
-            raise StepError("error", "Invalid LLM response") from error
+            raise StepError("error", "抽取失败: invalid_response") from error
