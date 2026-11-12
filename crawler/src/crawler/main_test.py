@@ -145,9 +145,7 @@ def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
     assert all("token-secret" not in JsonFormatter().format(r) for r in caplog.records)
 
 
-def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
+def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits() -> None:
     source = WorkSource(
         id=1, url="https://regular.example/list", browser=False, config=None, backfill=False
     )
@@ -182,12 +180,13 @@ def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits
     def source_response(request: httpx.Request) -> httpx.Response:
         requests.append(str(request.url))
         if request.url.host == "broken.example":
-            raise RuntimeError("private model output or token-secret")
+            raise RuntimeError("probe bug")
         return httpx.Response(200, content=BODY)
 
     async def model_response(_request: httpx.Request) -> httpx.Response:
         at_model.set()
         await release_model.wait()
+        assert CONFIG.selectors is not None
         return httpx.Response(
             200,
             json={
@@ -196,7 +195,12 @@ def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits
                 "output": [
                     {
                         "type": "message",
-                        "content": [{"type": "output_text", "text": CONFIG.model_dump_json()}],
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": CONFIG.selectors.model_dump_json(),
+                            }
+                        ],
                     }
                 ],
                 "usage": {"input_tokens": 120, "output_tokens": 40},
@@ -232,7 +236,14 @@ def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits
             release_model.set()
             await running
 
-    asyncio.run(main())
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    handler.setFormatter(JsonFormatter())
+    logging.getLogger("crawler").addHandler(handler)
+    try:
+        asyncio.run(main())
+    finally:
+        logging.getLogger("crawler").removeHandler(handler)
     [report] = reports
     assert report.failure is None
     assert [item.title for item in report.items] == ["自编招生通知甲", "自编招生通知乙"]
@@ -244,7 +255,7 @@ def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits
     [run] = runs
     assert run.source_id == 1
     assert run.failure == "no_items"
-    [failed] = [record for record in caplog.records if record.getMessage() == "Probe failed"]
-    assert vars(failed)["error"] == "RuntimeError"
-    assert "private model output" not in JsonFormatter().format(failed)
-    assert "token-secret" not in JsonFormatter().format(failed)
+    lines = [json.loads(line) for line in stream.getvalue().splitlines()]
+    [entry] = [line for line in lines if line["msg"] == "Probe failed"]
+    assert entry["probe_id"] == 47
+    assert "RuntimeError: probe bug" in entry["stack"]

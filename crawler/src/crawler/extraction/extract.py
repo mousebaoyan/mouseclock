@@ -1,5 +1,3 @@
-import logging
-import time
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, ValidationError
@@ -18,8 +16,6 @@ from crawler.extraction.prompt import INSTRUCTIONS
 from crawler.extraction.responses import Responses, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.indexing import Document, NoticeIndex, index_documents
-
-logger = logging.getLogger(__name__)
 
 
 class UnresolvedSelection(BaseModel):
@@ -139,25 +135,10 @@ class Extract:
         self, title: str, page: NoticePage, context: ExtractionContext
     ) -> tuple[list[ExtractedProgram], list[Usage]]:
         payload, index = prepare(title, page, context)
-        started = time.monotonic()
         response = await self.llm.generate(payload)
-        elapsed = time.monotonic() - started
         usage = response.usage
         if usage is None:
             raise StepError("error", "抽取失败: missing_usage")
-        # Before the answer is checked, so what a failed answer cost is logged too.
-        details = usage.input_tokens_details
-        logger.info(
-            "Extraction answered",
-            extra={
-                "model": response.model,
-                "status": response.status,
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
-                "cached_tokens": details.cached_tokens if details else None,
-                "elapsed": elapsed,
-            },
-        )
         try:
             selected = RoundSelection.model_validate_json(response.output_text(), strict=True)
             programs = resolve_programs(selected, index, context)

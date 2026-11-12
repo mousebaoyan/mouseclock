@@ -132,18 +132,27 @@ def test_failed_generation_or_empty_result_preserves_usage(invalid_output: bool)
 
 
 @pytest.mark.parametrize(
-    ("config", "failure"),
+    ("config", "failure", "detail"),
     [
-        ({"selectors": {"items": "[", "title": "./a", "link": "./a"}}, "error"),
-        ({"selectors": {"items": "count(//article)", "title": "./a", "link": "./a"}}, "error"),
-        ({}, "no_items"),
+        (
+            {"selectors": {"items": "[", "title": "./a", "link": "./a"}},
+            "error",
+            "配置不对: selectors.items",
+        ),
+        (
+            {"selectors": {"items": "count(//article)", "title": "./a", "link": "./a"}},
+            "error",
+            "items 必须选中条目元素",
+        ),
+        ({}, "no_items", None),
     ],
 )
 def test_explicit_configuration_failure_does_not_invoke_model(
-    config: dict[str, JsonValue], failure: str
+    config: dict[str, JsonValue], failure: str, detail: str | None
 ) -> None:
     report = run_probe(work(config), FakeSites({BASE: httpx.Response(200, content=BODY)}))
     assert report.failure == failure
+    assert report.detail == detail
     assert report.items == []
     assert report.suggested_config is None
     assert report.usage == []

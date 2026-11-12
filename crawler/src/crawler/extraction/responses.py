@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+import time
 from types import TracebackType
 from typing import Annotated, Literal, Self
 
@@ -15,6 +17,7 @@ TEMPERATURE = 0
 MAX_OUTPUT_TOKENS = 8192
 TIMEOUT = 180
 CONCURRENCY = 2
+logger = logging.getLogger(__name__)
 type TokenCount = Annotated[int, Field(strict=True, ge=0)]
 
 
@@ -109,12 +112,28 @@ class Responses:
     async def generate(self, payload: dict[str, JsonValue]) -> Response:
         try:
             async with self.slots:
+                started = time.monotonic()
                 response = await self.client.post(API_URL, json=payload)
+                elapsed = time.monotonic() - started
         except httpx.HTTPError as error:
             raise StepError("error", f"模型调用失败: {type(error).__name__}") from error
         if response.status_code != 200:
             raise StepError("error", f"模型调用失败: http_{response.status_code}")
         try:
-            return Response.model_validate_json(response.content)
+            result = Response.model_validate_json(response.content)
         except ValidationError as error:
             raise StepError("error", "模型调用失败: invalid_response") from error
+        usage = result.usage
+        details = usage.input_tokens_details if usage else None
+        logger.info(
+            "Model answered",
+            extra={
+                "model": result.model,
+                "status": result.status,
+                "input_tokens": usage.input_tokens if usage else None,
+                "output_tokens": usage.output_tokens if usage else None,
+                "cached_tokens": details.cached_tokens if details else None,
+                "elapsed": elapsed,
+            },
+        )
+        return result

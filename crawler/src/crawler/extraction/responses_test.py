@@ -1,5 +1,7 @@
 import asyncio
 import json
+import logging
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -7,6 +9,54 @@ from pydantic import JsonValue
 
 from crawler.crawl.rounds import StepError
 from crawler.extraction.responses import Response, Responses, make_request
+
+
+def test_call_log_excludes_queue_time(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    now = 0.0
+    monkeypatch.setattr("crawler.extraction.responses.time", SimpleNamespace(monotonic=lambda: now))
+
+    def handle(_request: httpx.Request) -> httpx.Response:
+        nonlocal now
+        now += 1
+        return httpx.Response(
+            200,
+            json={
+                "model": "fixed-model",
+                "status": "completed",
+                "output": [],
+                "usage": {
+                    "input_tokens": 120,
+                    "output_tokens": 20,
+                    "input_tokens_details": {"cached_tokens": 90},
+                },
+            },
+        )
+
+    async def run() -> None:
+        nonlocal now
+        async with Responses("local-test", httpx.MockTransport(handle)) as llm:
+            llm.slots = asyncio.Semaphore(1)
+            await llm.slots.acquire()
+            task = asyncio.create_task(llm.generate({}))
+            await asyncio.sleep(0)
+            assert not task.done()
+            now = 100
+            llm.slots.release()
+            await task
+
+    with caplog.at_level(logging.INFO, logger="crawler.extraction.responses"):
+        asyncio.run(run())
+    [record] = [r for r in caplog.records if r.getMessage() == "Model answered"]
+    fields = vars(record)
+    assert fields["elapsed"] == 1
+    assert (fields["model"], fields["status"]) == ("fixed-model", "completed")
+    assert (fields["input_tokens"], fields["output_tokens"], fields["cached_tokens"]) == (
+        120,
+        20,
+        90,
+    )
 
 
 def test_shared_prefix_stays_identical_when_notice_or_mapping_order_changes() -> None:

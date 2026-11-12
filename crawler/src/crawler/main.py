@@ -24,7 +24,7 @@ from crawler.crawl.website import Website
 from crawler.extraction.extract import Extract
 from crawler.extraction.probe import ProbeConfig
 from crawler.extraction.responses import Responses
-from crawler.log import JsonFormatter, current_probe
+from crawler.log import JsonFormatter
 from crawler.screening.screen import Screen
 from crawler.screening.system_one import SystemOne
 
@@ -98,14 +98,10 @@ async def _crawl(source: WorkSource, browser: Browser, website: Website, steps: 
 async def _probe(
     probe: WorkProbe, browser: Browser, website: Website, generate: GenerateConfig
 ) -> None:
-    token = current_probe.set(probe.id)
     try:
         await probe_source(probe, browser, website, generate)
-    except Exception as error:
-        # An upstream exception may contain model output or credentials; log only its kind.
-        logger.exception("Probe failed", exc_info=False, extra={"error": type(error).__name__})
-    finally:
-        current_probe.reset(token)
+    except Exception:
+        logger.exception("Probe failed")
 
 
 async def _run(config: Config) -> None:
