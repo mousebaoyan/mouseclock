@@ -1,0 +1,23 @@
+Global:
+  model_root_dir: null
+  use_det: true
+  use_cls: false
+  use_rec: true
+Det:
+  engine_type: onnxruntime
+  lang_type: ch
+  model_type: small
+  ocr_version: PP-OCRv6
+  task_type: det
+Cls:
+  engine_type: onnxruntime
+  lang_type: ch
+  model_type: mobile
+  ocr_version: PP-OCRv4
+  task_type: cls
+Rec:
+  engine_type: onnxruntime
+  lang_type: ch
+  model_type: small
+  ocr_version: PP-OCRv6
+  task_type: rec

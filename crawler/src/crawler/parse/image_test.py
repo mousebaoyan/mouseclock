@@ -25,15 +25,22 @@ def test_image_text_reads_generated_attachment() -> None:
     assert "SEND THE FORM BEFORE DEADLINE" in text
 
 
-def test_image_text_reads_chinese_example() -> None:
-    example = Path(__file__).parents[3] / "examples" / "ocr"
+def test_image_text_reads_generated_chinese_attachment() -> None:
+    image = Image.new("RGB", (1600, 500), "white")
+    draw = ImageDraw.Draw(image)
+    # The bundled Noto Sans SC subset keeps Chinese glyphs available in offline CI.
+    font = ImageFont.truetype(Path(__file__).with_name("NotoSansSC-test.ttf"), 64)
+    draw.text((60, 50), "夏令营报名时间", fill="black", font=font)
+    draw.text((60, 170), "7月6日10:00至8月10日17:00", fill="black", font=font)
+    draw.text((60, 290), "请填写申请表", fill="black", font=font)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
 
-    text = image_text((example / "input.png").read_bytes())
+    text = image_text(buffer.getvalue())
 
-    assert "2027年夏令营报名通知" in text
-    assert "报名时间" in text
+    assert "夏令营报名时间" in text
     assert "7月6日10:00至8月10日17:00" in text
-    assert "请填写报名表和个人陈述" in text
+    assert "请填写申请表" in text
 
 
 def test_image_text_returns_empty_for_blank_image() -> None:

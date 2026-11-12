@@ -61,4 +61,5 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           working-directory: crawler
+      - run: cd crawler && uv sync --locked && uv run rapidocr download_models --config ocr-models.yaml
       - run: crawler/check.sh
