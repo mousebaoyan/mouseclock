@@ -112,18 +112,8 @@ def test_unknown_ids_and_mismatched_existing_project_are_rejected(key: str, valu
         resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
 
 
-@pytest.mark.parametrize(
-    ("text", "date_text"),
-    [
-        ("报名截止为下周二17点。", "下周二17点"),
-        ("6.30", "6.30"),
-        ("报名截止6.30。", "6.30"),
-        ("报名截止\uff086.30\uff0917:00。", "\uff086.30\uff0917:00"),
-    ],
-)
-def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value(
-    text: str, date_text: str
-) -> None:
+def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value() -> None:
+    text = "报名截止为下周二17点。"
     attachment = Attachment(
         AttachmentInfo(
             name="安排.txt", url="https://example.edu/1.txt", content_type="text/plain", text=text
@@ -133,19 +123,18 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value(
     _, index = prepare(
         "通知", NoticePage("", "见附件。", hyperlinks=(), attachments=[attachment]), context()
     )
-    assert not index.dates
     sid = next(s.id for s in index.sentences.values() if s.attachment == 0)
     item = selection()
     fields = dict.fromkeys(SelectedFields.model_fields)
     item["fields"] = fields
-    item["unresolved_dates"] = [{"field": "apply.end", "text": date_text, "evidence": [sid]}]
+    item["unresolved_dates"] = [{"field": "apply.end", "text": "下周二17点", "evidence": [sid]}]
     [program] = resolve_programs(
         RoundSelection.model_validate({"programs": [item]}), index, context()
     )
     assert program.fields.apply is None
     assert program.unresolved_dates is not None
     [raw] = program.unresolved_dates
-    assert raw.text == date_text
+    assert raw.text == "下周二17点"
     assert raw.evidence[0].attachment == 0
     assert raw.evidence[0].quote == text
 

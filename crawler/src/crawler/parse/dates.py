@@ -27,8 +27,7 @@ _MONTH = (
     rf"(?:[ \t]*(?:{_DAY}|中下旬|上旬|中旬|下旬|初|底))?"
 )
 _NUMERIC_DATE = (
-    r"(?<![A-Za-z0-9/])[0-9]{4}[ \t]*[-/.][ \t]*[0-9]{1,2}[ \t]*[-/.][ \t]*"
-    r"[0-9]{1,2}"
+    r"(?<![A-Za-z0-9/])[0-9]{4}(?:-[0-9]{1,2}-|/[0-9]{1,2}/|\.[0-9]{1,2}\.)[0-9]{1,2}"
     r"(?![0-9年月]|[./][0-9])"
 )
 _NUMERIC = rf"{_NUMERIC_DATE}[日号]?{_TIME}{_MARK}"
@@ -86,27 +85,6 @@ def _chinese_number(match: re.Match[str]) -> str:
     return str(int(_DIGITS[tens] if tens else "1") * 10 + int(_DIGITS[units] if units else "0"))
 
 
-def _numeric_date_context(match: re.Match[str], text: str) -> bool:
-    first = match["first"]
-    point = first[1:].lstrip(" \t") if first.startswith(("(", "\uff08")) else first
-    if re.match(_NUMERIC_DATE, point) is None:
-        return True
-    before = text[: match.start()]
-    if re.search(
-        r"(?:版本(?:号)?|版|(?<![A-Za-z])(?:v|version))[ \t为是:\uff1a=(\uff08]*\Z",
-        before,
-        re.IGNORECASE,
-    ):
-        return False
-    return not (
-        re.search(r"[A-Za-z0-9][ \t]*[-./][ \t]*\Z", before)
-        and not re.search(
-            r"(?:^|[。\uff01\uff1f!?\uff1b;\r\n]|\.[ \t]+)[ \t]*[0-9]+[ \t]*\.[ \t]*\Z",
-            before,
-        )
-    )
-
-
 def _calendar(value: TimeValue) -> date:
     if isinstance(value, TimeToMonth):
         year, month = map(int, value.month.split("-"))
@@ -133,14 +111,12 @@ def _point(
     # Add calendar units before removing delimiters so a clock digit cannot become part of the day.
     numeric = re.match(
         r"(?P<opening>[\uff08(][ \t]*)?"
-        r"(?P<year>[0-9]{4})[ \t]*(?P<year_separator>[-/.])[ \t]*"
-        r"(?P<month>[0-9]{1,2})[ \t]*(?P<day_separator>[-/.])[ \t]*"
+        r"(?P<year>[0-9]{4})[-/.]"
+        r"(?P<month>[0-9]{1,2})[-/.]"
         r"(?P<day>[0-9]{1,2})[日号]?",
         text,
     )
     if numeric is not None:
-        if numeric["year_separator"] != numeric["day_separator"]:
-            raise ValueError("Mixed numeric date separators")
         text = (
             f"{numeric['opening'] or ''}{numeric['year']}年{numeric['month']}月{numeric['day']}日"
             f"{text[numeric.end() :]}"
@@ -207,12 +183,7 @@ def _point(
 
 def find_dates(text: str, published_on: date | None) -> list[DateMatch]:
     matches: list[DateMatch] = []
-    position = 0
-    while match := _EXPRESSION.search(text, position):
-        if not _numeric_date_context(match, text):
-            position = match.end("first")
-            continue
-        position = match.end()
+    for match in _EXPRESSION.finditer(text):
         value: TimeValue | None = None
         end_value: TimeValue | None = None
         issue: Literal["missing_publication", "invalid_date"] | None = None

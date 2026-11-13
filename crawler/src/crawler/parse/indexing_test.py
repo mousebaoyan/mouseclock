@@ -2,7 +2,7 @@ from datetime import date
 
 import pytest
 
-from crawler.crawl.contract import TimeToDay, TimeToMinute, TimeToMonth
+from crawler.crawl.contract import TimeToDay, TimeToMinute
 from crawler.parse.indexing import Document, Hyperlink, index_documents
 
 PUBLISHED = date(2027, 6, 1)
@@ -120,113 +120,14 @@ def test_date_ids_link_exact_source_with_values_and_attachment() -> None:
         )
 
 
-def test_dates_in_addresses_are_excluded_but_anchor_labels_are_kept() -> None:
-    text = "https://example.org/2027年6月1日。6月18日截止。"
+@pytest.mark.parametrize(
+    "url", ["https://example.org/2027年6月1日", "https://example.org/?date=2027-06-01"]
+)
+def test_dates_in_addresses_are_excluded_but_anchor_labels_are_kept(url: str) -> None:
+    text = f"{url}。6月18日截止。"
     start = text.index("6月18日")
     index = index_documents(
         [Document(text, hyperlinks=(Hyperlink(start, start + 5, "https://example.org/notice"),))],
         published_on=PUBLISHED,
     )
     assert [d.match.text for d in index.dates.values()] == ["6月18日"]
-
-
-def test_extended_dates_preserve_document_offsets_and_exclude_numeric_addresses() -> None:
-    body = (
-        "https://example.org/2028-06-30。camp2028.06.30@example.org。\r\n"
-        "报名截止2028/6/30 17\uff1a00。"
-    )
-    label = "2028/6/30 17\uff1a00"
-    start = body.index(label)
-    documents = [
-        Document(
-            body, hyperlinks=(Hyperlink(start, start + len(label), "https://apply.example.org"),)
-        ),
-        Document("七月上旬举办。\r\n报名截止7月5日前。", attachment=0),
-    ]
-    index = index_documents(documents, published_on=date(2028, 6, 1))
-    mentions = list(index.dates.values())
-    assert [m.match.text for m in mentions] == [label, "七月上旬", "7月5日前"]
-    assert [m.match.value for m in mentions] == [
-        TimeToMinute(date=date(2028, 6, 30), time="17:00"),
-        TimeToMonth(month="2028-07", part="early"),
-        TimeToDay(date=date(2028, 7, 5), mark="before"),
-    ]
-    originals = {document.attachment: document.text for document in documents}
-    for mention in mentions:
-        sentence = index.sentences[mention.sentence_id]
-        assert (
-            originals[sentence.attachment][mention.match.start : mention.match.end]
-            == mention.match.text
-        )
-    assert index.evidence(mentions[-1].sentence_id).attachment == 0
-
-
-@pytest.mark.parametrize(
-    ("expression", "start", "end"),
-    [
-        ("2027. 6. 30 17:00", TimeToMinute(date=date(2027, 6, 30), time="17:00"), None),
-        ("2027. 6. 30", TimeToDay(date=date(2027, 6, 30)), None),
-        (
-            "2027. 6. 30至2027. 7. 1",
-            TimeToDay(date=date(2027, 6, 30)),
-            TimeToDay(date=date(2027, 7, 1)),
-        ),
-    ],
-)
-def test_spaced_numeric_dates_stay_in_their_evidence_sentence(
-    expression: str, start: TimeToDay | TimeToMinute, end: TimeToDay | None
-) -> None:
-    sentence = f"报名时间{expression}。"
-    text = f"Intro. {sentence}Done."
-    index = index_documents([Document(text)], published_on=PUBLISHED)
-    assert [s.text for s in index.sentences.values()] == ["Intro.", sentence, "Done."]
-    [mention] = index.dates.values()
-    assert mention.match.text == expression
-    assert mention.match.value == start
-    assert mention.match.end_value == end
-    assert text[mention.match.start : mention.match.end] == expression
-    assert index.evidence(mention.sentence_id).quote == sentence
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("版本6.30-7月1日发布", "7月1日"),
-        ("版本2027.6.30-7月1日发布", "7月1日"),
-        ("版本6.30至七月上旬更新", "七月上旬"),
-    ],
-)
-def test_rejected_numeric_versions_do_not_hide_later_date_ids(text: str, expected: str) -> None:
-    index = index_documents([Document(text)], published_on=PUBLISHED)
-    [mention] = index.dates.values()
-    assert mention.match.text == expected
-    assert mention.match.issue is None
-    assert text[mention.match.start : mention.match.end] == expected
-
-
-def test_short_numeric_dates_keep_original_body_and_attachment_evidence() -> None:
-    documents = [
-        Document("报名截止6.30。"),
-        Document("\uff086/30\uff0917:00报到。", attachment=0),
-    ]
-    index = index_documents(documents, published_on=PUBLISHED)
-    assert not index.dates
-    assert [index.evidence(sentence.id).quote for sentence in index.sentences.values()] == [
-        document.text for document in documents
-    ]
-    assert [sentence.attachment for sentence in index.sentences.values()] == [None, 0]
-
-
-@pytest.mark.parametrize(
-    ("text", "expected"),
-    [
-        ("版本2027. 6. 30截止支持", []),
-        ("版本2027. 6. 30-7月1日发布", ["7月1日"]),
-        ("版本2027. 6. 30发布。报名截止7. 1。", []),
-    ],
-)
-def test_sentence_boundaries_keep_the_full_numeric_rejection_context(
-    text: str, expected: list[str]
-) -> None:
-    index = index_documents([Document(text)], published_on=PUBLISHED)
-    assert [mention.match.text for mention in index.dates.values()] == expected

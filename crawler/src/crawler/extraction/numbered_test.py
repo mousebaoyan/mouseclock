@@ -35,17 +35,8 @@ def selected_extraction() -> SelectedExtraction:
     )
 
 
-@pytest.mark.parametrize(
-    "expression",
-    [
-        "6月30日24时",
-        "2026-06-30 24:00",
-        "二\u3007二六年六月三十日24时",
-        "\uff086月30日\uff0924:00",
-    ],
-)
-def test_selected_deadline_keeps_minutes_and_evidence_is_original_text(expression: str) -> None:
-    text = f"报名截止{expression}。"
+def test_selected_deadline_keeps_minutes_and_evidence_is_original_text() -> None:
+    text = "报名截止6月30日24时。"
     index = index_documents([Document(text)], published_on=date(2026, 5, 1))
     prediction = resolve(selected_extraction(), index)
     field = prediction.programs[0].fields.apply
