@@ -22,7 +22,7 @@ from playwright.async_api import (
     TimeoutError as PlaywrightTimeoutError,
 )
 
-from crawler.crawl.contract import WorkSource
+from crawler.crawl.contract import WorkProbe, WorkSource
 from crawler.crawl.fetch import (
     MAX_REDIRECTS,
     TIMEOUT,
@@ -78,7 +78,7 @@ class Browser:
             await self._playwright.stop()
 
     @asynccontextmanager
-    async def session(self, source: WorkSource) -> AsyncGenerator[PageSession]:
+    async def session(self, source: WorkSource | WorkProbe) -> AsyncGenerator[PageSession]:
         if not source.browser:
             yield PageSession(self.fetcher, None)
             return

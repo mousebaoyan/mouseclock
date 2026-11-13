@@ -1,10 +1,5 @@
-import asyncio
-import logging
-import time
-from types import TracebackType
-from typing import Annotated, Literal, Self
+from typing import Annotated, Literal
 
-import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints, ValidationError
 
 from crawler.crawl.contract import ExtractedProgram, ExtractionContext, UnresolvedDate, Usage
@@ -21,10 +16,6 @@ from crawler.extraction.prompt import INSTRUCTIONS
 from crawler.extraction.responses import Responses, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.indexing import Document, NoticeIndex, index_documents
-
-# Calls in flight at once, across all the rounds that share this Extract.
-CONCURRENCY = 2
-logger = logging.getLogger(__name__)
 
 
 class UnresolvedSelection(BaseModel):
@@ -137,46 +128,17 @@ def resolve_programs(
 
 
 class Extract:
-    def __init__(self, key: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
-        self.llm = Responses(key, transport)
-        self.slots = asyncio.Semaphore(CONCURRENCY)
-
-    async def __aenter__(self) -> Self:
-        await self.llm.__aenter__()
-        return self
-
-    async def __aexit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> None:
-        await self.llm.__aexit__(exc_type, exc, tb)
+    def __init__(self, llm: Responses) -> None:
+        self.llm = llm
 
     async def __call__(
         self, title: str, page: NoticePage, context: ExtractionContext
     ) -> tuple[list[ExtractedProgram], list[Usage]]:
         payload, index = prepare(title, page, context)
-        async with self.slots:
-            started = time.monotonic()
-            response = await self.llm.generate(payload)
-            elapsed = time.monotonic() - started
+        response = await self.llm.generate(payload)
         usage = response.usage
         if usage is None:
             raise StepError("error", "抽取失败: missing_usage")
-        # Before the answer is checked, so what a failed answer cost is logged too.
-        details = usage.input_tokens_details
-        logger.info(
-            "Extraction answered",
-            extra={
-                "model": response.model,
-                "status": response.status,
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
-                "cached_tokens": details.cached_tokens if details else None,
-                "elapsed": elapsed,
-            },
-        )
         try:
             selected = RoundSelection.model_validate_json(response.output_text(), strict=True)
             programs = resolve_programs(selected, index, context)

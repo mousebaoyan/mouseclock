@@ -22,6 +22,7 @@ from crawler.crawl.rounds import Attachment, NoticePage, StepError, Steps, crawl
 from crawler.crawl.website import Website
 from crawler.extraction.extract import Extract
 from crawler.extraction.numbered import SelectedFields
+from crawler.extraction.responses import Responses
 
 SOURCE = WorkSource(id=7, url="http://a/list.htm", browser=False, config=None, backfill=False)
 ITEMS = [ListedItem(url=f"http://a/{n}.htm", title=f"通知 {n}") for n in range(1, 5)]
@@ -239,14 +240,13 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
         return page("报名截止6月30日24点。")
 
     async def run() -> None:
-        extractor = Extract("local-test", httpx.MockTransport(model))
         async with (
-            extractor,
+            Responses("local-test", httpx.MockTransport(model)) as llm,
             Fetcher(httpx.MockTransport(lambda _: httpx.Response(500))) as fetcher,
             Website("http://site", "token", httpx.MockTransport(website)) as client,
         ):
             await crawl_source(
-                SOURCE, Browser(fetcher), client, Steps(list_items, screen, read, extractor)
+                SOURCE, Browser(fetcher), client, Steps(list_items, screen, read, Extract(llm))
             )
 
     asyncio.run(run())

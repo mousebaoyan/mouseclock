@@ -22,3 +22,5 @@
 | `right-span.html` | 日期在 `right` 元素内 | [沈自](https://sia.cas.cn/zpjy/yjsjy/zs/zsgg/) |
 
 Drupal 样例用于补充不同系统的解析覆盖，不改动 `data/sources.csv`。分页边界、未知日期、重复置顶、重定向、HTTP、非法配置和失败场景使用测试里自编的页面及 `MockTransport`，不访问外网。
+
+`probe.html` 完全自编，每个条目同时包含通知链接和学院链接，用于验证通用解析为空后，通过试抓配置取出通知的流程；不来自真实网站。

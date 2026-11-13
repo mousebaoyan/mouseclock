@@ -8,13 +8,13 @@ import pytest
 from crawler.crawl.contract import AttachmentInfo, ExtractionContext
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
 from crawler.extraction.extract import (
-    CONCURRENCY,
     Extract,
     RoundSelection,
     prepare,
     resolve_programs,
 )
 from crawler.extraction.numbered import SelectedFields, SelectionError
+from crawler.extraction.responses import Responses
 
 
 def context() -> ExtractionContext:
@@ -83,8 +83,8 @@ def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
         )
 
     async def run() -> None:
-        extract = Extract("local-test", httpx.MockTransport(handle))
-        async with extract:
+        async with Responses("local-test", httpx.MockTransport(handle)) as llm:
+            extract = Extract(llm)
             programs, usage = await extract("夏令营延期", page, context())
         [program] = programs
         assert (program.college_id, program.program_id) == (12, 100)
@@ -175,8 +175,8 @@ def answer(text: str) -> httpx.Response:
 )
 def test_invalid_selection_fails_the_entire_step(text: str, code: str) -> None:
     async def run() -> None:
-        extract = Extract("local-test", httpx.MockTransport(lambda _: answer(text)))
-        async with extract:
+        async with Responses("local-test", httpx.MockTransport(lambda _: answer(text))) as llm:
+            extract = Extract(llm)
             with pytest.raises(StepError, match=f"抽取失败: {code}"):
                 await extract(
                     "通知",
@@ -189,7 +189,7 @@ def test_invalid_selection_fails_the_entire_step(text: str, code: str) -> None:
 
 def test_missing_usage_is_not_reported_as_a_free_success() -> None:
     async def run() -> None:
-        extract = Extract(
+        llm = Responses(
             "local-test",
             httpx.MockTransport(
                 lambda _: httpx.Response(
@@ -207,33 +207,11 @@ def test_missing_usage_is_not_reported_as_a_free_success() -> None:
                 )
             ),
         )
-        async with extract:
+        async with llm:
+            extract = Extract(llm)
             with pytest.raises(StepError, match="missing_usage"):
                 await extract(
                     "通知", NoticePage("", "无关材料。", hyperlinks=(), attachments=[]), context()
                 )
 
     asyncio.run(run())
-
-
-def test_rounds_sharing_an_extract_share_its_limit() -> None:
-    in_flight = 0
-    most = 0
-
-    async def handle(_request: httpx.Request) -> httpx.Response:
-        nonlocal in_flight, most
-        in_flight += 1
-        most = max(most, in_flight)
-        # Lets every other call that can start get as far as here first.
-        for _ in range(20):
-            await asyncio.sleep(0)
-        in_flight -= 1
-        return answer('{"programs":[]}')
-
-    async def run() -> None:
-        async with Extract("local-test", httpx.MockTransport(handle)) as extract:
-            page = NoticePage("", "无关材料。", hyperlinks=(), attachments=[])
-            await asyncio.gather(*(extract("通知", page, context()) for _ in range(4)))
-
-    asyncio.run(run())
-    assert most == CONCURRENCY
