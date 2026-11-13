@@ -15,7 +15,9 @@ RUN --mount=type=cache,target=/root/.cache/uv uv sync --locked --no-editable
 FROM python:3.14-slim-trixie
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=build /app/.venv /app/.venv
-RUN /app/.venv/bin/playwright install --with-deps --only-shell chromium \
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends libatomic1 \
+    && /app/.venv/bin/playwright install --with-deps --only-shell chromium \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home crawler
 # The pages it opens are untrusted.

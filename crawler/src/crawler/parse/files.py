@@ -1,5 +1,5 @@
-"""The words in the files notices attach (design §5.1): PDF, Word and Excel, the old binary formats
-too. Images wait for text recognition (#47); archives and other files have none to read."""
+"""The words in the files notices attach (design §5.1): images, PDF, Word and Excel, including
+the old binary formats. Archives and other files have none to read."""
 
 import io
 import unicodedata
@@ -14,9 +14,20 @@ from docx.text.paragraph import Paragraph
 from legacy_doc import extract_text
 from pypdf import PdfReader
 
+from crawler.parse.image import image_text
+
 _PDF = b"%PDF"
 _ZIP = b"PK\x03\x04"
 _OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_IMAGE_HEADERS = (
+    b"\x89PNG\r\n\x1a\n",
+    b"\xff\xd8\xff",
+    b"GIF87a",
+    b"GIF89a",
+    b"BM",
+    b"II*\x00",
+    b"MM\x00*",
+)
 # Old Word files keep their text in a stream of this name; old Excel files have none.
 _WORD = "WordDocument".encode("utf-16-le")
 # Some PDFs map common characters to the Kangxi radicals that look like them, ⽣ for 生.
@@ -26,6 +37,8 @@ _RADICALS = {code: unicodedata.normalize("NFKC", chr(code)) for code in range(0x
 def file_text(data: bytes) -> str:
     """Raises ValueError when the file is broken."""
     try:
+        if data.startswith(_IMAGE_HEADERS) or (data.startswith(b"RIFF") and data[8:12] == b"WEBP"):
+            return image_text(data)
         if data.startswith(_PDF):
             pages = PdfReader(io.BytesIO(data)).pages
             return "\n".join(page.extract_text() for page in pages).translate(_RADICALS)
