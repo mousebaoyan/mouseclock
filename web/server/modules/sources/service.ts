@@ -2,12 +2,13 @@ import { sql, type Transaction } from "kysely";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
-import { db } from "../../platform/db.ts";
+import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
+import type { Kind } from "../programs/schemas.ts";
+import { applyOf, logoOf } from "../programs/service.ts";
 import {
-  PAGE_SIZE,
   type SchoolInput,
   type SchoolPatch,
   type CollegeInput,
@@ -17,7 +18,12 @@ import {
   type PageQuery,
   type CollegeQuery,
   type SourceQuery,
+  type ProbeInput,
+  type Failure,
+  type PublicSchool,
+  type PublicProgramCohort,
 } from "./schemas.ts";
+import type { LogoType } from "./logo-files.ts";
 
 export type Actor = { user_id: number; via: "web" | "seed" };
 
@@ -36,36 +42,73 @@ async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
   }
 }
 
-function pageOf<T>(rows: T[], page: number) {
-  return {
-    items: rows.slice(0, PAGE_SIZE),
-    page,
-    next_page: rows.length > PAGE_SIZE ? page + 1 : null,
-  };
+// A school as admins see it, from a query on `schools`.
+const SCHOOL = ["id", "name", "short_names", "tier", logoOf("schools.id").as("logo")] as const;
+
+// Whether the school's name or one of its short names has `q` in it.
+function schoolNamed(q: string) {
+  const pattern = `%${q}%`;
+  return sql<boolean>`(schools.name ILIKE ${pattern} OR EXISTS (SELECT FROM unnest(schools.short_names) AS short_name WHERE short_name ILIKE ${pattern}))`;
 }
 
-export async function listSchools({ q, page }: z.infer<typeof PageQuery>) {
-  let query = db.selectFrom("schools").select(["id", "name", "short_name", "tiers"]);
-  if (q)
-    query = query.where((eb) =>
-      eb.or([eb("name", "ilike", `%${q}%`), eb("short_name", "ilike", `%${q}%`)]),
-    );
-  return pageOf(
-    await query
-      .orderBy("id")
-      .limit(PAGE_SIZE + 1)
-      .offset((page - 1) * PAGE_SIZE)
-      .execute(),
-    page,
-  );
+export async function getLogo(schoolId: number) {
+  const row = await db
+    .selectFrom("school_logos")
+    .select(["content_type", "data"])
+    .where("school_id", "=", schoolId)
+    .executeTakeFirst();
+  if (!row) throw new AppError(404, "not_found", "该学校没有校徽");
+  return row;
+}
+
+export async function setLogo(
+  actor: Actor,
+  schoolId: number,
+  logo: { content_type: LogoType; data: Buffer },
+) {
+  await write(async (trx) => {
+    await trx
+      .insertInto("school_logos")
+      .values({ school_id: schoolId, ...logo })
+      .onConflict((conflict) =>
+        conflict.column("school_id").doUpdateSet({ ...logo, updated_at: sql`now()` }),
+      )
+      .execute();
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "update",
+      target_type: "school",
+      target_id: schoolId,
+      detail: { via: actor.via, logo: logo.content_type },
+    });
+  });
+}
+
+export async function removeLogo(actor: Actor, schoolId: number) {
+  await write(async (trx) => {
+    const result = await trx
+      .deleteFrom("school_logos")
+      .where("school_id", "=", schoolId)
+      .executeTakeFirst();
+    if (result.numDeletedRows === 0n) throw new AppError(404, "not_found", "该学校没有校徽");
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "update",
+      target_type: "school",
+      target_id: schoolId,
+      detail: { via: actor.via, logo: null },
+    });
+  });
+}
+
+export async function listSchools({ q, ...paging }: z.infer<typeof PageQuery>) {
+  let query = db.selectFrom("schools").select(SCHOOL);
+  if (q) query = query.where(schoolNamed(q));
+  return pageOf(query.orderBy("id"), paging);
 }
 
 export async function getSchool(id: number) {
-  const row = await db
-    .selectFrom("schools")
-    .select(["id", "name", "short_name", "tiers"])
-    .where("id", "=", id)
-    .executeTakeFirst();
+  const row = await db.selectFrom("schools").select(SCHOOL).where("id", "=", id).executeTakeFirst();
   if (!row) throw new AppError(404, "not_found", "学校不存在");
   return row;
 }
@@ -75,7 +118,7 @@ export async function createSchool(actor: Actor, values: z.infer<typeof SchoolIn
     const row = await trx
       .insertInto("schools")
       .values(values)
-      .returning(["id", "name", "short_name", "tiers"])
+      .returning(SCHOOL)
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -92,7 +135,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
   return write(async (trx) => {
     const before = await trx
       .selectFrom("schools")
-      .select(["id", "name", "short_name", "tiers"])
+      .select(SCHOOL)
       .where("id", "=", id)
       .forUpdate()
       .executeTakeFirst();
@@ -101,7 +144,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
       .updateTable("schools")
       .set(values)
       .where("id", "=", id)
-      .returning(["id", "name", "short_name", "tiers"])
+      .returning(SCHOOL)
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -114,7 +157,7 @@ export async function updateSchool(actor: Actor, id: number, values: z.infer<typ
   });
 }
 
-export async function listColleges({ q, page, school_id }: z.infer<typeof CollegeQuery>) {
+export async function listColleges({ q, school_id, ...paging }: z.infer<typeof CollegeQuery>) {
   let query = db
     .selectFrom("colleges")
     .innerJoin("schools", "schools.id", "colleges.school_id")
@@ -129,21 +172,8 @@ export async function listColleges({ q, page, school_id }: z.infer<typeof Colleg
     ]);
   if (school_id !== undefined) query = query.where("school_id", "=", school_id);
   if (q)
-    query = query.where((eb) =>
-      eb.or([
-        eb("colleges.name", "ilike", `%${q}%`),
-        eb("schools.name", "ilike", `%${q}%`),
-        eb("schools.short_name", "ilike", `%${q}%`),
-      ]),
-    );
-  return pageOf(
-    await query
-      .orderBy("colleges.id")
-      .limit(PAGE_SIZE + 1)
-      .offset((page - 1) * PAGE_SIZE)
-      .execute(),
-    page,
-  );
+    query = query.where((eb) => eb.or([eb("colleges.name", "ilike", `%${q}%`), schoolNamed(q)]));
+  return pageOf(query.orderBy("colleges.id"), paging);
 }
 
 export async function getCollege(id: number) {
@@ -165,6 +195,120 @@ export async function getCollege(id: number) {
   return row;
 }
 
+export async function listPublicColleges() {
+  const rows = await db
+    .selectFrom("colleges")
+    .innerJoin("schools", "schools.id", "colleges.school_id")
+    .select([
+      "schools.id as school_id",
+      "schools.name as school_name",
+      "schools.short_names as school_short_names",
+      "schools.tier as school_tier",
+      logoOf("schools.id").as("school_logo"),
+      "colleges.id",
+      "colleges.name",
+      "colleges.kind",
+      "colleges.region",
+      "colleges.directions",
+    ])
+    .orderBy("schools.name")
+    .orderBy("colleges.name")
+    .orderBy("colleges.id")
+    .execute();
+
+  const schools = new Map<number, z.infer<typeof PublicSchool>>();
+  for (const row of rows) {
+    let school = schools.get(row.school_id);
+    if (!school) {
+      school = {
+        id: row.school_id,
+        name: row.school_name,
+        short_names: row.school_short_names,
+        tier: row.school_tier,
+        logo: row.school_logo,
+        colleges: [],
+      };
+      schools.set(row.school_id, school);
+    }
+    school.colleges.push({
+      id: row.id,
+      name: row.name,
+      kind: row.kind,
+      region: row.region,
+      directions: row.directions,
+    });
+  }
+  return { schools: [...schools.values()] };
+}
+
+export async function getPublicCollege(id: number) {
+  const college = await db
+    .selectFrom("colleges")
+    .innerJoin("schools", "schools.id", "colleges.school_id")
+    .select([
+      "colleges.id",
+      "colleges.name",
+      "colleges.kind",
+      "colleges.region",
+      "colleges.directions",
+      "schools.id as school_id",
+      "schools.name as school_name",
+      "schools.tier as school_tier",
+      logoOf("schools.id").as("school_logo"),
+    ])
+    .where("colleges.id", "=", id)
+    .executeTakeFirst();
+  if (!college) throw new AppError(404, "not_found", "学院不存在");
+
+  const [sources, programs] = await Promise.all([
+    db
+      .selectFrom("sources")
+      .select(["id", "url", "section", "unavailable_reason"])
+      .where("college_id", "=", id)
+      .orderBy("id")
+      .execute(),
+    db
+      .selectFrom("programs")
+      .select(["id", "cohort", "name", "apply_start", "apply_deadline"])
+      .select(sql<Kind>`programs.kind`.as("kind"))
+      .select(applyOf("programs.id").as("apply"))
+      .where("college_id", "=", id)
+      .where("deleted_at", "is", null)
+      .orderBy("cohort", "desc")
+      .orderBy("apply_deadline", (order) => order.asc().nullsLast())
+      .orderBy("id")
+      .execute(),
+  ]);
+  const grouped = new Map<number, z.infer<typeof PublicProgramCohort>["programs"]>();
+  for (const { cohort, apply_start, apply_deadline, ...program } of programs) {
+    const current = grouped.get(cohort) ?? [];
+    current.push({
+      ...program,
+      apply_start: apply_start ? unix(apply_start) : null,
+      apply_deadline: apply_deadline ? unix(apply_deadline) : null,
+    });
+    grouped.set(cohort, current);
+  }
+
+  return {
+    id: college.id,
+    school: {
+      id: college.school_id,
+      name: college.school_name,
+      tier: college.school_tier,
+      logo: college.school_logo,
+    },
+    name: college.name,
+    kind: college.kind,
+    region: college.region,
+    directions: college.directions,
+    sources,
+    programs: [...grouped].map(([cohort, cohortPrograms]) => ({
+      cohort,
+      programs: cohortPrograms,
+    })),
+  };
+}
 export async function createCollege(actor: Actor, values: z.infer<typeof CollegeInput>) {
   return write(async (trx) => {
     const row = await trx
@@ -215,9 +359,9 @@ export async function updateCollege(
 
 export async function listSources({
   q,
-  page,
   college_id,
   availability,
+  ...paging
 }: z.infer<typeof SourceQuery>) {
   let query = db
     .selectFrom("sources")
@@ -246,16 +390,10 @@ export async function listSources({
         eb("schools.name", "ilike", `%${q}%`),
       ]),
     );
-  return pageOf(
-    await query
-      .orderBy("sources.id")
-      .limit(PAGE_SIZE + 1)
-      .offset((page - 1) * PAGE_SIZE)
-      .execute(),
-    page,
-  );
+  return pageOf(query.orderBy("sources.id"), paging);
 }
 
+// Each source's latest round, for the sources page (design §7.5).
 export async function latestRuns(sourceIds: number[]) {
   if (sourceIds.length === 0) return [];
   const rows = await db
@@ -265,7 +403,7 @@ export async function latestRuns(sourceIds: number[]) {
       "source_id",
       "started_at",
       "finished_at",
-      "failure",
+      sql<Failure | null>`failure`.as("failure"),
       "detail",
       "listed",
       "new_count",
@@ -360,6 +498,50 @@ export async function updateSource(actor: Actor, id: number, values: z.infer<typ
   });
 }
 
+// The crawler picks it up the next time it asks for work (leaseProbes) and reports back
+// (finishProbe); adopting what it suggests is saving a source with it (design §7.2).
+export async function createProbe(actor: Actor, values: z.infer<typeof ProbeInput>) {
+  return db.transaction().execute(async (trx) => {
+    const { id } = await trx
+      .insertInto("source_probes")
+      .values({
+        ...values,
+        config: values.config === null ? null : JSON.stringify(values.config),
+        requested_by: actor.user_id,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "create",
+      target_type: "source_probe",
+      target_id: id,
+      detail: { via: actor.via, ...values },
+    });
+    return id;
+  });
+}
+
+export async function getProbe(id: number) {
+  const row = await db
+    .selectFrom("source_probes")
+    .select(["id", "url", "browser", "created_at", "finished_at", "detail"])
+    .select([
+      sql<Record<string, unknown> | null>`config`.as("config"),
+      sql<{ url: string; title: string; published_on?: string }[]>`items`.as("items"),
+      sql<Record<string, unknown> | null>`suggested_config`.as("suggested_config"),
+      sql<Failure | null>`failure`.as("failure"),
+    ])
+    .where("id", "=", id)
+    .executeTakeFirst();
+  if (!row) throw new AppError(404, "not_found", "试抓不存在");
+  return {
+    ...row,
+    created_at: unix(row.created_at),
+    finished_at: row.finished_at && unix(row.finished_at),
+  };
+}
+
 // The sources module owns scheduling state too; ingest calls it inside its own transaction,
 // for probes as well as sources.
 export async function leaseSources(
@@ -384,7 +566,7 @@ export async function leaseSources(
         .forUpdate()
         .skipLocked(),
     )
-    .returning(["id", "url", "section", "browser", "crawled_at"])
+    .returning(["id", "url", "browser", "crawled_at"])
     .returning(sql<Record<string, unknown> | null>`config`.as("config"))
     .execute();
 }
@@ -424,7 +606,7 @@ export async function finishProbe(
   result: {
     items: { url: string; title: string; published_on?: string }[];
     suggested_config?: Record<string, unknown>;
-    failure?: string;
+    failure?: Failure;
     detail?: string;
   },
 ) {

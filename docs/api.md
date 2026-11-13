@@ -8,8 +8,9 @@
 - 错误统一返回 `{ "error": { "code": "...", "message": "..." } }`：`code` 是英文，给程序判断；`message` 是中文，给人看。
 - **认证**：网页用会话 Cookie；Agent 和脚本用个人令牌，`Authorization: Bearer <令牌>`；抓取节点用抓取节点令牌（第 6 节）。带 `Authorization: Bearer` 的请求只按令牌认人，不看会话 Cookie。
 - **令牌的权限范围**：`read` 只能查询；`personal` 还能订阅、关注、记报名、提交反馈和修改申请。直接修改、审核和管理的接口只认网页会话，带令牌调用返回 `403`。
-- **权限**（[总体设计 §6.2](design.md#62-权限)）：访客调列表接口只拿到预览，调别的接口返回 `401 login_required`；冻结的按访客算，返回 `403 member_frozen`；禁言中的做不了的返回 `403 muted`，等级不够的 `403 level_required`，修改权限被收回的 `403 edit_revoked`，不是管理员或站长的 `403 forbidden`。
+- **权限**（[总体设计 §6.2](design.md#62-权限)）：访客调总表 `GET /programs` 只拿到预览，调别的接口返回 `401 login_required`；冻结的按访客算，返回 `403 member_frozen`；禁言中的做不了的返回 `403 muted`，等级不够的 `403 level_required`，修改权限被收回的 `403 edit_revoked`，不是管理员或站长的 `403 forbidden`。
 - **频率限制**：按会话和令牌分别限制，超了返回 `429`。
+- **分页**：列表用 `page` 和 `per_page`（20、50 或 100，默认 20），返回这一页的 `items` 和全部的条数 `total`。
 
 ## 2. 鼠洞登录
 
@@ -38,33 +39,41 @@
 
 | 分组 | 接口 | 说明 |
 | --- | --- | --- |
-| 项目 | `GET /programs` | 总表：按届、层次、地区、方向、类型、状态和学院标签筛选，按截止时间、发布时间、订阅人数排序，可以搜索 |
-| | `GET /programs/{id}` | 详情：字段和证据、状态、订阅人数 |
-| | `GET /programs/{id}/versions` | 版本和快照 |
-| | `GET /programs/{id}/edits` | 修改记录 |
+| 项目 | `GET /programs?cohort=` | 总表：一届的全部项目，按截止时间排好，只带总表用得上的字段；筛选、排序、搜索和分页在浏览器里做（[总体设计 §14](design.md#14-性能与资源)）。登录后的响应带 `ETag`，数据没变时返回 `304`；访客只拿到预览 |
+| | `GET /programs/{id}` | 详情：原文、字段和证据、已核对；分部分的字段（报名时间、活动时间、其他时间）每部分各带证据和来自哪一版。订阅人数二期加 |
+| | `GET /programs/{id}/versions` | 版本：各版的通知、作用、改了哪些字段、快照和附件，最新的在前 |
+| | `GET /snapshots/{id}`、`GET /snapshots/{id}/attachments/{position}` | 快照：净化过的正文和附件列表；下载附件 |
+| | `GET /programs/{id}/edits` | 修改记录：修改和撤销，最新的在前 |
 | 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页 |
+| | `GET /schools/{id}/logo` | 校徽图片，不用登录。学校的 `logo` 字段就是这个地址，带着最后修改的时间（`?v=`），换了图片地址就变，所以响应可以一直缓存；SVG 加了 `sandbox`，单独打开也不会运行脚本 |
 | 订阅和关注 | `PUT`、`DELETE /programs/{id}/subscription` | 订阅、取消；超过 10 个返回 `409 subscription_limit` |
 | | `PUT`、`DELETE /colleges/{id}/follow` | 关注、取消 |
 | 我的报名 | `PUT`、`DELETE /programs/{id}/application` | 进度和备注 |
 | | `GET /me/applications` | 自己的报名记录，可以按进度筛选 |
 | 学院标签 | `PUT`、`DELETE /colleges/{id}/tags/{tag}` | 贴标签、撤回 |
 | 反馈和修改 | `POST /programs/{id}/feedback` | 反馈或修改申请 |
-| | `PATCH /programs/{id}` | 直接修改，L3 以上，只认网页会话 |
-| | `POST /edits/{id}/revert` | 撤销一次修改 |
-| 审核 | `GET /review` | 审核页的各类待办和最近修改 |
+| | `PATCH /programs/{id}` | 直接修改，L3 以上，只认网页会话：改字段，或者项目的名称、届、类型，写明理由和依据；值为 `null` 是清空。分部分的字段只记改了的部分，每个改了的字段或部分记一条（[总体设计 §12.4](design.md#124-记录和撤销)）；值和现在一样返回 `400 no_change` |
+| | `POST /edits/{id}/revert` | 撤销一次修改，L3 以上，只认网页会话：字段连同来源回到修改前；这一项之后又改过或撤销过的返回 `409 edit_superseded`，先撤销后来的那次 |
+| | `GET /edits` | 全站最近的修改，审核页用，分页 |
+| 审核 | `GET /review-items?reason=` | 抽取拿不准的字段和归并，一次列一种，带各种的条数；L3 以上，只认网页会话。最近修改用 `GET /edits` |
+| | `POST /review-items/{id}/accept`、`POST /review-items/{id}/reject` | 通过或驳回，效果见[总体设计 §12.2](design.md#122-审核)；通过时，对不上的项目要从这所学校里选好放到哪，可能重复的选出原来的那个；用不上的选择返回 400 |
 | | `POST /feedback/{id}/approve`、`POST /feedback/{id}/reject` | 审核修改申请 |
-| | `POST /programs/{id}/verify` | 标记已核对 |
+| | `POST /programs/{id}/verify` | 标记已核对，L3 以上，只认网页会话 |
 | | `POST /programs/{id}/resolve-dispute` | 复核争议，管理员 |
 | 求收录 | `GET`、`POST /inclusion-requests` | 列表、提交 |
 | | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回 |
-| 抓取看板 | `GET /crawl-runs?date=` | 某天各来源的结果和用量 |
+| 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
 | 我的 | `GET /me`、`PATCH /me/email-settings` | 自己的资料和邮件开关 |
 | | `GET`、`POST`、`DELETE /me/tokens` | 个人令牌，只认网页会话 |
 | 数据下载 | `GET /export` | 全部项目和字段，登录后可用 |
 | 群汇总 | `GET /bot/summary` | 插件每天来取的汇总，用插件专用的令牌 |
 | 管理 | `GET`、`POST /admin/schools`，`GET`、`PATCH /admin/schools/{id}` | 管理员查询、新增、修改学校 |
+| | `PUT`、`DELETE /admin/schools/{id}/logo` | 管理员上传、更换或移除校徽：请求体就是图片本身，PNG、JPEG、WebP 或 SVG，不超过 16 KB |
 | | `GET`、`POST /admin/colleges`，`GET`、`PATCH /admin/colleges/{id}` | 管理员查询、新增、修改学院 |
 | | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
+| | `POST /admin/source-probes`，`GET /admin/source-probes/{id}` | 管理员发起试抓（网址、要不要浏览器、可选的配置），查看结果：抓到的条目和生成的配置，或者失败的原因；`finished_at` 为空是还在等抓取节点。发起记进操作日志；采用结果就是用它的配置保存来源（[总体设计 §7.2](design.md#72-怎么抓)） |
+| | `POST /admin/users/{id}/revoke-edits` | 撤销某人的全部修改，收回这个人在鼠钟的修改权限 |
+| | `GET`、`POST /admin/crawler-tokens`，`POST /admin/crawler-tokens/{id}/revoke` | 站长查询、生成、作废抓取节点令牌：生成时返回的令牌只出现这一次，作废马上生效；生成和作废记进操作日志 |
 | | `/admin/tags`、`/admin/users`、`/admin/settings` | 标签预设、修改权限、系统设置 |
 
 ## 4. MCP
@@ -109,4 +118,4 @@
 | `POST /crawler/runs` | 交一个来源这一轮的结果：开始和结束时间、成功还是失败和原因、列表里几条、新通知几条、其中有用的几条、哪些通知没抓成和原因。交了才算这一轮结束，失败了也等下一轮再抓 |
 | `POST /crawler/probes/{id}` | 交试抓的结果：抓到的条目和生成的配置，或者失败的原因，带模型用量 |
 
-一个来源的一轮：领活 → 抓列表页、交列表 → 对没初筛的初筛、交分数 → 对要抓正文的抓正文和附件、交快照、上传附件 → 要抽取的抽取、交结果 → 交这一轮的结果，没抓成的通知和原因写在里面。重抓正文也在来源的这一轮里，守同样的频率，失败了一样记进抓取记录。
+一个来源的一轮：领活 → 抓列表页、交列表 → 对没初筛的初筛、交分数 → 对要抓正文的抓正文和附件、交快照、上传附件 → 要抽取的抽取、交结果 → 交这一轮的结果，没抓成的通知和原因写在里面；初筛不成的新通知也算没抓成，下一轮再初筛。重抓正文也在来源的这一轮里，守同样的频率，失败了一样记进抓取记录。

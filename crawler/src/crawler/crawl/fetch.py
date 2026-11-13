@@ -1,21 +1,22 @@
-"""Every request to a source site goes through here, so the crawl keeps its manners in one place
-(design §7.3): it says who it is and sends one request at a time to a site with a pause between
-them."""
+"""Source access shares one policy here (design §7.3): identify the crawler and allow one
+page visit or HTTP request at a time per site, with a pause between them."""
 
 import asyncio
+import logging
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from typing import Literal, Self
-from urllib.parse import urlsplit
 
 import httpx
 
 USER_AGENT = "mouseclock/0.1 (+https://github.com/mousebaoyan/mouseclock)"
-# Seconds from the end of one request to a site to the start of the next.
+# Seconds from the end of one page visit or HTTP request to the start of the next.
 INTERVAL = 5.0
 MAX_REDIRECTS = 5
 TIMEOUT = 30.0
+logger = logging.getLogger(__name__)
 
 type Failure = Literal["timeout", "unreachable", "too_many_redirects"]
 
@@ -63,6 +64,18 @@ class Fetcher:
     async def __aexit__(self, *_: object) -> None:
         await self._client.aclose()
 
+    @asynccontextmanager
+    async def permit(self, url: str) -> AsyncGenerator[None]:
+        site = self._sites.setdefault(httpx.URL(url).netloc.decode("ascii"), _Site())
+        async with site.lock:
+            wait = site.finished_at + INTERVAL - self._clock()
+            if wait > 0:
+                await self._sleep(wait)
+            try:
+                yield
+            finally:
+                site.finished_at = self._clock()
+
     async def get(self, url: str) -> Response:
         # Each hop on its own, so a redirect to another site waits its turn there too.
         for _ in range(MAX_REDIRECTS + 1):
@@ -78,16 +91,20 @@ class Fetcher:
         raise FetchError("too_many_redirects", url)
 
     async def _send(self, url: str) -> httpx.Response:
-        site = self._sites.setdefault(urlsplit(url).netloc, _Site())
-        async with site.lock:
-            wait = site.finished_at + INTERVAL - self._clock()
-            if wait > 0:
-                await self._sleep(wait)
+        async with self.permit(url):
+            started = self._clock()
             try:
-                return await self._client.get(url)
+                response = await self._client.get(url)
             except httpx.TimeoutException as error:
                 raise FetchError("timeout", url) from error
             except httpx.TransportError as error:
                 raise FetchError("unreachable", url) from error
-            finally:
-                site.finished_at = self._clock()
+            logger.info(
+                "Fetched",
+                extra={
+                    "url": url,
+                    "status": response.status_code,
+                    "elapsed": self._clock() - started,
+                },
+            )
+            return response

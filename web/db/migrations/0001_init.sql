@@ -34,10 +34,19 @@ CREATE INDEX sessions_user ON sessions (user_id);
 CREATE TABLE schools (
   id          integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   name        text    NOT NULL UNIQUE,
-  short_name  text    NOT NULL DEFAULT '',     -- as people say it, for search: 电科
-  tiers       text[]  NOT NULL DEFAULT '{}'
-              CHECK (tiers <@ ARRAY['c9', '985', '211', 'double_first_class']),
+  short_names text[]  NOT NULL DEFAULT '{}',   -- as people say it, only for search: 北大, PKU
+  -- Only the highest: C9 schools are all 985, 985 ones 211, and 211 ones 双一流.
+  tier        text    CHECK (tier IN ('c9', '985', '211', 'double_first_class')),
   created_at  timestamptz NOT NULL DEFAULT now()
+);
+
+-- A school's emblem, served from this site so pages don't load the schools' own (design §9.1).
+CREATE TABLE school_logos (
+  school_id     integer PRIMARY KEY REFERENCES schools (id),
+  content_type  text    NOT NULL
+                CHECK (content_type IN ('image/png', 'image/jpeg', 'image/webp', 'image/svg+xml')),
+  data          bytea   NOT NULL,
+  updated_at    timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE colleges (
@@ -198,16 +207,21 @@ CREATE TABLE edits (
   field       text    NOT NULL,               -- a field key, or name, cohort, kind
   old_value   jsonb,                          -- NULL: was empty
   new_value   jsonb,                          -- NULL: cleared
-  reason      text    NOT NULL,
-  basis       text    NOT NULL,               -- a link to the original, or a screenshot
+  -- Where the field's old value came from, for a revert to put back (design §12.4); neither:
+  -- the field wasn't there.
+  old_version_id  integer REFERENCES program_versions (id),
+  old_edit_id     integer REFERENCES edits (id),
+  reason      text,                           -- NULL for reverts, as basis is
+  basis       text,                           -- a link to the original, or a screenshot
   user_id     integer NOT NULL REFERENCES users (id),
   via         text    NOT NULL CHECK (via IN ('web', 'agent')),
   reverts_id  integer REFERENCES edits (id),
-  created_at  timestamptz NOT NULL DEFAULT now()
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  CHECK (old_version_id IS NULL OR old_edit_id IS NULL),
+  CHECK ((reverts_id IS NULL) = (reason IS NOT NULL) AND (reverts_id IS NULL) = (basis IS NOT NULL))
 );
 CREATE INDEX edits_program ON edits (program_id, id);
 CREATE INDEX edits_user ON edits (user_id, id);
-CREATE INDEX edits_recent ON edits (created_at);
 
 -- Keys aren't checked here: the field list grows (design §8.2) and its schema lives in code.
 CREATE TABLE program_fields (
@@ -231,7 +245,7 @@ CREATE TABLE review_items (
                  'evidence_not_found', 'low_confidence', 'implausible', 'conflicts_edit',
                  -- a program from an extraction
                  'unknown_program', 'unknown_college', 'implausible_cohort',
-                 'possible_duplicate', 'no_deadline')),
+                 'possible_duplicate', 'no_deadline', 'unparsed_date')),
   snapshot_id  integer NOT NULL REFERENCES snapshots (id),
   program_id   integer REFERENCES programs (id),       -- NULL: the extraction's program was held back
   version_id   integer REFERENCES program_versions (id),

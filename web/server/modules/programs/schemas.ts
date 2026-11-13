@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { Int, named, UnixSeconds } from "../../platform/http.ts";
 
 // The shapes of programs and their fields (design §8.2): what extraction submits, what the
 // database stores in program_fields and program_versions, and what pages show. Keys left out
@@ -57,8 +58,8 @@ export const TimeValue = z
   .openapi("TimeValue");
 export type TimeValue = z.infer<typeof TimeValue>;
 
-const Text = z.string().trim().min(1).max(500);
-const Texts = z.array(Text).min(1).max(100);
+export const Text = z.string().trim().min(1).max(500);
+export const Texts = z.array(Text).min(1).max(100);
 
 function hasTime(window: { start?: TimeValue; end?: TimeValue }) {
   return window.start !== undefined || window.end !== undefined;
@@ -88,11 +89,16 @@ export const ApplyValue = z
   .openapi("ApplyValue");
 export type ApplyValue = z.infer<typeof ApplyValue>;
 
+const Mode = z.enum(["online", "offline", "hybrid"]);
+const Degrees = z.array(z.enum(["master", "direct_phd"])).min(1);
+export const DegreeList = Degrees.refine((v) => new Set(v).size === v.length, "招收类型有重复");
+export const ApplyUrl = z.url({ protocol: /^(?:https?|mailto)$/ }).max(2000);
+
 export const EventValue = z
   .strictObject({
     start: TimeValue.optional(),
     end: TimeValue.optional(),
-    mode: z.enum(["online", "offline", "hybrid"]).optional(),
+    mode: Mode.optional(),
     place: Text.optional(),
   })
   .refine((v) => hasTime(v) || v.mode !== undefined || v.place !== undefined, "活动时间是空的")
@@ -122,15 +128,10 @@ function entry<S extends z.ZodType>(value: S) {
 export const ExtractedFields = z
   .strictObject({
     apply: entry(ApplyValue),
-    apply_url: entry(z.url({ protocol: /^(?:https?|mailto)$/ }).max(2000)),
+    apply_url: entry(ApplyUrl),
     event: entry(EventValue),
     dates: entry(z.array(DateItem).min(1).max(30)),
-    degrees: entry(
-      z
-        .array(z.enum(["master", "direct_phd"]))
-        .min(1)
-        .refine((v) => new Set(v).size === v.length, "招收类型有重复"),
-    ),
+    degrees: entry(DegreeList),
     majors: entry(Texts),
     requirements: entry(Texts),
     materials: entry(Texts),
@@ -144,5 +145,184 @@ export type ExtractedFields = z.infer<typeof ExtractedFields>;
 export type FieldKey = keyof ExtractedFields;
 export type FieldValue<K extends FieldKey> = NonNullable<ExtractedFields[K]>["value"];
 
-export const ProgramName = z.string().trim().min(1).max(200);
-export const Cohort = z.number().int().min(2000).max(2100).openapi({ description: "届" });
+export const ProgramName = z.string(named("项目名称")).trim().min(1).max(200);
+const COHORTS = { min: 2000, max: 2100 };
+export const Cohort = z
+  .number(named("届"))
+  .int()
+  .min(COHORTS.min)
+  .max(COHORTS.max)
+  .openapi({ description: "届" });
+
+// The cohort as a query string gives it.
+export const ProgramTableQuery = z.object({
+  cohort: z.coerce.number().int().min(COHORTS.min).max(COHORTS.max).openapi({ description: "届" }),
+});
+
+// A row of the table (design §10): only what the table shows, filters and sorts by. `apply` is
+// what the page shows; the two instants are for status, countdowns and sorting.
+export const TableProgram = z
+  .object({
+    id: Int,
+    school: z.object({
+      name: z.string(),
+      short_names: z.array(z.string()).openapi({ description: "简称，只用来搜索" }),
+      tier: z.string().nullable(),
+      logo: z.string().nullable().openapi({ description: "校徽的地址，没有为空" }),
+    }),
+    college: z.object({
+      id: Int,
+      name: z.string(),
+      region: z.string(),
+      directions: z.array(z.string()),
+    }),
+    kind: Kind,
+    name: z.string(),
+    apply: z.union([ApplyValue, z.null()]),
+    apply_start: UnixSeconds.nullable(),
+    apply_deadline: UnixSeconds.nullable(),
+    notice: z
+      .object({ url: z.string(), published_on: IsoDate.nullable() })
+      .openapi({ description: "原文：最近一个报名版本的通知，没有就用最近一个版本的" }),
+  })
+  .openapi("TableProgram");
+export const ProgramTable = z
+  .object({
+    preview: z.boolean().openapi({ description: "没登录或账号已冻结，只有截止最近的几条" }),
+    programs: z.array(TableProgram),
+  })
+  .openapi("ProgramTable");
+
+const Notice = z.object({
+  title: z.string(),
+  url: z.string(),
+  published_on: IsoDate.nullable(),
+  removed: z.boolean().openapi({ description: "原文已删除，快照照样能看" }),
+});
+
+const FieldVersion = z
+  .object({ number: Int, snapshot_id: Int, notice: Notice.pick({ title: true, url: true }) })
+  .openapi("FieldVersion");
+
+// A field, or a part of one, as program_fields keeps it: its own evidence, and the version it
+// came from. Parts can come from different versions, as a deadline put back does.
+function part<S extends z.ZodType>(value: S) {
+  return z.object({
+    value,
+    evidence: z.array(Evidence),
+    confidence: z.number().nullable(),
+    version: z.union([FieldVersion, z.null()]).openapi({ description: "为空是人改的" }),
+  });
+}
+
+// One of the other dates, which has a start, an end or both (§8.2).
+export const DateWindow = z.union([
+  z.object({ start: TimeValue, end: TimeValue.optional() }),
+  z.object({ end: TimeValue }),
+]);
+export type DateWindow = z.infer<typeof DateWindow>;
+
+// A value as program_fields keeps it, a part of a field made of parts on its own; or a program's
+// name, cohort or kind, as edits keep them.
+export const StoredValue = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.array(z.string()),
+  TimeValue,
+  DateWindow,
+]);
+export type StoredValue = z.infer<typeof StoredValue>;
+
+// The fields of design §8.2 put back together, each part with what supports it.
+export const ProgramFields = z
+  .object({
+    apply: z
+      .object({
+        start: part(TimeValue).optional(),
+        end: part(TimeValue).optional(),
+        rolling: part(z.literal(true)).optional(),
+      })
+      .optional(),
+    apply_url: part(z.string()).optional(),
+    event: z
+      .object({
+        start: part(TimeValue).optional(),
+        end: part(TimeValue).optional(),
+        mode: part(Mode).optional(),
+        place: part(z.string()).optional(),
+      })
+      .optional(),
+    dates: z
+      .array(part(DateWindow).extend({ label: z.string() }))
+      .optional()
+      .openapi({ description: "按时间先后" }),
+    degrees: part(Degrees).optional(),
+    majors: part(Texts).optional(),
+    requirements: part(Texts).optional(),
+    materials: part(Texts).optional(),
+    assessment: part(Texts).optional(),
+    quota: part(Text).optional(),
+    benefits: part(Texts).optional(),
+    contacts: part(Texts).optional(),
+  })
+  .openapi("ProgramFields");
+export type ProgramFields = z.infer<typeof ProgramFields>;
+
+export const ProgramDetail = z
+  .object({
+    id: Int,
+    school: z.object({
+      name: z.string(),
+      tier: z.string().nullable(),
+      logo: z.string().nullable().openapi({ description: "校徽的地址，没有为空" }),
+    }),
+    college: z.object({ id: Int, name: z.string(), region: z.string() }),
+    cohort: Int,
+    kind: Kind,
+    name: z.string(),
+    apply_start: UnixSeconds.nullable(),
+    apply_deadline: UnixSeconds.nullable(),
+    verified: z.union([
+      z.object({ by: z.string(), at: UnixSeconds }).openapi("Verified"),
+      z.null(),
+    ]),
+    notice: Notice.openapi({ description: "原文，选法同总表" }),
+    fields: ProgramFields,
+  })
+  .openapi("ProgramDetail");
+
+export const Attachment = z
+  .object({
+    position: Int,
+    name: z.string(),
+    content_type: z.string(),
+    size: Int.nullable().openapi({ description: "字节数；为空是抓取节点还没传上文件" }),
+  })
+  .openapi("Attachment");
+export type Attachment = z.infer<typeof Attachment>;
+
+export const ProgramVersions = z
+  .object({
+    versions: z.array(
+      z.object({
+        number: Int,
+        role: Role,
+        changes: z.array(z.string()).openapi({ description: "改了的字段，键同 program_fields" }),
+        notice: Notice,
+        snapshot: z.object({ id: Int, fetched_at: UnixSeconds }),
+        attachments: z.array(Attachment),
+      }),
+    ),
+  })
+  .openapi("ProgramVersions");
+
+export const SnapshotDetail = z
+  .object({
+    id: Int,
+    fetched_at: UnixSeconds,
+    notice: Notice,
+    html: z.string().openapi({ description: "按白名单净化过，不含脚本、样式和图片" }),
+    attachments: z.array(Attachment),
+  })
+  .openapi("SnapshotDetail");

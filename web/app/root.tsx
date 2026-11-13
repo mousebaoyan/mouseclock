@@ -7,10 +7,12 @@ import {
   Scripts,
   ScrollRestoration,
   useNavigation,
+  type ShouldRevalidateFunctionArgs,
   useRouteLoaderData,
 } from "react-router";
 import type { Route } from "./+types/root.ts";
 import { apiContext } from "./api.server.ts";
+import { PageTransition } from "~/components/page-transition";
 import { SiteHeader } from "~/components/site-header";
 import { buttonVariants } from "~/components/ui/button";
 import "./app.css";
@@ -24,6 +26,18 @@ export async function loader({ context }: Route.LoaderArgs) {
   return { me: res.status === 200 ? await res.json() : null };
 }
 
+// Changing only the address's query, such as the table's filters and pages, doesn't ask for /me
+// again; going to another page or sending a form does, as mousehole's changes reach us hourly.
+export function shouldRevalidate({
+  currentUrl,
+  nextUrl,
+  formMethod,
+  defaultShouldRevalidate,
+}: ShouldRevalidateFunctionArgs) {
+  const sameQueryOnly = formMethod === undefined && currentUrl.pathname === nextUrl.pathname;
+  return !sameQueryOnly && defaultShouldRevalidate;
+}
+
 export function Layout({ children }: { children: React.ReactNode }) {
   // Missing when the page failed before the root loader ran.
   const me = useRouteLoaderData<typeof loader>("root")?.me ?? null;
@@ -33,8 +47,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <meta name="theme-color" content="#fefdfb" media="(prefers-color-scheme: light)" />
-        <meta name="theme-color" content="#161b1a" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#161c25" media="(prefers-color-scheme: dark)" />
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <Meta />
@@ -55,14 +69,16 @@ export default function App() {
   return (
     <>
       {loading && <div aria-hidden="true" className="nav-progress" />}
-      <Outlet />
+      <PageTransition>
+        <Outlet />
+      </PageTransition>
     </>
   );
 }
 
 const TITLES: Partial<Record<number, string>> = {
-  401: "登录后查看",
-  403: "没有权限",
+  401: "请先登录",
+  403: "没有访问权限",
   404: "页面不存在",
 };
 
@@ -72,25 +88,30 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   // A 404's data is the router's own English; others carry what a loader threw for people.
   const detail =
     response?.status === 404
-      ? "链接有误，或内容已被删除。"
+      ? "链接有误，或内容已被删除"
       : typeof response?.data === "string"
         ? response.data
-        : "请稍后重试。";
+        : "页面加载失败，请稍后重试";
   return (
-    <main className="mx-auto max-w-6xl px-3 py-6 sm:px-5">
+    <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-20 text-center">
       <title>{title}</title>
-      <h1 className="text-2xl font-semibold">{title}</h1>
-      <p className="mt-2 text-muted-foreground">{detail}</p>
-      {response?.status === 401 && (
-        <a href="/login" className={buttonVariants({ className: "mt-4" })}>
-          登录
-        </a>
+      {response && (
+        <p className="text-5xl font-semibold tracking-tight text-subtle-foreground tabular-nums">
+          {response.status}
+        </p>
       )}
-      {response?.status === 404 && (
-        <Link to="/" className={buttonVariants({ variant: "outline", className: "mt-4" })}>
-          返回总表
+      <h1 className="mt-3 text-xl font-semibold">{title}</h1>
+      <p className="mt-2 text-sm text-muted-foreground">{detail}</p>
+      <div className="mt-6 flex gap-2">
+        {response?.status === 401 && (
+          <a href="/login" className={buttonVariants()}>
+            登录
+          </a>
+        )}
+        <Link to="/" className={buttonVariants({ variant: "outline" })}>
+          返回项目总表
         </Link>
-      )}
+      </div>
     </main>
   );
 }

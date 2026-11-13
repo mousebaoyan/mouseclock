@@ -4,9 +4,51 @@ import { HTTPException } from "hono/http-exception";
 import { checkPermission, type Capability, type Viewer } from "./access.ts";
 import { AppError } from "./errors.ts";
 import { log } from "./log.ts";
+import { PER_PAGE } from "./paging.ts";
 
 // Validation messages reach people, in Chinese like every `message` (api.md §1).
 z.config(z.locales.zhCN());
+
+// For a field people fill in: its validation messages name it and say how to fix it, such as
+// 「学校名称不能为空」, where Zod's own say 「数值过小：期望 string >=1 字符」. A schema's messages cover
+// its checks too; what isn't covered here keeps Zod's.
+export function named(title: string) {
+  return { error: (issue: z.core.$ZodRawIssue) => fieldMessage(title, issue) };
+}
+
+function fieldMessage(title: string, issue: z.core.$ZodRawIssue) {
+  switch (issue.code) {
+    case "invalid_type":
+      return issue.input == null ? `请填写${title}` : `${title}的格式不对`;
+    case "too_small":
+      if (issue.origin === "string") {
+        return issue.minimum === 1 ? `${title}不能为空` : `${title}至少要 ${issue.minimum} 个字`;
+      }
+      if (issue.origin === "array") return `${title}至少要有 ${issue.minimum} 项`;
+      return `${title}不能小于 ${issue.minimum}`;
+    case "too_big":
+      if (issue.origin === "string") return `${title}最多 ${issue.maximum} 个字`;
+      if (issue.origin === "array") return `${title}最多 ${issue.maximum} 项`;
+      return `${title}不能大于 ${issue.maximum}`;
+    case "invalid_format":
+      // A wrong protocol and an unparsable address both come as "url", told apart only by an
+      // untyped note, so one message covers both.
+      return issue.format === "url"
+        ? `${title}要写完整，以 http:// 或 https:// 开头`
+        : `${title}的格式不对`;
+    case "invalid_value":
+      return `${title}只能从给出的选项里选`;
+    // Zod's messages do for these: they aren't about what someone typed into a field.
+    case "custom":
+    case "invalid_element":
+    case "invalid_key":
+    case "invalid_union":
+    case "not_multiple_of":
+    case "unrecognized_keys":
+    default:
+      return undefined;
+  }
+}
 
 // What every request carries once the session is looked up (modules/accounts/routes.ts).
 export type AppEnv = { Variables: { viewer: Viewer | null; sessionId: number | null } };
@@ -66,3 +108,14 @@ export const Int = z.number().int().min(INT.min).max(INT.max);
 export const IntParam = z.coerce.number().int().min(INT.min).max(INT.max);
 export const IdParam = z.object({ id: IntParam });
 export const UnixSeconds = z.number().int().min(0).max(LAST_SECOND);
+// A page's address as the crawler reports it.
+export const Url = z.url({ protocol: /^https?$/ }).max(2000);
+
+export const PageParams = z.object({
+  page: IntParam.min(1).max(100_000).default(1),
+  per_page: z.coerce.number().pipe(z.literal(PER_PAGE)).default(PER_PAGE[0]),
+});
+
+export function Page<T extends z.ZodType>(item: T) {
+  return z.object({ items: z.array(item), total: Int, page: Int, per_page: Int });
+}

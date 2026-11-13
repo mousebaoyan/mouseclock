@@ -1,14 +1,262 @@
+import { hc, type InferResponseType } from "hono/client";
+import { data, Link, useLocation, useRouteLoaderData } from "react-router";
+import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/components/filters";
+import { Empty, Page } from "~/components/page";
+import { SchoolLogo } from "~/components/school-logo";
+import { Pagination } from "~/components/pagination";
+import { ProgramCard, ProgramCards } from "~/components/program";
+import { PROGRAM_KINDS, TierTag } from "~/components/tags";
+import { TIER_FILTERS } from "~/tiers";
+import { buttonVariants } from "~/components/ui/button";
+import { Segmented } from "~/components/ui/segmented";
+import { MultiSelect, Select } from "~/components/ui/select";
+import type { ApiType } from "../../server/app.ts";
 import { SITE_DESCRIPTION, SITE_NAME } from "../../server/platform/site.ts";
+import { apiContext, readApi, type createApi } from "../api.server.ts";
+import { cohortOf, tablePage } from "../program-table.ts";
+import type { loader as rootLoader } from "../root.tsx";
+import { currentCohort, formatTime, STATUS_LABELS, useNow } from "../time.ts";
+import type { Route } from "./+types/home.ts";
+
+type TableData = InferResponseType<ReturnType<typeof createApi>["programs"]["$get"], 200>;
 
 export function meta() {
   return [{ title: SITE_NAME }, { name: "description", content: SITE_DESCRIPTION }];
 }
 
-export default function Home() {
+// The server renders the page of the table the address asks for; the cohort itself stays on
+// the server, so the first screen doesn't wait for it (design §14).
+export async function loader({ request, context }: Route.LoaderArgs) {
+  const params = new URL(request.url).searchParams;
+  const date = new Date();
+  const table = await readApi<TableData>(
+    await context.get(apiContext).programs.$get({ query: { cohort: cohortOf(params, date) } }),
+  );
+  return tablePage(table, params, date);
+}
+
+// After that the browser keeps the whole cohort, and filters, sorts and pages it itself. It asks
+// again for another cohort or after a while; the server answers 304 while nothing changed.
+let kept: { cohort: string; at: number; table: TableData } | null = null;
+const KEEP_MS = 5 * 60_000;
+
+export async function clientLoader({ request }: Route.ClientLoaderArgs) {
+  const params = new URL(request.url).searchParams;
+  const date = new Date();
+  const cohort = cohortOf(params, date);
+  if (kept?.cohort !== cohort || date.getTime() - kept.at > KEEP_MS) {
+    const res = await hc<ApiType>("/api/v1").programs.$get({ query: { cohort } });
+    if (res.status !== 200) throw data((await res.json()).error.message, { status: res.status });
+    kept = { cohort, at: date.getTime(), table: await res.json() };
+  }
+  return tablePage(kept.table, params, date);
+}
+
+type Data = Route.ComponentProps["loaderData"];
+type Program = Data["programs"][number];
+
+export default function Home({ loaderData }: Route.ComponentProps) {
+  const { cohort, preview, programs, total, page, filters, thisYear } = loaderData;
+  const now = useNow(loaderData.now);
   return (
-    <main className="mx-auto max-w-6xl px-3 py-6 sm:px-5">
-      <h1 className="text-2xl font-semibold">{SITE_NAME}</h1>
-      <p className="mt-2 text-muted-foreground">{SITE_DESCRIPTION}</p>
-    </main>
+    <Page title={`${cohort} 届保研项目`} hideTitle>
+      {preview ? <PreviewNotice /> : <Filters data={loaderData} />}
+      {programs.length === 0 ? (
+        <Empty>{preview ? "目前没有即将截止的项目" : "没有符合条件的项目"}</Empty>
+      ) : (
+        <div>
+          <ProgramCards>
+            {programs.map((program) => (
+              <ProgramCard
+                key={program.id}
+                program={program}
+                now={now}
+                thisYear={thisYear}
+                notice={program.notice.url}
+                place={
+                  <Place
+                    program={program}
+                    published={filters.sort === "published"}
+                    thisYear={thisYear}
+                  />
+                }
+              />
+            ))}
+          </ProgramCards>
+          {!preview && <Pagination total={total} page={page} perPage={filters.perPage} />}
+        </div>
+      )}
+    </Page>
   );
 }
+
+// A preview goes to guests and to frozen accounts, who are signed in but no longer in the group.
+function PreviewNotice() {
+  const { pathname, search } = useLocation();
+  const signedIn = Boolean(useRouteLoaderData<typeof rootLoader>("root")?.me);
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-3 rounded-xl border bg-card shadow-card px-4 py-3">
+      <p className="min-w-0 flex-1 text-sm">
+        {signedIn
+          ? "账号已冻结，仅显示截止时间最近的项目"
+          : "未登录时仅显示截止时间最近的项目，登录后可查看全部项目并使用搜索和筛选"}
+      </p>
+      {!signedIn && (
+        // A page of the server, not of the router: it goes on to mousehole.
+        <a
+          href={`/login?next=${encodeURIComponent(pathname + search)}`}
+          className={buttonVariants({ size: "sm" })}
+        >
+          登录
+        </a>
+      )}
+    </div>
+  );
+}
+
+function Filters({ data: { filters, regions, directions, counts, now, cohort } }: { data: Data }) {
+  const { search } = useLocation();
+  const { hrefWith, set } = useFilters();
+  const current = currentCohort(new Date(now * 1000));
+  const cohorts = [current + 1, current, current - 1, current - 2];
+  // What 清除筛选 clears besides the search; the cohort and the order stay.
+  const narrowed =
+    filters.status !== null ||
+    filters.kinds.length +
+      filters.tiers.length +
+      filters.regions.length +
+      filters.directions.length >
+      0;
+  const statusChoices = [
+    { value: "", label: "未截止" },
+    { value: "open", label: STATUS_LABELS.open },
+    { value: "upcoming", label: STATUS_LABELS.upcoming },
+    { value: "closed", label: STATUS_LABELS.closed },
+    { value: "all", label: "全部" },
+  ];
+  return (
+    <FilterBar
+      search={<SearchBox value={filters.q} placeholder="搜索学校、学院或项目" />}
+      selects={
+        <>
+          <Select
+            aria-label="届"
+            value={String(cohort)}
+            onValueChange={(value) => set("cohort", value)}
+            options={(cohorts.includes(cohort) ? cohorts : [cohort, ...cohorts]).map((c) => ({
+              value: String(c),
+              label: `${c} 届`,
+            }))}
+            className="sm:w-28"
+          />
+          <MultiSelect
+            aria-label="地区"
+            all="全部地区"
+            picked={filters.regions}
+            onPickedChange={(values) => set("region", values)}
+            options={regions.map((r) => ({ value: r, label: r, count: counts.region[r] ?? 0 }))}
+            className="sm:w-36"
+          />
+          <MultiSelect
+            aria-label="方向"
+            all="全部方向"
+            picked={filters.directions}
+            onPickedChange={(values) => set("direction", values)}
+            options={directions.map((d) => ({
+              value: d,
+              label: d,
+              count: counts.direction[d] ?? 0,
+            }))}
+            className="sm:w-36"
+          />
+          <Select
+            aria-label="排序"
+            value={filters.sort === "published" ? "published" : ""}
+            onValueChange={(value) => set("sort", value)}
+            options={[
+              { value: "", label: "按截止时间" },
+              { value: "published", label: "按发布时间" },
+            ]}
+            className="sm:w-34"
+          />
+        </>
+      }
+      rows={[
+        {
+          label: "状态",
+          content: (
+            <Segmented
+              label="状态"
+              items={statusChoices.map((choice) => ({
+                to: hrefWith("status", choice.value ? [choice.value] : []),
+                label: choice.label,
+                count: counts.status[choice.value],
+                on: (filters.status ?? "") === choice.value,
+              }))}
+            />
+          ),
+        },
+        {
+          label: "类型",
+          content: (
+            <ChipGroup
+              name="kind"
+              label="类型"
+              picked={filters.kinds}
+              counts={counts.kind}
+              choices={Object.entries(PROGRAM_KINDS).map(([value, { label, color }]) => ({
+                value,
+                label,
+                color,
+              }))}
+            />
+          ),
+        },
+        {
+          label: "层次",
+          content: (
+            <ChipGroup
+              name="tier"
+              label="层次"
+              picked={filters.tiers}
+              choices={TIER_FILTERS}
+              counts={counts.tier}
+            />
+          ),
+        },
+      ]}
+      active={narrowed || filters.sort === "published" || cohort !== current}
+      clear={narrowed || filters.q ? keepOnly(search, ["cohort", "per_page"]) : null}
+    />
+  );
+}
+
+// Who runs the program, on its card: the school's emblem, the school and college as one name
+// that opens the college, and its tier and region beneath; sorted by publication, the date it
+// was published as well.
+function Place({ program, published, thisYear }: PlaceProps) {
+  return (
+    <div className="flex items-center gap-3">
+      <SchoolLogo school={program.school} size="md" />
+      <div className="min-w-0">
+        <Link
+          to={`/colleges/${program.college.id}`}
+          className="relative z-1 block font-medium break-keep wrap-anywhere hover:text-primary"
+        >
+          {program.school.name} {program.college.name}
+        </Link>
+        <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
+          <TierTag tier={program.school.tier} />
+          <span>{program.college.region}</span>
+          {published && program.notice.published_on && (
+            <span className="tabular-nums">
+              发布于 {formatTime({ date: program.notice.published_on }, thisYear)}
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+type PlaceProps = { program: Program; published: boolean; thisYear: number };

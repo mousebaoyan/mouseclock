@@ -76,14 +76,16 @@ export interface CrawlRuns {
 }
 
 export interface Edits {
-  basis: string;
+  basis: string | null;
   created_at: Generated<Timestamp>;
   field: string;
   id: Generated<number>;
   new_value: Json | null;
+  old_edit_id: number | null;
   old_value: Json | null;
+  old_version_id: number | null;
   program_id: number;
-  reason: string;
+  reason: string | null;
   reverts_id: number | null;
   user_id: number;
   via: string;
@@ -164,12 +166,19 @@ export interface ReviewItems {
   version_id: number | null;
 }
 
+export interface SchoolLogos {
+  content_type: string;
+  data: Buffer;
+  school_id: number;
+  updated_at: Generated<Timestamp>;
+}
+
 export interface Schools {
   created_at: Generated<Timestamp>;
   id: Generated<number>;
   name: string;
-  short_name: Generated<string>;
-  tiers: Generated<string[]>;
+  short_names: Generated<string[]>;
+  tier: string | null;
 }
 
 export interface Sessions {
@@ -250,6 +259,7 @@ export interface DB {
   program_versions: ProgramVersions;
   programs: Programs;
   review_items: ReviewItems;
+  school_logos: SchoolLogos;
   schools: Schools;
   sessions: Sessions;
   snapshots: Snapshots;

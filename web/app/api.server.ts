@@ -1,5 +1,7 @@
-import { hc } from "hono/client";
-import { createContext } from "react-router";
+import { hc, type ClientResponse } from "hono/client";
+import { createContext, data } from "react-router";
+import type { z } from "zod";
+import type { ErrorSchema } from "../server/platform/http.ts";
 import { app, type ApiType } from "../server/app.ts";
 import { asVisitor, type Visitor } from "../server/modules/accounts/routes.ts";
 
@@ -21,6 +23,18 @@ export function createApi(request: Request, visitor: Visitor) {
 }
 
 export const apiContext = createContext<ReturnType<typeof createApi>>();
+
+export async function readApi<T>(
+  res:
+    | ClientResponse<T, 200, "json">
+    | ClientResponse<z.infer<typeof ErrorSchema>, 400 | 401 | 403 | 404 | 409, "json">,
+): Promise<T> {
+  if (res.status !== 200) {
+    const body = await res.json();
+    throw data(body.error.message, { status: res.status });
+  }
+  return res.json();
+}
 
 // Logout's response carries the session cookie, which has to reach the browser.
 export function cookiesFrom(res: Response) {

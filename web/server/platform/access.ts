@@ -26,7 +26,7 @@ export function checkPermission(viewer: Viewer | null, need: Capability) {
   if (viewer.muted) throw new AppError(403, "muted", "禁言中，只能看、订阅和记报名");
   const admin = viewer.role === "admin" || viewer.role === "owner";
   if (need === "edit") {
-    if (viewer.edit_revoked) throw new AppError(403, "edit_revoked", "你的修改权限已被管理员收回");
+    if (viewer.edit_revoked) throw editRevoked();
     if (viewer.level < EDIT_LEVEL && !admin) {
       throw new AppError(403, "level_required", `L${EDIT_LEVEL} 以上才能直接修改`);
     }
@@ -37,6 +37,10 @@ export function checkPermission(viewer: Viewer | null, need: Capability) {
     throw new AppError(403, "forbidden", "只有站长能操作");
   }
   return viewer;
+}
+
+export function editRevoked() {
+  return new AppError(403, "edit_revoked", "你的修改权限已被管理员收回");
 }
 
 export function can(viewer: Viewer | null, need: Capability) {

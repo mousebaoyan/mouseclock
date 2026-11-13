@@ -10,6 +10,7 @@ import {
   Int,
   IntParam,
   UnixSeconds,
+  Url,
 } from "../../platform/http.ts";
 import {
   ApplyValue,
@@ -20,6 +21,8 @@ import {
   ProgramName,
   Role,
 } from "../programs/schemas.ts";
+import { Failure, ListedItem } from "../sources/schemas.ts";
+import { UnresolvedDate } from "./schemas.ts";
 import {
   crawlerTokenId,
   markRemoved,
@@ -52,17 +55,13 @@ const security = [{ crawlerToken: [] }];
 const unauthorized = errorResponse("抓取节点令牌无效或已作废");
 const noContent = { description: "已记下" };
 
-const Url = z.url({ protocol: /^https?$/ }).max(2000);
 const Config = z
   .record(z.string(), z.unknown())
   .openapi("Config", { description: "抓取节点自己的配置，格式由抓取节点定" });
-const Failure = z
-  .enum(["timeout", "unreachable", "too_many_redirects", "http_status", "no_items", "error"])
-  .openapi("Failure", {
-    description:
-      "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误",
-  });
 const Detail = z.string().max(1000).openapi({ description: "具体原因，比如 HTTP 403" });
+export const NoticeFailure = z
+  .strictObject({ url: Url, failure: Failure, detail: Detail.optional() })
+  .openapi("NoticeFailure");
 const Usage = z
   .strictObject({
     model: z.string().min(1).max(100),
@@ -70,16 +69,9 @@ const Usage = z
     output_tokens: Int.min(0),
   })
   .openapi("Usage");
-const ListedItem = z
-  .strictObject({
-    url: Url,
-    title: z.string().trim().min(1).max(500),
-    published_on: IsoDate.optional(),
-  })
-  .openapi("ListedItem");
 
 // One program a notice is about, as design §8.2 lays out.
-const ExtractedProgram = z
+export const ExtractedProgram = z
   .strictObject({
     program_id: Int.optional().openapi({ description: "对照里的哪个项目；新项目不写" }),
     college_id: Int,
@@ -88,6 +80,7 @@ const ExtractedProgram = z
     name: ProgramName,
     role: Role.openapi({ description: "call：报名；update：补充；result：名单" }),
     fields: ExtractedFields,
+    unresolved_dates: z.array(UnresolvedDate).max(30).optional(),
   })
   .openapi("ExtractedProgram");
 
@@ -98,7 +91,6 @@ const Work = z
         .object({
           id: Int,
           url: z.string(),
-          section: z.string(),
           browser: z.boolean(),
           config: z.union([Config, z.null()]),
           backfill: z.boolean().openapi({ description: "第一次抓：往回翻页，补上前两年的通知" }),
@@ -138,7 +130,7 @@ const ListingResult = z
   })
   .openapi("ListingResult");
 
-const ExtractionContext = z
+export const ExtractionContext = z
   .object({
     published_on: IsoDate.nullable(),
     colleges: z.array(z.object({ id: Int, name: z.string() }).openapi("CollegeRef")),
@@ -412,13 +404,7 @@ export const ingestRoutes = router
                   listed: Int.min(0),
                   new_count: Int.min(0),
                   useful_count: Int.min(0).openapi({ description: "新通知里抽取出项目的" }),
-                  notice_failures: z
-                    .array(
-                      z
-                        .strictObject({ url: Url, failure: Failure, detail: Detail.optional() })
-                        .openapi("NoticeFailure"),
-                    )
-                    .max(5000),
+                  notice_failures: z.array(NoticeFailure).max(5000),
                 })
                 .openapi("Run"),
             },

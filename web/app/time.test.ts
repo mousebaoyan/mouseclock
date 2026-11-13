@@ -1,5 +1,15 @@
 import { expect, test } from "vitest";
-import { beijingYear, formatTime, formatWindow, statusOf } from "./time.ts";
+import {
+  beijingYear,
+  countdown,
+  currentCohort,
+  formatApply,
+  formatTime,
+  formatWindow,
+  parseTime,
+  statusOf,
+  timeText,
+} from "./time.ts";
 
 test("times read as the notice wrote them, with the year only when it isn't this one", () => {
   expect(formatTime({ date: "2026-06-30", time: "23:59" }, 2026)).toBe("6月30日 23:59");
@@ -9,6 +19,25 @@ test("times read as the notice wrote them, with the year only when it isn't this
   expect(formatTime({ month: "2026-07", part: "early" }, 2026)).toBe("7月上旬");
   expect(formatTime({ month: "2027-07" }, 2026)).toBe("2027年7月");
   expect(formatTime({ date: "2027-01-10" }, 2026)).toBe("2027年1月10日");
+});
+
+test("editors type a time as precise as the notice, which reads back as they typed it", () => {
+  for (const [text, value] of [
+    ["2026-06-30 17:00", { date: "2026-06-30", time: "17:00" }],
+    ["2026-06-30", { date: "2026-06-30" }],
+    ["2026-06-30 前", { date: "2026-06-30", mark: "before" }],
+    ["2026-06-30 前后", { date: "2026-06-30", mark: "about" }],
+    ["2026-06 下旬", { month: "2026-06", part: "late" }],
+    ["2026-06", { month: "2026-06" }],
+  ] as const) {
+    expect(parseTime(text)).toEqual(value);
+    expect(timeText(value)).toBe(text);
+  }
+  expect(parseTime(" 2026-06-30前 ")).toEqual({ date: "2026-06-30", mark: "before" });
+  expect(parseTime("2026-06-30 9:00")).toEqual({ date: "2026-06-30", time: "09:00" });
+  for (const text of ["6月30日", "2026-6-30", "2026-06 前", "2026-06-30 下旬", "2026-06-30 17"]) {
+    expect(parseTime(text)).toBeNull();
+  }
 });
 
 test("a window says what it has of its two ends", () => {
@@ -32,4 +61,29 @@ test("status follows the application's start and deadline", () => {
 test("the year turns at midnight in Beijing", () => {
   expect(beijingYear(new Date("2026-12-31T15:59:59Z"))).toBe(2026);
   expect(beijingYear(new Date("2026-12-31T16:00:00Z"))).toBe(2027);
+});
+
+test("the application says when it rolls, and when it says nothing", () => {
+  const end = { date: "2026-06-14" };
+  expect(formatApply({ end, rolling: true }, 2026)).toBe("至 6月14日（额满即止）");
+  expect(formatApply({ rolling: true }, 2026)).toBe("额满即止");
+  expect(formatApply(null, 2026)).toBe("未说明");
+});
+
+test("countdowns round down, to the minute at the end", () => {
+  const deadline = 10 * 86_400;
+  const program = { apply_start: null, apply_deadline: deadline };
+  expect(countdown(program, deadline - 2 * 86_400 - 1)).toBe("还剩 2 天");
+  expect(countdown(program, deadline - 86_399)).toBe("还剩 23 小时");
+  expect(countdown(program, deadline - 60)).toBe("还剩 1 分钟");
+  expect(countdown(program, deadline - 59)).toBe("还剩不到 1 分钟");
+  expect(countdown(program, deadline)).toBeNull();
+  expect(countdown({ apply_start: 3600, apply_deadline: deadline }, 0)).toBe("1 小时后开始");
+  expect(countdown({ apply_start: 0, apply_deadline: null }, 60)).toBeNull();
+});
+
+test("the cohort moves on as November begins in Beijing", () => {
+  expect(currentCohort(new Date("2026-10-31T15:59:59Z"))).toBe(2027);
+  expect(currentCohort(new Date("2026-10-31T16:00:00Z"))).toBe(2028);
+  expect(currentCohort(new Date("2026-12-31T16:00:00Z"))).toBe(2028);
 });

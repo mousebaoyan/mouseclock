@@ -1,24 +1,29 @@
-import { sql, type Transaction } from "kysely";
+import { sql, type Kysely, type Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
+import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import type { ApplyValue, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
+import type { ExtractedFields, Kind, Role } from "../programs/schemas.ts";
+import type { UnresolvedDate } from "./schemas.ts";
 import {
+  applyOf,
   applyStored,
   createProgram,
   toStoredFields,
   type StoredField,
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
+import type { Failure } from "../sources/schemas.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
+import { recordAudit } from "../review/service.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
 const LEASE_MS = 2 * 3600_000;
 // Design §7.3: twice a day, every four hours in the busy months.
 const INTERVAL_MS = 12 * 3600_000;
 const BUSY_INTERVAL_MS = 4 * 3600_000;
-const BUSY_MONTHS = new Set([3, 4, 5, 6, 7, 8, 9, 12, 1]);
+export const BUSY_MONTHS = new Set([3, 4, 5, 6, 7, 8, 9, 12, 1]);
 // Notices of programs still open are fetched again once a day to catch changes (design §7.4),
 // in their source's round; those without a deadline, for this long after the program appeared.
 const RECHECK_MS = 24 * 3600_000;
@@ -26,18 +31,75 @@ const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
 
-export type Failure =
-  "timeout" | "unreachable" | "too_many_redirects" | "http_status" | "no_items" | "error";
+type Owner = { user_id: number; via: "web" };
+
 export type Usage = { model: string; input_tokens: number; output_tokens: number };
+export const PURPOSES = ["screening", "extraction", "probe"] as const;
+export type Purpose = (typeof PURPOSES)[number];
 export type ListedItem = { url: string; title: string; published_on?: string };
 
-export async function createCrawlerToken(name: string) {
+// Made by the owner in the system settings (design §6.2), or for a local crawler with
+// `pnpm crawler-token`, which no one logs in for. The token is shown once: only its SHA-256 is
+// kept.
+export async function createCrawlerToken(name: string, owner?: Owner) {
   const token = newToken();
-  await db
-    .insertInto("crawler_tokens")
-    .values({ name, token_hash: hashToken(token) })
-    .execute();
+  await db.transaction().execute(async (trx) => {
+    const { id } = await trx
+      .insertInto("crawler_tokens")
+      .values({ name, token_hash: hashToken(token) })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    if (owner) {
+      await recordAudit(trx, {
+        user_id: owner.user_id,
+        action: "create",
+        target_type: "crawler_token",
+        target_id: id,
+        detail: { via: owner.via, name },
+      });
+    }
+  });
   return token;
+}
+
+export async function listCrawlerTokens() {
+  const rows = await db
+    .selectFrom("crawler_tokens")
+    .select(["id", "name", "created_at", "last_seen_at", "revoked_at"])
+    .orderBy("id", "desc")
+    .execute();
+  return rows.map((row) => ({
+    ...row,
+    created_at: unix(row.created_at),
+    last_seen_at: row.last_seen_at && unix(row.last_seen_at),
+    revoked_at: row.revoked_at && unix(row.revoked_at),
+  }));
+}
+
+// A revoked token stops working at once: every request looks it up (crawlerTokenId).
+export async function revokeCrawlerToken(owner: Owner, id: number) {
+  await db.transaction().execute(async (trx) => {
+    const token = await trx
+      .selectFrom("crawler_tokens")
+      .select(["name", "revoked_at"])
+      .where("id", "=", id)
+      .forUpdate()
+      .executeTakeFirst();
+    if (!token) throw new AppError(404, "not_found", "令牌不存在");
+    if (token.revoked_at) throw new AppError(409, "already_revoked", "这个令牌已经作废了");
+    await trx
+      .updateTable("crawler_tokens")
+      .set({ revoked_at: new Date() })
+      .where("id", "=", id)
+      .execute();
+    await recordAudit(trx, {
+      user_id: owner.user_id,
+      action: "revoke",
+      target_type: "crawler_token",
+      target_id: id,
+      detail: { via: owner.via, name: token.name },
+    });
+  });
 }
 
 export async function crawlerTokenId(token: string) {
@@ -94,7 +156,7 @@ async function assertSource(trx: Transaction<DB>, sourceId: number) {
 
 async function recordUsage(
   trx: Transaction<DB>,
-  purpose: "screening" | "extraction" | "probe",
+  purpose: Purpose,
   refs: { source_id?: number; snapshot_id?: number; probe_id?: number },
   usage: Usage[],
 ) {
@@ -297,8 +359,8 @@ function noticeYear(publishedOn: string | null) {
   return Number((publishedOn ?? new Date(Date.now() + 8 * 3600_000).toISOString()).slice(0, 4));
 }
 
-async function extractionContext(
-  trx: Transaction<DB>,
+export async function extractionContext(
+  trx: Kysely<DB>,
   sourceId: number,
   publishedOn: string | null,
 ) {
@@ -318,15 +380,14 @@ async function extractionContext(
   const programs = await trx
     .selectFrom("programs as p")
     .innerJoin("colleges as c", "c.id", "p.college_id")
-    .select(["p.id", "p.college_id", "p.cohort", "p.name", sql<Kind>`p.kind`.as("kind")])
-    .select((eb) =>
-      eb
-        .selectFrom("program_fields as f")
-        .select(sql<ApplyValue>`jsonb_object_agg(split_part(f.key, ':', 2), f.value)`.as("apply"))
-        .whereRef("f.program_id", "=", "p.id")
-        .where("f.key", "like", "apply:%")
-        .as("apply"),
-    )
+    .select([
+      "p.id",
+      "p.college_id",
+      "p.cohort",
+      "p.name",
+      sql<Kind>`p.kind`.as("kind"),
+      applyOf("p.id").as("apply"),
+    ])
     .where("c.school_id", "=", school_id)
     .where("p.deleted_at", "is", null)
     .where("p.cohort", ">=", year)
@@ -417,11 +478,12 @@ export type ExtractedProgram = {
   name: string;
   role: Role;
   fields: ExtractedFields;
+  unresolved_dates?: UnresolvedDate[];
 };
 
 // Why something waits on the review page instead of going on the table (design §8.3, §8.4).
 // Deciding on it means merging and versioning, so the items belong here rather than to review.
-type ReviewReason =
+export type ReviewReason =
   // a field held back from a version
   | "evidence_not_found"
   | "low_confidence"
@@ -432,7 +494,8 @@ type ReviewReason =
   | "unknown_college"
   | "implausible_cohort"
   | "possible_duplicate"
-  | "no_deadline";
+  | "no_deadline"
+  | "unparsed_date";
 
 type ReviewItem = {
   reason: ReviewReason;
@@ -443,7 +506,7 @@ type ReviewItem = {
   payload: Json;
 };
 
-async function holdForReview(trx: Transaction<DB>, items: ReviewItem[]) {
+export async function holdForReview(trx: Transaction<DB>, items: ReviewItem[]) {
   if (items.length === 0) return;
   await trx
     .insertInto("review_items")
@@ -478,7 +541,7 @@ export async function recordExtraction(
     const snapshot = await trx
       .selectFrom("snapshots as s")
       .innerJoin("notices as n", "n.id", "s.notice_id")
-      .select(["s.text", "s.extracted_at", "n.source_id", "n.published_on"])
+      .select(["s.extracted_at", "n.source_id", "n.published_on"])
       .where("s.id", "=", snapshotId)
       .forUpdate("s")
       .executeTakeFirst();
@@ -486,17 +549,31 @@ export async function recordExtraction(
     // Sent again after a lost response: the first one counted.
     if (snapshot.extracted_at) return;
 
-    const attachments = await trx
-      .selectFrom("attachments")
-      .select("text")
-      .where("snapshot_id", "=", snapshotId)
-      .orderBy("position")
-      .execute();
-    const docs = { body: snapshot.text, attachments: attachments.map((a) => a.text) };
+    const docs = await docsOf(trx, snapshotId);
     const context = await extractionContext(trx, snapshot.source_id, snapshot.published_on);
     const year = noticeYear(snapshot.published_on);
     const held: ReviewItem[] = [];
     for (const program of programs) {
+      for (const unresolved of program.unresolved_dates ?? []) {
+        if (
+          !evidenceFound(docs, unresolved.evidence) ||
+          !unresolved.evidence.some((e) => squash(e.quote).includes(squash(unresolved.text)))
+        )
+          throw new AppError(400, "invalid_request", "未识别日期的原文与证据不符");
+        const [field, edge] = unresolved.field.split(".");
+        const interval =
+          field === "apply"
+            ? program.fields.apply
+            : field === "event"
+              ? program.fields.event
+              : undefined;
+        if (
+          (edge === "start" && interval?.value.start !== undefined) ||
+          (edge === "end" && interval?.value.end !== undefined)
+        ) {
+          throw new AppError(400, "invalid_request", "未识别的时间不能同时提交换算值");
+        }
+      }
       const hold = (reason: ReviewItem["reason"]) =>
         held.push({ reason, snapshot_id: snapshotId, payload: program });
       if (!context.colleges.some((c) => c.id === program.college_id)) hold("unknown_college");
@@ -534,7 +611,23 @@ export async function recordExtraction(
   });
 }
 
-async function mergeProgram(
+// The texts a snapshot's evidence is looked up in: its body and its attachments, by position.
+export async function docsOf(trx: Transaction<DB>, snapshotId: number) {
+  const { text } = await trx
+    .selectFrom("snapshots")
+    .select("text")
+    .where("id", "=", snapshotId)
+    .executeTakeFirstOrThrow();
+  const attachments = await trx
+    .selectFrom("attachments")
+    .select("text")
+    .where("snapshot_id", "=", snapshotId)
+    .orderBy("position")
+    .execute();
+  return { body: text, attachments: attachments.map((a) => a.text) };
+}
+
+export async function mergeProgram(
   trx: Transaction<DB>,
   snapshotId: number,
   publishedOn: string | null,
@@ -564,8 +657,19 @@ async function mergeProgram(
       });
     }
   }
-  // One version at a time per program, so their numbers don't collide.
-  await trx.selectFrom("programs").select("id").where("id", "=", programId).forUpdate().execute();
+  // One version at a time per program, so their numbers don't collide. The program may have been
+  // merged into another on the review page since the candidates were read.
+  const live = await trx
+    .selectFrom("programs")
+    .select("id")
+    .where("id", "=", programId)
+    .where("deleted_at", "is", null)
+    .forUpdate()
+    .executeTakeFirst();
+  if (!live) {
+    held.push({ reason: "unknown_program", snapshot_id: snapshotId, payload: program });
+    return held;
+  }
   const { number } = await trx
     .selectFrom("program_versions")
     .select(sql<number>`coalesce(max(number), 0) + 1`.as("number"))
@@ -609,7 +713,16 @@ async function mergeProgram(
     .where("id", "=", version.id)
     .execute();
 
-  if (program.role === "call") {
+  if (program.unresolved_dates?.length) {
+    held.push({
+      reason: "unparsed_date",
+      snapshot_id: snapshotId,
+      program_id: programId,
+      version_id: version.id,
+      payload: program,
+    });
+  }
+  if (program.role === "call" && !program.unresolved_dates?.some((d) => d.field === "apply.end")) {
     const { apply_deadline } = await trx
       .selectFrom("programs")
       .select("apply_deadline")

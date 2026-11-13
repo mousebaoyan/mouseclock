@@ -1,5 +1,8 @@
-import type { Viewer } from "../../platform/access.ts";
+import type { Transaction } from "kysely";
+import type { DB } from "../../../db/types.ts";
+import { editRevoked, type Viewer } from "../../platform/access.ts";
 import { db } from "../../platform/db.ts";
+import { AppError } from "../../platform/errors.ts";
 import { env } from "../../platform/env.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
 import { fetchProfile, type Profile } from "./mousehole.ts";
@@ -137,6 +140,30 @@ export async function refreshUsers() {
       await db.deleteFrom("sessions").where("user_id", "=", user.id).execute();
     }
   }
+}
+
+// An admin takes back someone's editing here (design §6.2); mousehole is left as it is.
+export async function revokeEditing(trx: Transaction<DB>, userId: number) {
+  const row = await trx
+    .updateTable("users")
+    .set({ edit_revoked_at: new Date() })
+    .where("id", "=", userId)
+    .returning("id")
+    .executeTakeFirst();
+  if (!row) throw new AppError(404, "not_found", "用户不存在");
+}
+
+// Taken in an edit's transaction and held until it commits. An admin taking back this person's
+// editing meanwhile waits for it, then reverts it with the rest of theirs; or the edit waits for
+// the admin and is turned down. Either way none slips past.
+export async function holdEditing(trx: Transaction<DB>, userId: number) {
+  const user = await trx
+    .selectFrom("users")
+    .select("edit_revoked_at")
+    .where("id", "=", userId)
+    .forShare()
+    .executeTakeFirstOrThrow();
+  if (user.edit_revoked_at) throw editRevoked();
 }
 
 export async function clearExpiredSessions() {
