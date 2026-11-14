@@ -1,11 +1,37 @@
 import io
 import zipfile
+from pathlib import Path
 
 import docx
 import openpyxl
 import pytest
+from PIL import Image, ImageDraw, ImageFont
 
 from crawler.parse.files import file_text
+
+
+def test_image_reads_generated_chinese_attachment() -> None:
+    image = Image.new("RGB", (1600, 500), "white")
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.truetype(Path(__file__).with_name("fixtures") / "NotoSansSC-test.ttf", 64)
+    draw.text((60, 50), "夏令营报名时间", fill="black", font=font)
+    draw.text((60, 170), "7月6日10:00至8月10日17:00", fill="black", font=font)
+    draw.text((60, 290), "请填写申请表", fill="black", font=font)
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG")
+
+    text = file_text(buffer.getvalue())
+
+    assert "夏令营报名时间" in text
+    assert "7月6日10:00至8月10日17:00" in text
+    assert "请填写申请表" in text
+
+
+def test_blank_image_has_no_words_to_read() -> None:
+    buffer = io.BytesIO()
+    Image.new("RGB", (600, 300), "white").save(buffer, format="JPEG")
+
+    assert file_text(buffer.getvalue()) == ""
 
 
 def test_word_keeps_paragraphs_and_tables_in_order_with_merged_cells_once() -> None:
@@ -80,9 +106,10 @@ def test_files_with_no_words_to_read_give_none() -> None:
     with zipfile.ZipFile(archive, "w") as files:
         files.writestr("说明.txt", "自编的说明")
     assert file_text(archive.getvalue()) == ""
-    assert file_text(b"\x89PNG\r\n\x1a\n") == ""
 
 
 def test_a_broken_file_is_an_error() -> None:
     with pytest.raises(ValueError, match="BadZipFile"):
         file_text(b"PK\x03\x04" + b"\x00" * 30)
+    with pytest.raises(ValueError, match="UnidentifiedImageError"):
+        file_text(b"\x89PNG\r\n\x1a\n")
