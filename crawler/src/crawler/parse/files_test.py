@@ -1,39 +1,25 @@
 import io
 import zipfile
-from pathlib import Path
 
 import docx
 import openpyxl
 import pytest
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
-from crawler.parse.files import file_text
+from crawler.parse.files import file_parts
+from crawler.parse.image import Picture
 
 
 # Pillow saves a picture as a PDF the way a scanner does: one picture a page, no text layer.
-@pytest.mark.parametrize("image_format", ["PNG", "PDF"])
-def test_text_is_recognized_in_images_and_scanned_pdfs(image_format: str) -> None:
-    image = Image.new("RGB", (1600, 500), "white")
-    draw = ImageDraw.Draw(image)
-    font = ImageFont.truetype(Path(__file__).with_name("fixtures") / "NotoSansSC-test.ttf", 64)
-    draw.text((60, 50), "夏令营报名时间", fill="black", font=font)
-    draw.text((60, 170), "7月6日10:00至8月10日17:00", fill="black", font=font)
-    draw.text((60, 290), "请填写申请表", fill="black", font=font)
+@pytest.mark.parametrize("image_format", ["PNG", "JPEG", "PDF"])
+def test_images_and_scanned_pdf_pages_are_left_for_the_llm(image_format: str) -> None:
     buffer = io.BytesIO()
-    image.save(buffer, format=image_format)
+    Image.new("RGB", (600, 300), "white").save(buffer, format=image_format)
 
-    text = file_text(buffer.getvalue())
+    [part] = file_parts(buffer.getvalue())
 
-    assert "夏令营报名时间" in text
-    assert "7月6日10:00至8月10日17:00" in text
-    assert "请填写申请表" in text
-
-
-def test_blank_image_has_no_words_to_read() -> None:
-    buffer = io.BytesIO()
-    Image.new("RGB", (600, 300), "white").save(buffer, format="JPEG")
-
-    assert file_text(buffer.getvalue()) == ""
+    assert isinstance(part, Picture)
+    assert Image.open(io.BytesIO(part.strips[0])).size == (600, 300)
 
 
 def test_word_keeps_paragraphs_and_tables_in_order_with_merged_cells_once() -> None:
@@ -49,9 +35,9 @@ def test_word_keeps_paragraphs_and_tables_in_order_with_merged_cells_once() -> N
     document.add_paragraph("以上名额为预计。")
     stream = io.BytesIO()
     document.save(stream)
-    assert file_text(stream.getvalue()) == (
+    assert file_parts(stream.getvalue()) == [
         "报名截止6月30日。\n专业与方向\t名额\n计算机\t人工智能\t10 截止9月20日\n以上名额为预计。"
-    )
+    ]
 
 
 def test_excel_reads_each_sheet_by_rows() -> None:
@@ -64,9 +50,9 @@ def test_excel_reads_each_sheet_by_rows() -> None:
     book.create_sheet("联系方式").append(["电话", "010-00000000"])
     stream = io.BytesIO()
     book.save(stream)
-    assert file_text(stream.getvalue()) == (
+    assert file_parts(stream.getvalue()) == [
         "专业目录\n专业\t名额\n计算机\t10\n人工智能\t5\n联系方式\n电话\t010-00000000"
-    )
+    ]
 
 
 def pdf_file(content: bytes, to_unicode: bytes) -> bytes:
@@ -100,18 +86,18 @@ def test_pdf_characters_mapped_to_look_alike_radicals_read_as_the_common_ones() 
         b" endcmap CMapName currentdict /CMap defineresource pop end end"
     )
     data = pdf_file(b"BT /F1 12 Tf 10 50 Td (AB) Tj ET", to_unicode)
-    assert file_text(data) == "学生"
+    assert file_parts(data) == ["学生"]
 
 
 def test_files_with_no_words_to_read_give_none() -> None:
     archive = io.BytesIO()
     with zipfile.ZipFile(archive, "w") as files:
         files.writestr("说明.txt", "自编的说明")
-    assert file_text(archive.getvalue()) == ""
+    assert file_parts(archive.getvalue()) == []
 
 
 def test_a_broken_file_is_an_error() -> None:
     with pytest.raises(ValueError, match="BadZipFile"):
-        file_text(b"PK\x03\x04" + b"\x00" * 30)
+        file_parts(b"PK\x03\x04" + b"\x00" * 30)
     with pytest.raises(ValueError, match="UnidentifiedImageError"):
-        file_text(b"\x89PNG\r\n\x1a\n")
+        file_parts(b"\x89PNG\r\n\x1a\n")

@@ -101,6 +101,7 @@ def page(text: str, files: int = 0) -> NoticePage:
         Attachment(
             AttachmentInfo(name=f"{n}.pdf", url=f"http://a/{n}.pdf", content_type="pdf", text="表"),
             b"%PDF",
+            [],
         )
         for n in range(files)
     ]
@@ -129,7 +130,9 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     )
 
     behind_captcha = Attachment(
-        AttachmentInfo(name="表.doc", url="http://a/表.doc", content_type="doc", text=""), None
+        AttachmentInfo(name="表.doc", url="http://a/表.doc", content_type="doc", text=""),
+        None,
+        [],
     )
     with_files = page("冬令营", files=1)
     with_files.attachments.append(behind_captcha)
@@ -236,8 +239,19 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
             return httpx.Response(200, json=body)
         return response
 
+    # Reading the picture went before the extraction, and its usage goes with it.
+    picture = Attachment(
+        AttachmentInfo(
+            name="日程.png", url="http://a/日程.png", content_type="image/png", text="日程"
+        ),
+        b"png",
+        [Usage(model="deepseek-flash", input_tokens=6000, output_tokens=1000)],
+    )
+
     async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
-        return page("报名截止6月30日24点。")
+        notice = page("报名截止6月30日24点。")
+        notice.attachments.append(picture)
+        return notice
 
     async def run() -> None:
         async with (
@@ -256,7 +270,8 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
         "end": {"date": "2026-06-30", "time": "24:00"}
     }
     assert posted["usage"] == [
-        {"model": "deepseek-flash", "input_tokens": 200, "output_tokens": 50}
+        {"model": "deepseek-flash", "input_tokens": 6000, "output_tokens": 1000},
+        {"model": "deepseek-flash", "input_tokens": 200, "output_tokens": 50},
     ]
 
 

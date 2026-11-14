@@ -42,10 +42,10 @@ crawler/                抓取节点
 | | `reminders` | 订阅、关注、邮件、群汇总 |
 | | `review` | 反馈、修改申请、修改记录和撤销、争议、操作日志 |
 | | `agents` | MCP 服务和 `/llms.txt` |
-| 抓取节点 | `crawl` | 领活、抓列表页和正文、下载附件、交结果 |
-| | `parse` | 从网页和附件里取出文字、链接、附件和日期写法，文字识别 |
+| 抓取节点 | `crawl` | 领活、抓列表页和正文、下载附件、存下读过的图片、交结果 |
+| | `parse` | 从网页和附件里取出文字、链接、附件和日期写法，把图片切成小块 |
 | | `screening` | 初筛：调用判别接口 |
-| | `extraction` | 抽取和证据校验：调用 LLM |
+| | `extraction` | 抽取和证据校验，读图片里的文字：调用 LLM |
 
 - 网站和抓取节点只通过[抓取节点接口](api.md#6-抓取节点)交接：不共享数据库，不互相引用代码。接口的类型由网站的定义生成，抓取节点不手写（[总体设计 §5.1](design.md#51-选定的方案)）：改了接口的 Zod 定义，运行 `pnpm openapi` 和 `uv run datamodel-codegen`，两边的 CI 都检查生成的文件是最新的。
 - 抓取节点交的请求里，没有的值不写这个键，不传 `null`：Zod 用 `.optional()`，抓取节点用 Pydantic 的 `model_dump(mode="json", exclude_none=True)`。网站返回的空值写成 `null`；引用了命名 schema 的可空字段写成 `z.union([Schema, z.null()])`，`.nullable()` 会把空值并进那个 schema 本身。

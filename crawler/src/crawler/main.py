@@ -7,7 +7,8 @@ import os
 import signal
 import sys
 from collections.abc import Mapping
-from contextlib import suppress
+from contextlib import closing, suppress
+from pathlib import Path
 from typing import Annotated
 
 import httpx
@@ -17,11 +18,13 @@ from crawler.crawl.browser import Browser
 from crawler.crawl.contract import WorkProbe, WorkSource
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.listing import list_items
-from crawler.crawl.notice import read_notice
+from crawler.crawl.notice import ReadNotice
 from crawler.crawl.probe import GenerateConfig, probe_source
+from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import Steps, crawl_source
 from crawler.crawl.website import Website
 from crawler.extraction.extract import Extract
+from crawler.extraction.pictures import ReadPicture
 from crawler.extraction.probe import ProbeConfig
 from crawler.extraction.responses import Responses
 from crawler.log import JsonFormatter
@@ -30,6 +33,8 @@ from crawler.screening.system_one import SystemOne
 
 # Design §16: once a minute; the dashboard flags the crawler after ten minutes without asking.
 POLL = 60.0
+# The container keeps this directory on a volume (Dockerfile); losing it only costs reading again.
+READINGS = Path.home() / ".cache" / "mouseclock" / "readings.sqlite3"
 logger = logging.getLogger(__name__)
 
 type Secret = Annotated[str, StringConstraints(min_length=1)]
@@ -120,13 +125,14 @@ async def _run(config: Config) -> None:
             Website(str(config.mouseclock_url), config.mouseclock_token) as website,
             Responses(config.llm_api_key) as llm,
         ):
-            steps = Steps(
-                list_items=list_items,
-                screen=Screen(system_one),
-                read=read_notice,
-                extract=Extract(llm),
-            )
-            await serve(website, browser, steps, stopping, ProbeConfig(llm).generate)
+            with closing(Readings(READINGS)) as readings:
+                steps = Steps(
+                    list_items=list_items,
+                    screen=Screen(system_one),
+                    read=ReadNotice(ReadPicture(llm), readings),
+                    extract=Extract(llm),
+                )
+                await serve(website, browser, steps, stopping, ProbeConfig(llm).generate)
     finally:
         await system_one.close()
 
