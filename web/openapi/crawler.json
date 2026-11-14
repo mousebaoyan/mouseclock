@@ -596,13 +596,18 @@
           "text": {
             "type": "string",
             "maxLength": 2097152
+          },
+          "read_from_pictures": {
+            "type": "boolean",
+            "description": "文字里有 LLM 从图片或扫描页读出来的部分"
           }
         },
         "required": [
           "name",
           "url",
           "content_type",
-          "text"
+          "text",
+          "read_from_pictures"
         ],
         "additionalProperties": false
       },

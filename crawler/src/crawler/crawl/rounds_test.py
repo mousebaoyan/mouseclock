@@ -99,7 +99,13 @@ async def screen(
 def page(text: str, files: int = 0) -> NoticePage:
     attachments = [
         Attachment(
-            AttachmentInfo(name=f"{n}.pdf", url=f"http://a/{n}.pdf", content_type="pdf", text="表"),
+            AttachmentInfo(
+                name=f"{n}.pdf",
+                url=f"http://a/{n}.pdf",
+                content_type="pdf",
+                text="表",
+                read_from_pictures=False,
+            ),
             b"%PDF",
             [],
         )
@@ -130,7 +136,13 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     )
 
     behind_captcha = Attachment(
-        AttachmentInfo(name="表.doc", url="http://a/表.doc", content_type="doc", text=""),
+        AttachmentInfo(
+            name="表.doc",
+            url="http://a/表.doc",
+            content_type="doc",
+            text="",
+            read_from_pictures=False,
+        ),
         None,
         [],
     )
@@ -161,6 +173,7 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         "url": "http://a/0.pdf",
         "content_type": "pdf",
         "text": "表",
+        "read_from_pictures": False,
     }
     # The one behind a captcha is listed, and there is no file to send.
     assert snapshot["attachments"][1]["url"] == "http://a/表.doc"
@@ -242,7 +255,11 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
     # Reading the picture went before the extraction, and its usage goes with it.
     picture = Attachment(
         AttachmentInfo(
-            name="日程.png", url="http://a/日程.png", content_type="image/png", text="日程"
+            name="日程.png",
+            url="http://a/日程.png",
+            content_type="image/png",
+            text="日程",
+            read_from_pictures=True,
         ),
         b"png",
         [Usage(model="deepseek-flash", input_tokens=6000, output_tokens=1000)],

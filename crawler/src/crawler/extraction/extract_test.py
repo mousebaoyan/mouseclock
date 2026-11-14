@@ -116,7 +116,11 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
     text = "报名截止为下周二17点。"
     attachment = Attachment(
         AttachmentInfo(
-            name="安排.txt", url="https://example.edu/1.txt", content_type="text/plain", text=text
+            name="安排.txt",
+            url="https://example.edu/1.txt",
+            content_type="text/plain",
+            text=text,
+            read_from_pictures=False,
         ),
         b"",
         [],

@@ -149,7 +149,8 @@ CREATE TABLE attachments (
   name          text     NOT NULL,
   url           text     NOT NULL,
   content_type  text     NOT NULL,
-  text          text     NOT NULL,             -- extracted, or recognised in images
+  text          text     NOT NULL,             -- extracted, or read by the LLM from pictures
+  read_from_pictures boolean NOT NULL,         -- evidence in it waits for review (design §8.3)
   data          bytea,                         -- NULL until the crawler uploads the file
   PRIMARY KEY (snapshot_id, position)
 );
@@ -242,7 +243,8 @@ CREATE TABLE review_items (
   id           integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
   reason       text    NOT NULL CHECK (reason IN (
                  -- a field held back from a version
-                 'evidence_not_found', 'low_confidence', 'implausible', 'conflicts_edit',
+                 'evidence_not_found', 'evidence_in_picture', 'low_confidence', 'implausible',
+                 'conflicts_edit',
                  -- a program from an extraction
                  'unknown_program', 'unknown_college', 'implausible_cohort',
                  'possible_duplicate', 'no_deadline', 'unparsed_date')),

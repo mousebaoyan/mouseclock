@@ -45,7 +45,7 @@ async function list(sourceId: number, items: { url: string; title: string }[]) {
   return res.json();
 }
 
-async function snapshot(noticeId: number, attachmentText?: string) {
+async function snapshot(noticeId: number, attachmentText?: string, readFromPictures = false) {
   const res = await api.notices[":id"].snapshot.$post(
     {
       param: { id: String(noticeId) },
@@ -62,6 +62,7 @@ async function snapshot(noticeId: number, attachmentText?: string) {
                   url: "https://x.edu.cn/f.docx",
                   content_type: "x",
                   text: attachmentText,
+                  read_from_pictures: readFromPictures,
                 },
               ],
       },
@@ -217,7 +218,7 @@ test("listing again finds nothing new and hands back what is unfinished", async 
   expect(await list(source.id, items)).toEqual({ new_count: 0, pending: [] });
 });
 
-test("the same words make no new snapshot, changed attachment text does", async () => {
+test("the same words make no new snapshot, changed attachment text or its reading does", async () => {
   const source = await newSource("c.edu.cn");
   const { pending } = await list(source.id, [{ url: "https://c.edu.cn/1.htm", title: "推免通知" }]);
   const noticeId = pending[0].id;
@@ -225,7 +226,10 @@ test("the same words make no new snapshot, changed attachment text does", async 
   const first = await snapshot(noticeId, "表");
   expect(first).toMatchObject({ missing_files: [0], extraction: { colleges: [{}] } });
   expect(await snapshot(noticeId, "表")).toEqual(first);
-  expect((await snapshot(noticeId, "新表")).snapshot_id).not.toBe(first.snapshot_id);
+  const changed = await snapshot(noticeId, "新表");
+  expect(changed.snapshot_id).not.toBe(first.snapshot_id);
+  // The same words, read from a scan this time.
+  expect((await snapshot(noticeId, "新表", true)).snapshot_id).not.toBe(changed.snapshot_id);
 });
 
 test("a notice of a program still open comes back to be fetched once a day", async () => {

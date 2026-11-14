@@ -279,6 +279,9 @@ export const ingestRoutes = router
                           url: Url,
                           content_type: z.string().min(1).max(200),
                           text: z.string().max(2 * MB),
+                          read_from_pictures: z.boolean().openapi({
+                            description: "文字里有 LLM 从图片或扫描页读出来的部分",
+                          }),
                         })
                         .openapi("AttachmentInfo"),
                     )

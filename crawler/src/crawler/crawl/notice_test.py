@@ -131,6 +131,7 @@ def test_attachments_keep_their_order_and_the_ones_not_downloaded_stay_listed(
     page = read(pages, readings, "https://example.edu.cn/old/101.htm")
     assert page is not None
     assert page.text == "自编的通知正文。\n申请表.docx\n推荐信.doc\n名单.pdf"
+    assert all(not a.info.read_from_pictures for a in page.attachments)
     assert [(a.info.name, a.info.content_type, a.info.text) for a in page.attachments] == [
         (
             "申请表.docx",
@@ -167,6 +168,8 @@ def test_the_llm_reads_a_picture_once_while_the_file_stays_the_same(readings: Re
         Usage(model="deepseek-flash", input_tokens=1000, output_tokens=100)
     ]
     assert again.attachments[0].usage == []
+    # Evidence in them waits for review, kept from before or not.
+    assert all(page.attachments[0].info.read_from_pictures for page in (first, again, changed))
     assert [len(images) for images in model.calls] == [1, 1]
     assert model.calls[0][0].startswith("data:image/png;base64,")
 
