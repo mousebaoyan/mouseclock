@@ -132,24 +132,24 @@ class Extract:
         self.llm = llm
 
     async def __call__(
-        self, title: str, page: NoticePage, context: ExtractionContext
-    ) -> tuple[list[ExtractedProgram], list[Usage]]:
+        self, title: str, page: NoticePage, context: ExtractionContext, usage: list[Usage]
+    ) -> list[ExtractedProgram]:
         payload, index = prepare(title, page, context)
         response = await self.llm.generate(payload)
-        usage = response.usage
-        if usage is None:
+        tokens = response.usage
+        if tokens is None:
             raise StepError("error", "抽取失败: missing_usage")
+        usage.append(
+            Usage(
+                model=response.model,
+                input_tokens=tokens.input_tokens,
+                output_tokens=tokens.output_tokens,
+            )
+        )
         try:
             selected = RoundSelection.model_validate_json(response.output_text(), strict=True)
-            programs = resolve_programs(selected, index, context)
+            return resolve_programs(selected, index, context)
         except ValidationError as error:
             raise StepError("error", "抽取失败: invalid_selection") from error
         except SelectionError as error:
             raise StepError("error", f"抽取失败: {error}") from error
-        return programs, [
-            Usage(
-                model=response.model,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-            )
-        ]

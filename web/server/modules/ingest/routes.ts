@@ -408,6 +408,17 @@ export const ingestRoutes = router
                   new_count: Int.min(0),
                   useful_count: Int.min(0).openapi({ description: "新通知里抽取出项目的" }),
                   notice_failures: z.array(NoticeFailure).max(5000),
+                  usage: z
+                    .array(
+                      Usage.extend({ purpose: z.enum(["screening", "extraction"]) }).openapi(
+                        "RunUsage",
+                      ),
+                    )
+                    .max(5000)
+                    .openapi({
+                      description:
+                        "没随初筛或抽取交上来的模型调用：中途失败的，读了图片却不用再抽取的",
+                    }),
                 })
                 .openapi("Run"),
             },

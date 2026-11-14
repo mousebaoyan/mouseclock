@@ -60,8 +60,9 @@ def test_batch_preserves_notice_mapping_threshold_boundary_and_usage() -> None:
             )
             for n, title in [(11, "At threshold"), (12, "Below threshold")]
         ]
+        usage: list[Usage] = []
         try:
-            return await Screen(provider)(source(), notices)
+            return await Screen(provider)(source(), notices, usage), usage
         finally:
             await provider.close()
 
@@ -72,29 +73,56 @@ def test_batch_preserves_notice_mapping_threshold_boundary_and_usage() -> None:
     assert {u.model for u in usage} == {"SemIf"}
 
 
-def test_provider_failure_fails_the_screening() -> None:
+def test_provider_failure_fails_the_screening_and_keeps_what_it_cost_so_far() -> None:
+    # What the round has to report when the screening fails.
+    spent: list[Usage] = []
+    titles: list[str] = []
+
     async def run() -> None:
-        provider = SystemOne(
-            "local-test", httpx.MockTransport(lambda _: httpx.Response(503, text="private body"))
-        )
-        try:
-            await Screen(provider)(
-                source(),
-                [
-                    PendingNotice(
-                        id=1,
-                        url="https://example.edu.cn/1",
-                        title="Example",
-                        published_on=None,
-                        step="screen",
-                    )
-                ],
+        failed = asyncio.Event()
+
+        async def handle(request: httpx.Request) -> httpx.Response:
+            title = json.loads(request.content)["state"]["title"]
+            titles.append(title)
+            if title == "fails":
+                failed.set()
+                # It answered, and costs what it says, but the answer is no good.
+                return httpx.Response(
+                    200,
+                    json={
+                        "model": "SemIf",
+                        "answers": {},
+                        "usage": {"input_tokens": 20, "output_tokens": 1},
+                    },
+                )
+            # The other call in its chunk comes back after the failure.
+            await failed.wait()
+            for _ in range(20):
+                await asyncio.sleep(0)
+            return response(0.5)
+
+        provider = SystemOne("local-test", httpx.MockTransport(handle))
+        notices = [
+            PendingNotice(
+                id=n,
+                url=f"https://example.edu.cn/{n}",
+                title=title,
+                published_on=None,
+                step="screen",
             )
+            for n, title in enumerate(["fails", "late", "next chunk"])
+        ]
+        usage: list[Usage] = []
+        try:
+            with pytest.raises(StepError, match="invalid_response"):
+                await Screen(provider)(source(), notices, usage)
+            spent.extend(usage)
         finally:
             await provider.close()
 
-    with pytest.raises(StepError, match="http_503"):
-        asyncio.run(run())
+    asyncio.run(run())
+    assert [u.input_tokens for u in spent] == [20, 20]
+    assert "next chunk" not in titles
 
 
 def test_rounds_sharing_a_screen_share_its_limit() -> None:
@@ -121,7 +149,9 @@ def test_rounds_sharing_a_screen_share_its_limit() -> None:
             for n in range(4)
         ]
         try:
-            await asyncio.gather(screen(source(), notices[:2]), screen(source(), notices[2:]))
+            await asyncio.gather(
+                screen(source(), notices[:2], []), screen(source(), notices[2:], [])
+            )
         finally:
             await provider.close()
 

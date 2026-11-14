@@ -24,7 +24,7 @@ class ReadPicture:
     def __init__(self, llm: Responses) -> None:
         self.llm = llm
 
-    async def __call__(self, picture: Picture) -> tuple[str, Usage]:
+    async def __call__(self, picture: Picture, usage: list[Usage]) -> str:
         images: list[JsonValue] = [
             {
                 "type": "input_image",
@@ -44,9 +44,14 @@ class ReadPicture:
                 "store": False,
             }
         )
-        usage = response.usage
-        if usage is None:
+        tokens = response.usage
+        if tokens is None:
             raise StepError("error", "读图失败: missing_usage")
-        return response.output_text(), Usage(
-            model=response.model, input_tokens=usage.input_tokens, output_tokens=usage.output_tokens
+        usage.append(
+            Usage(
+                model=response.model,
+                input_tokens=tokens.input_tokens,
+                output_tokens=tokens.output_tokens,
+            )
         )
+        return response.output_text()

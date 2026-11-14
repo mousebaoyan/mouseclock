@@ -158,6 +158,13 @@ class NoticeFailure(BaseModel):
     )
 
 
+class RunUsage(Usage):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    purpose: Literal["screening", "extraction"]
+
+
 class ProbeReport(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
@@ -333,6 +340,13 @@ class Run(BaseModel):
     new_count: Annotated[int, Field(ge=0, le=2147483647)]
     useful_count: Annotated[int, Field(description="新通知里抽取出项目的", ge=0, le=2147483647)]
     notice_failures: Annotated[list[NoticeFailure], Field(max_length=5000)]
+    usage: Annotated[
+        list[RunUsage],
+        Field(
+            description="没随初筛或抽取交上来的模型调用：中途失败的，读了图片却不用再抽取的",
+            max_length=5000,
+        ),
+    ]
 
 
 class Work(BaseModel):

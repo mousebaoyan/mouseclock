@@ -87,13 +87,13 @@ async def list_items(_pages: PageSession, _source: WorkSource) -> list[ListedIte
 
 
 async def screen(
-    _source: WorkSource, notices: list[PendingNotice]
-) -> tuple[list[ScreeningResult], list[Usage]]:
-    results = [
+    _source: WorkSource, notices: list[PendingNotice], usage: list[Usage]
+) -> list[ScreeningResult]:
+    usage += USAGE
+    return [
         ScreeningResult(notice_id=n.id, score=0.9 if n.id == 1 else 0.1, screened_in=n.id == 1)
         for n in notices
     ]
-    return results, USAGE
 
 
 def page(text: str, files: int = 0) -> NoticePage:
@@ -107,7 +107,6 @@ def page(text: str, files: int = 0) -> NoticePage:
                 read_from_pictures=False,
             ),
             b"%PDF",
-            [],
         )
         for n in range(files)
     ]
@@ -115,8 +114,8 @@ def page(text: str, files: int = 0) -> NoticePage:
 
 
 async def extract(
-    _title: str, _page: NoticePage, _context: ExtractionContext
-) -> tuple[list[ExtractedProgram], list[Usage]]:
+    _title: str, _page: NoticePage, _context: ExtractionContext, usage: list[Usage]
+) -> list[ExtractedProgram]:
     program = ExtractedProgram(
         college_id=1,
         cohort=2028,
@@ -125,7 +124,8 @@ async def extract(
         role="call",
         fields=ExtractedFields(),
     )
-    return [program], USAGE
+    usage += USAGE
+    return [program]
 
 
 def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
@@ -144,12 +144,16 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
             read_from_pictures=False,
         ),
         None,
-        [],
     )
     with_files = page("冬令营", files=1)
     with_files.attachments.append(behind_captcha)
 
-    async def read(_pages: PageSession, _source: WorkSource, url: str) -> NoticePage | None:
+    async def read(
+        _pages: PageSession, _source: WorkSource, url: str, usage: list[Usage]
+    ) -> NoticePage | None:
+        if url == "http://a/3.htm":
+            # Its pictures were read again, but there is nothing new to extract.
+            usage.append(Usage(model="deepseek-flash", input_tokens=6000, output_tokens=1000))
         return {"http://a/1.htm": with_files, "http://a/3.htm": page("夏令营")}.get(url)
 
     site.run(Steps(list_items, screen, read, extract))
@@ -187,6 +191,14 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         "new_count": 2,
         "useful_count": 1,
         "notice_failures": [],
+        "usage": [
+            {
+                "purpose": "extraction",
+                "model": "deepseek-flash",
+                "input_tokens": 6000,
+                "output_tokens": 1000,
+            }
+        ],
     }
 
 
@@ -262,12 +274,14 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
             read_from_pictures=True,
         ),
         b"png",
-        [Usage(model="deepseek-flash", input_tokens=6000, output_tokens=1000)],
     )
 
-    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage:
+    async def read(
+        _pages: PageSession, _source: WorkSource, _url: str, usage: list[Usage]
+    ) -> NoticePage:
         notice = page("报名截止6月30日24点。")
         notice.attachments.append(picture)
+        usage.append(Usage(model="deepseek-flash", input_tokens=6000, output_tokens=1000))
         return notice
 
     async def run() -> None:
@@ -295,11 +309,15 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
 def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
     site = FakeWebsite([pending(n, "fetch") for n in range(1, 5)], extracted=frozenset())
 
-    async def read(_pages: PageSession, _source: WorkSource, url: str) -> NoticePage | None:
+    async def read(
+        _pages: PageSession, _source: WorkSource, url: str, usage: list[Usage]
+    ) -> NoticePage | None:
         if url == "http://a/1.htm":
             raise FetchError("timeout", url)
         if url == "http://a/2.htm":
-            raise StepError("http_status", "HTTP 403")
+            # One picture read, the next not.
+            usage += USAGE
+            raise StepError("error", "模型调用失败: http_503")
         if url == "http://a/3.htm":
             raise FetchError("unreachable", "http://a/files/application.pdf")
         return page("冬令营")
@@ -310,12 +328,15 @@ def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
     [run] = site.called("POST /runs")
     assert run["notice_failures"] == [
         {"url": "http://a/1.htm", "failure": "timeout", "detail": "http://a/1.htm"},
-        {"url": "http://a/2.htm", "failure": "http_status", "detail": "HTTP 403"},
+        {"url": "http://a/2.htm", "failure": "error", "detail": "模型调用失败: http_503"},
         {
             "url": "http://a/3.htm",
             "failure": "unreachable",
             "detail": "http://a/files/application.pdf",
         },
+    ]
+    assert run["usage"] == [
+        {"purpose": "extraction", "model": "m", "input_tokens": 10, "output_tokens": 1}
     ]
 
 
@@ -323,11 +344,15 @@ def test_notices_screening_failed_for_are_reported_and_the_round_goes_on() -> No
     site = FakeWebsite([pending(1, "screen"), pending(2, "fetch")], extracted=frozenset())
 
     async def failing(
-        _source: WorkSource, _notices: list[PendingNotice]
-    ) -> tuple[list[ScreeningResult], list[Usage]]:
+        _source: WorkSource, _notices: list[PendingNotice], usage: list[Usage]
+    ) -> list[ScreeningResult]:
+        # The first call went through, the second not.
+        usage += USAGE
         raise StepError("error", "http_429")
 
-    async def read(_pages: PageSession, _source: WorkSource, _url: str) -> NoticePage | None:
+    async def read(
+        _pages: PageSession, _source: WorkSource, _url: str, _usage: list[Usage]
+    ) -> NoticePage | None:
         return page("冬令营")
 
     site.run(Steps(list_items, failing, read, extract))
@@ -342,6 +367,9 @@ def test_notices_screening_failed_for_are_reported_and_the_round_goes_on() -> No
     assert "failure" not in run
     assert run["notice_failures"] == [
         {"url": "http://a/1.htm", "failure": "error", "detail": "http_429"}
+    ]
+    assert run["usage"] == [
+        {"purpose": "screening", "model": "m", "input_tokens": 10, "output_tokens": 1}
     ]
 
 

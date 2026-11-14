@@ -364,6 +364,7 @@ for (const school of SCHOOLS) {
                 failure: "timeout" as const,
               }))
             : [],
+        usage: [],
       });
     }
     i++;

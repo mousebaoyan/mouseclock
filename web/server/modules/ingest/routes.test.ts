@@ -78,7 +78,7 @@ test("only a valid crawler token gets in", async () => {
   expect(res.status).toBe(401);
 });
 
-test("a due source is handed out once until its round is reported", async () => {
+test("a due source is handed out once until its round is reported, its failed calls once", async () => {
   const source = await newSource("a.edu.cn");
   const handedOut = async () => (await work()).sources.filter((s) => s.id === source.id);
   expect(await handedOut()).toMatchObject([{ backfill: true }]);
@@ -93,6 +93,15 @@ test("a due source is handed out once until its round is reported", async () => 
     new_count: 0,
     useful_count: 0,
     notice_failures: [],
+    usage: [
+      { purpose: "screening" as const, model: "SemIf", input_tokens: 30, output_tokens: 1 },
+      {
+        purpose: "extraction" as const,
+        model: "deepseek-flash",
+        input_tokens: 9,
+        output_tokens: 2,
+      },
+    ],
   };
   expect((await api.runs.$post({ json }, crawler)).status).toBe(204);
   expect((await api.runs.$post({ json }, crawler)).status).toBe(204);
@@ -102,6 +111,16 @@ test("a due source is handed out once until its round is reported", async () => 
     .where("source_id", "=", source.id)
     .execute();
   expect(runs).toHaveLength(1);
+  const calls = await db
+    .selectFrom("model_calls")
+    .select(["purpose", "snapshot_id", "input_tokens"])
+    .where("source_id", "=", source.id)
+    .orderBy("id")
+    .execute();
+  expect(calls).toEqual([
+    { purpose: "screening", snapshot_id: null, input_tokens: 30 },
+    { purpose: "extraction", snapshot_id: null, input_tokens: 9 },
+  ]);
   expect(await handedOut()).toEqual([]);
 
   await db

@@ -169,7 +169,7 @@ def test_probe_and_extraction_share_the_same_model_limit() -> None:
             async with asyncio.TaskGroup() as tasks:
                 for _ in range(3):
                     tasks.create_task(probe.generate(HTML, URL, None, []))
-                    tasks.create_task(extract("通知", page, context()))
+                    tasks.create_task(extract("通知", page, context(), []))
                 await full.wait()
                 release.set()
 

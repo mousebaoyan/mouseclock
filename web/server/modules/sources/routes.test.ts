@@ -243,6 +243,7 @@ test("admins maintain schools, colleges and sources with before/after audit reco
     new_count: 0,
     useful_count: 0,
     notice_failures: [],
+    usage: [],
   });
   // Inserted later but finished earlier: latest means finished_at, not row ID.
   await recordRun({
@@ -253,6 +254,7 @@ test("admins maintain schools, colleges and sources with before/after audit reco
     new_count: 2,
     useful_count: 1,
     notice_failures: [],
+    usage: [],
   });
   const listRes = await api.admin.sources.$get({ query: { q: "测试大学" } }, admin);
   expect(listRes.status).toBe(200);
@@ -327,6 +329,7 @@ test("a source paused after leasing still accepts listing and run results withou
             new_count: 1,
             useful_count: 0,
             notice_failures: [],
+            usage: [],
           },
         },
         crawler,
