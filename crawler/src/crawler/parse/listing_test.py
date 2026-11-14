@@ -94,19 +94,35 @@ def test_rows_with_only_the_month_and_day_take_the_year_from_their_group_title()
         date=".//div[contains(@class,'date-box')]",
     )
     grouped = parse_listing((FIXTURES / "month-groups.html").read_bytes(), BASE, selectors)
-    ungrouped = parse_listing(
-        b'<ul><li><span>09-10</span><a href="1.htm">\xe7\x94\xb2</a></li></ul>',
-        BASE,
-        Selectors(items="//li", title=".//a", link=".//a/@href", date=".//span"),
-    )
 
     assert [(item.title, item.published_on) for item in grouped.items] == [
         ("示例招生通知甲", date(2026, 9, 10)),
         ("示例招生通知乙", date(2026, 9, 9)),
         ("示例招生通知丙", date(2025, 12, 30)),
     ]
-    # No year is guessed.
-    assert [item.published_on for item in ungrouped.items] == [None]
+
+
+@pytest.mark.parametrize(
+    ("heading", "shown", "date_selector"),
+    [
+        (None, "09-10", ".//span"),
+        # Not a group's year.
+        ("2025-2026学年", "7月10日", ".//span"),
+        ("2020年网站改版", "09-10", ".//span"),
+        # Not just a month and day.
+        ("2024年", "2025-02-29", ".//span"),
+        ("2024年", "电话 010-12-10", ".//span"),
+        ("2026年", "09-10", "."),
+    ],
+)
+def test_no_year_is_guessed(heading: str | None, shown: str, date_selector: str) -> None:
+    title = "" if heading is None else f"<h3>{heading}</h3>"
+    body = f'{title}<ul><li><a href="1.htm">第2批(9/1)通知</a><span>{shown}</span></li></ul>'
+    selectors = Selectors(items="//li", title=".//a", link=".//a/@href", date=date_selector)
+
+    [item] = parse_listing(body.encode(), BASE, selectors, "text/html; charset=utf-8").items
+
+    assert item.published_on is None
 
 
 def test_documented_http_configuration_reads_the_real_page_structure() -> None:
