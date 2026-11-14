@@ -10,7 +10,9 @@ from PIL import Image, ImageDraw, ImageFont
 from crawler.parse.files import file_text
 
 
-def test_image_reads_generated_chinese_attachment() -> None:
+# Pillow saves a picture as a PDF the way a scanner does: one picture a page, no text layer.
+@pytest.mark.parametrize("image_format", ["PNG", "PDF"])
+def test_text_is_recognized_in_images_and_scanned_pdfs(image_format: str) -> None:
     image = Image.new("RGB", (1600, 500), "white")
     draw = ImageDraw.Draw(image)
     font = ImageFont.truetype(Path(__file__).with_name("fixtures") / "NotoSansSC-test.ttf", 64)
@@ -18,7 +20,7 @@ def test_image_reads_generated_chinese_attachment() -> None:
     draw.text((60, 170), "7月6日10:00至8月10日17:00", fill="black", font=font)
     draw.text((60, 290), "请填写申请表", fill="black", font=font)
     buffer = io.BytesIO()
-    image.save(buffer, format="PNG")
+    image.save(buffer, format=image_format)
 
     text = file_text(buffer.getvalue())
 

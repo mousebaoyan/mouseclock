@@ -1,5 +1,5 @@
-"""The words in the files notices attach (design §5.1): images, PDF, Word and Excel, including
-the old binary formats. Archives and other files have none to read."""
+"""The words in the files notices attach (design §5.1): images, PDF (scanned pages too), Word and
+Excel, including the old binary formats. Archives and other files have none to read."""
 
 import io
 import unicodedata
@@ -12,7 +12,7 @@ import xlrd
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 from legacy_doc import extract_text
-from pypdf import PdfReader
+from pypdf import PageObject, PdfReader
 
 from crawler.parse.image import image_text
 
@@ -41,7 +41,7 @@ def file_text(data: bytes) -> str:
             return image_text(data)
         if data.startswith(_PDF):
             pages = PdfReader(io.BytesIO(data)).pages
-            return "\n".join(page.extract_text() for page in pages).translate(_RADICALS)
+            return "\n".join(_page_text(page) for page in pages).translate(_RADICALS)
         if data.startswith(_ZIP):
             parts = set(zipfile.ZipFile(io.BytesIO(data)).namelist())
             if "word/document.xml" in parts:
@@ -54,6 +54,12 @@ def file_text(data: bytes) -> str:
     except Exception as error:
         raise ValueError(type(error).__name__) from error
     return ""
+
+
+def _page_text(page: PageObject) -> str:
+    text = page.extract_text()
+    # A scanned page is a picture with no text layer; scanners put one picture on each page.
+    return text if text.strip() else "\n".join(image_text(image.data) for image in page.images)
 
 
 def _lines(lines: Iterable[str]) -> str:
