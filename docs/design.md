@@ -633,7 +633,7 @@ L3 以上可以不提申请，直接修改，同样要写理由、附依据。�
 - **发布**：
   1. 先把线上的库导出一份，做法同鼠洞。
   2. 在 `main` 上打标签并推送，等 release 工作流把两个镜像推到 GHCR。
-  3. 两台机器上各自在项目目录里 `docker compose pull && docker compose up -d`。
+  3. 两台机器上各自在项目目录里 `docker compose pull && docker compose up -d`。香港那台和鼠洞一样，用空的 `DOCKER_CONFIG` 匿名拉取：root 的 Docker 配置里有一个拉不了公开包的 ghcr.io 登录。
   4. 确认 `/healthz` 返回 200，抓取看板上抓取节点按时来领活。
 - **备份**：数据库每天备份，做法同鼠洞：1Panel 的计划任务，本机和 Google Drive 各留 7 份。快照和附件的文件都在库里，一起备份。
 - **日志**：两边都只往 stdout 写 JSON 日志，Docker 按 10MB 一个文件轮转，留 5 个。
