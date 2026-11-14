@@ -293,21 +293,24 @@ export async function recordSnapshot(
       .orderBy("id", "desc")
       .limit(1)
       .executeTakeFirst();
-    const latestTexts =
+    const latestAttachments =
       latest &&
-      (
-        await trx
-          .selectFrom("attachments")
-          .select("text")
-          .where("snapshot_id", "=", latest.id)
-          .orderBy("position")
-          .execute()
-      ).map((a) => a.text);
+      (await trx
+        .selectFrom("attachments")
+        .select(["text", "read_from_pictures"])
+        .where("snapshot_id", "=", latest.id)
+        .orderBy("position")
+        .execute());
+    // Words read from pictures make their evidence wait for review (design §8.3).
     const unchanged =
       latest !== undefined &&
       latest.text === submission.text &&
-      latestTexts?.length === submission.attachments.length &&
-      latestTexts.every((text, i) => text === submission.attachments[i].text);
+      latestAttachments?.length === submission.attachments.length &&
+      latestAttachments.every(
+        (a, i) =>
+          a.text === submission.attachments[i].text &&
+          a.read_from_pictures === submission.attachments[i].read_from_pictures,
+      );
 
     const snapshot = unchanged
       ? latest
