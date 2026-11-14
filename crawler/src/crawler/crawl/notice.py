@@ -31,13 +31,13 @@ class ReadNotice:
     them, and the same file at the same address keeps the words it read (design §7.4)."""
 
     def __init__(
-        self, read_picture: Callable[[Picture], Awaitable[tuple[str, Usage]]], readings: Readings
+        self, read_picture: Callable[[Picture, list[Usage]], Awaitable[str]], readings: Readings
     ) -> None:
         self.read_picture = read_picture
         self.readings = readings
 
     async def __call__(
-        self, pages: PageSession, _source: WorkSource, url: str
+        self, pages: PageSession, _source: WorkSource, url: str, usage: list[Usage]
     ) -> NoticePage | None:
         response = await pages.get(url)
         if response.status in {404, 410}:
@@ -56,14 +56,14 @@ class ReadNotice:
                 extra={"url": url},
             )
         attachments = [
-            await self._attachment(pages, link, response.url)
+            await self._attachment(pages, link, response.url, usage)
             for link in notice.attachments[:MAX_ATTACHMENTS]
         ]
         return NoticePage(notice.html, notice.text, notice.hyperlinks, attachments)
 
     # Listed whatever happens to the file, so the positions evidence refers to stay put.
     async def _attachment(
-        self, pages: PageSession, link: AttachmentLink, page_url: str
+        self, pages: PageSession, link: AttachmentLink, page_url: str, usage: list[Usage]
     ) -> Attachment:
         content_type = (
             _TYPES.guess_file_type(link.name)[0]
@@ -73,10 +73,9 @@ class ReadNotice:
         data = await _download(pages, link.url, page_url)
         text = ""
         pictures = False
-        usage: list[Usage] = []
         if data is not None:
             try:
-                text, pictures, usage = await self._text(link.url, data)
+                text, pictures = await self._text(link.url, data, usage)
             except ValueError as error:
                 logger.warning("Attachment unreadable: %s", error, extra={"url": link.url})
         info = AttachmentInfo(
@@ -86,26 +85,24 @@ class ReadNotice:
             text=text[:MAX_TEXT],
             read_from_pictures=pictures,
         )
-        return Attachment(info, data, usage)
+        return Attachment(info, data)
 
-    async def _text(self, url: str, data: bytes) -> tuple[str, bool, list[Usage]]:
-        """The file's words, whether the LLM read any of them from pictures, and what that cost."""
+    async def _text(self, url: str, data: bytes, usage: list[Usage]) -> tuple[str, bool]:
+        """The file's words, and whether the LLM read any of them from pictures."""
         # Only words read from pictures are kept.
         if (kept := self.readings.text(url, data)) is not None:
-            return kept, True, []
-        texts: list[str] = []
-        usage: list[Usage] = []
-        for part in await asyncio.to_thread(file_parts, data):
-            if isinstance(part, str):
-                texts.append(part)
-                continue
-            text, used = await self.read_picture(part)
-            texts.append(text)
-            usage.append(used)
-        text = "\n".join(texts)
-        if usage:
+            return kept, True
+        parts = await asyncio.to_thread(file_parts, data)
+        text = "\n".join(
+            [
+                part if isinstance(part, str) else await self.read_picture(part, usage)
+                for part in parts
+            ]
+        )
+        pictures = any(isinstance(part, Picture) for part in parts)
+        if pictures:
             self.readings.keep(url, data, text)
-        return text, bool(usage), usage
+        return text, pictures
 
 
 async def _download(pages: PageSession, url: str, page_url: str) -> bytes | None:

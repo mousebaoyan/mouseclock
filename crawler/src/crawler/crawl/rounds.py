@@ -19,6 +19,7 @@ from crawler.crawl.contract import (
     NoticeFailure,
     PendingNotice,
     Run,
+    RunUsage,
     Screening,
     ScreeningResult,
     Snapshot,
@@ -47,9 +48,6 @@ class Attachment:
     info: AttachmentInfo
     # None when the file couldn't be downloaded; the snapshot lists it all the same.
     data: bytes | None
-    # What the LLM's reading its pictures cost, none when the words were kept from before
-    # (design §7.4); it goes with the notice's extraction (§8.6).
-    usage: list[Usage]
 
 
 @dataclass(frozen=True)
@@ -63,20 +61,22 @@ class NoticePage:
     attachments: list[Attachment]
 
 
+# The steps that call models add each call's usage to the list they're given as it comes back, so
+# what a call cost is counted even when the step fails after it (design §8.6).
 @dataclass(frozen=True)
 class Steps:
     # The items on the source's list page, paging back two years when it is new (design §7.1).
     list_items: Callable[[PageSession, WorkSource], Awaitable[list[ListedItem]]]
     # A score for each notice by its title alone (design §8.1).
     screen: Callable[
-        [WorkSource, list[PendingNotice]], Awaitable[tuple[list[ScreeningResult], list[Usage]]]
+        [WorkSource, list[PendingNotice], list[Usage]], Awaitable[list[ScreeningResult]]
     ]
-    # A notice's page with its attachments downloaded and read; None when the page answers
-    # 404 or 410 (design §7.4).
-    read: Callable[[PageSession, WorkSource, str], Awaitable[NoticePage | None]]
+    # A notice's page with its attachments downloaded and read, the LLM reading the pictures in
+    # them; None when the page answers 404 or 410 (design §7.4).
+    read: Callable[[PageSession, WorkSource, str, list[Usage]], Awaitable[NoticePage | None]]
     # The programs a notice is about (design §8.2).
     extract: Callable[
-        [str, NoticePage, ExtractionContext], Awaitable[tuple[list[ExtractedProgram], list[Usage]]]
+        [str, NoticePage, ExtractionContext, list[Usage]], Awaitable[list[ExtractedProgram]]
     ]
 
 
@@ -114,6 +114,7 @@ async def crawl_source(
                     new_count=0,
                     useful_count=0,
                     notice_failures=[],
+                    usage=[],
                 )
             )
             return
@@ -122,9 +123,12 @@ async def crawl_source(
         new = [notice for notice in listing.pending if notice.step == "screen"]
         to_fetch = [notice for notice in listing.pending if notice.step == "fetch"]
         failures: list[NoticeFailure] = []
+        # What the calls that failed, or whose answers weren't needed, cost.
+        unreported: list[RunUsage] = []
         if new:
+            usage: list[Usage] = []
             try:
-                results, usage = await steps.screen(source, new)
+                results = await steps.screen(source, new, usage)
             except StepError as error:
                 # They stay unscreened and come back next round; the open programs' notices
                 # are still fetched.
@@ -133,6 +137,7 @@ async def crawl_source(
                     NoticeFailure(url=notice.url, failure=error.failure, detail=error.detail)
                     for notice in new
                 ]
+                unreported += [RunUsage(purpose="screening", **u.model_dump()) for u in usage]
             else:
                 await website.screening(source.id, Screening(results=results, usage=usage))
                 screened_in = {result.notice_id for result in results if result.screened_in}
@@ -140,14 +145,18 @@ async def crawl_source(
 
         useful = 0
         for notice in to_fetch:
+            # Reading pictures counts as extraction.
+            usage = []
             try:
-                programs = await _fetch_notice(notice, source, pages, website, steps, clock)
+                programs = await _fetch_notice(notice, source, pages, website, steps, clock, usage)
             except (FetchError, StepError) as error:
                 logger.warning("Fetching a notice failed: %s", error, extra={"url": notice.url})
                 failure, detail = _failure(error)
                 failures.append(NoticeFailure(url=notice.url, failure=failure, detail=detail))
-                continue
-            if programs and notice.step == "screen":
+                programs = None
+            if programs is None:
+                unreported += [RunUsage(purpose="extraction", **u.model_dump()) for u in usage]
+            elif programs and notice.step == "screen":
                 useful += 1
 
         await website.run(
@@ -159,12 +168,13 @@ async def crawl_source(
                 new_count=listing.new_count,
                 useful_count=useful,
                 notice_failures=failures,
+                usage=unreported,
             )
         )
 
 
-# Returns how many programs the notice turned out to be about; none when it was gone,
-# unchanged, or about nothing.
+# Returns how many programs the notice turned out to be about, None when there was nothing to
+# extract: it was gone, or unchanged since its extraction.
 async def _fetch_notice(
     notice: PendingNotice,
     source: WorkSource,
@@ -172,11 +182,12 @@ async def _fetch_notice(
     website: Website,
     steps: Steps,
     clock: Callable[[], float],
-) -> int:
-    page = await steps.read(pages, source, notice.url)
+    usage: list[Usage],
+) -> int | None:
+    page = await steps.read(pages, source, notice.url, usage)
     if page is None:
         await website.removed(notice.id)
-        return 0
+        return None
     result = await website.snapshot(
         notice.id,
         Snapshot(
@@ -190,10 +201,7 @@ async def _fetch_notice(
         if (data := page.attachments[position].data) is not None:
             await website.attachment(result.snapshot_id, position, data)
     if result.extraction is None:
-        return 0
-    programs, usage = await steps.extract(notice.title, page, result.extraction)
-    reading = [used for attachment in page.attachments for used in attachment.usage]
-    await website.extraction(
-        result.snapshot_id, Extraction(programs=programs, usage=reading + usage)
-    )
+        return None
+    programs = await steps.extract(notice.title, page, result.extraction, usage)
+    await website.extraction(result.snapshot_id, Extraction(programs=programs, usage=usage))
     return len(programs)

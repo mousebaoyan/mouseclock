@@ -5,7 +5,7 @@ from datetime import date
 import httpx
 import pytest
 
-from crawler.crawl.contract import AttachmentInfo, ExtractionContext
+from crawler.crawl.contract import AttachmentInfo, ExtractionContext, Usage
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
 from crawler.extraction.extract import (
     Extract,
@@ -85,7 +85,8 @@ def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
     async def run() -> None:
         async with Responses("local-test", httpx.MockTransport(handle)) as llm:
             extract = Extract(llm)
-            programs, usage = await extract("夏令营延期", page, context())
+            usage: list[Usage] = []
+            programs = await extract("夏令营延期", page, context(), usage)
         [program] = programs
         assert (program.college_id, program.program_id) == (12, 100)
         assert program.fields.apply is not None
@@ -123,7 +124,6 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
             read_from_pictures=False,
         ),
         b"",
-        [],
     )
     _, index = prepare(
         "通知", NoticePage("", "见附件。", hyperlinks=(), attachments=[attachment]), context()
@@ -178,7 +178,9 @@ def answer(text: str) -> httpx.Response:
         (json.dumps({"programs": [selection() | {"college_id": 99}]}), "unknown_college"),
     ],
 )
-def test_invalid_selection_fails_the_entire_step(text: str, code: str) -> None:
+def test_invalid_selection_fails_the_entire_step_and_still_costs(text: str, code: str) -> None:
+    usage: list[Usage] = []
+
     async def run() -> None:
         async with Responses("local-test", httpx.MockTransport(lambda _: answer(text))) as llm:
             extract = Extract(llm)
@@ -187,9 +189,11 @@ def test_invalid_selection_fails_the_entire_step(text: str, code: str) -> None:
                     "通知",
                     NoticePage("", "报名截止6月30日。", hyperlinks=(), attachments=[]),
                     context(),
+                    usage,
                 )
 
     asyncio.run(run())
+    assert [u.input_tokens for u in usage] == [100]
 
 
 def test_missing_usage_is_not_reported_as_a_free_success() -> None:
@@ -216,7 +220,10 @@ def test_missing_usage_is_not_reported_as_a_free_success() -> None:
             extract = Extract(llm)
             with pytest.raises(StepError, match="missing_usage"):
                 await extract(
-                    "通知", NoticePage("", "无关材料。", hyperlinks=(), attachments=[]), context()
+                    "通知",
+                    NoticePage("", "无关材料。", hyperlinks=(), attachments=[]),
+                    context(),
+                    [],
                 )
 
     asyncio.run(run())

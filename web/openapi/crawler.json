@@ -1236,6 +1236,14 @@
               "$ref": "#/components/schemas/NoticeFailure"
             },
             "maxItems": 5000
+          },
+          "usage": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RunUsage"
+            },
+            "maxItems": 5000,
+            "description": "没随初筛或抽取交上来的模型调用：中途失败的，读了图片却不用再抽取的"
           }
         },
         "required": [
@@ -1245,7 +1253,8 @@
           "listed",
           "new_count",
           "useful_count",
-          "notice_failures"
+          "notice_failures",
+          "usage"
         ],
         "additionalProperties": false
       },
@@ -1290,6 +1299,29 @@
           "failure"
         ],
         "additionalProperties": false
+      },
+      "RunUsage": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Usage"
+          },
+          {
+            "type": "object",
+            "properties": {
+              "purpose": {
+                "type": "string",
+                "enum": [
+                  "screening",
+                  "extraction"
+                ]
+              }
+            },
+            "required": [
+              "purpose"
+            ],
+            "additionalProperties": false
+          }
+        ]
       },
       "ProbeReport": {
         "type": "object",

@@ -76,13 +76,16 @@ def read(
     readings: Readings,
     url: str = PAGE,
     model: FakeModel | None = None,
+    usage: list[Usage] | None = None,
 ) -> NoticePage | None:
     transport = httpx.MockTransport((model or FakeModel()).handle)
 
     async def use(fetcher: Fetcher) -> NoticePage | None:
         async with Responses("local-test", transport) as llm:
             read_notice = ReadNotice(ReadPicture(llm), readings)
-            return await read_notice(PageSession(fetcher, None), SOURCE, url)
+            return await read_notice(
+                PageSession(fetcher, None), SOURCE, url, [] if usage is None else usage
+            )
 
     return FakeSites(pages).run(use)
 
@@ -149,45 +152,59 @@ def test_the_llm_reads_a_picture_once_while_the_file_stays_the_same(readings: Re
     poster = "https://example.edu.cn/info/1001/poster.png"
     model = FakeModel()
 
-    def read_with(image: bytes) -> NoticePage:
+    usage: list[list[Usage]] = [[], [], []]
+
+    def read_with(image: bytes, spent: list[Usage]) -> NoticePage:
         pages = {PAGE: httpx.Response(200, html=body), poster: httpx.Response(200, content=image)}
-        page = read(pages, readings, model=model)
+        page = read(pages, readings, model=model, usage=spent)
         assert page is not None
         return page
 
-    first = read_with(png_file("white"))
-    again = read_with(png_file("white"))
-    changed = read_with(png_file("gray"))
+    first = read_with(png_file("white"), usage[0])
+    again = read_with(png_file("white"), usage[1])
+    changed = read_with(png_file("gray"), usage[2])
 
     assert [page.attachments[0].info.text for page in (first, again, changed)] == [
         "第1次读的文字",
         "第1次读的文字",
         "第2次读的文字",
     ]
-    assert first.attachments[0].usage == [
-        Usage(model="deepseek-flash", input_tokens=1000, output_tokens=100)
-    ]
-    assert again.attachments[0].usage == []
+    used = Usage(model="deepseek-flash", input_tokens=1000, output_tokens=100)
+    assert usage == [[used], [], [used]]
     # Evidence in them waits for review, kept from before or not.
     assert all(page.attachments[0].info.read_from_pictures for page in (first, again, changed))
     assert [len(images) for images in model.calls] == [1, 1]
     assert model.calls[0][0].startswith("data:image/png;base64,")
 
 
-def test_a_picture_the_llm_cant_read_fails_the_notice(readings: Readings) -> None:
-    body = '<div class="v_news_content"><p>自编的通知正文。</p><p><img src="poster.png"></p></div>'
+def test_a_picture_the_llm_cant_read_fails_the_notice_and_the_ones_read_still_cost(
+    readings: Readings,
+) -> None:
+    body = (
+        '<div class="v_news_content"><p>自编的通知正文。</p>'
+        '<p><img src="poster.png"></p><p><img src="schedule.png"></p></div>'
+    )
     pages = {
         PAGE: httpx.Response(200, html=body),
         "https://example.edu.cn/info/1001/poster.png": httpx.Response(
             200, content=png_file("white")
         ),
+        "https://example.edu.cn/info/1001/schedule.png": httpx.Response(
+            200, content=png_file("gray")
+        ),
     }
+    model = FakeModel()
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(503) if model.calls else model.handle(request)
+
+    usage: list[Usage] = []
 
     async def use(fetcher: Fetcher) -> NoticePage | None:
-        transport = httpx.MockTransport(lambda _: httpx.Response(503))
-        async with Responses("local-test", transport) as llm:
+        async with Responses("local-test", httpx.MockTransport(handle)) as llm:
             read_notice = ReadNotice(ReadPicture(llm), readings)
-            return await read_notice(PageSession(fetcher, None), SOURCE, PAGE)
+            return await read_notice(PageSession(fetcher, None), SOURCE, PAGE, usage)
 
     with pytest.raises(StepError, match="http_503"):
         FakeSites(pages).run(use)
+    assert [u.input_tokens for u in usage] == [1000]

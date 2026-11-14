@@ -438,19 +438,28 @@ export async function recordRun(run: {
   new_count: number;
   useful_count: number;
   notice_failures: { url: string; failure: Failure; detail?: string }[];
+  usage: (Usage & { purpose: "screening" | "extraction" })[];
 }) {
+  const { usage, ...rest } = run;
   await db.transaction().execute(async (trx) => {
     await assertSource(trx, run.source_id);
-    // Sent again after a lost response, the same round is the same row.
-    await trx
+    // Sent again after a lost response, the same round is the same row, and its calls counted.
+    const inserted = await trx
       .insertInto("crawl_runs")
       .values({
-        ...run,
+        ...rest,
         failure: run.failure ?? null,
         notice_failures: JSON.stringify(run.notice_failures),
       })
       .onConflict((oc) => oc.columns(["source_id", "started_at"]).doNothing())
-      .execute();
+      .returning("id")
+      .executeTakeFirst();
+    if (inserted && usage.length > 0) {
+      await trx
+        .insertInto("model_calls")
+        .values(usage.map((u) => ({ ...u, source_id: run.source_id })))
+        .execute();
+    }
     await finishSourceCrawl(trx, run.source_id, run.finished_at);
   });
 }
