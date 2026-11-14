@@ -223,7 +223,7 @@ dependencies = [
     { name = "openpyxl" },
     { name = "playwright" },
     { name = "pydantic" },
-    { name = "pypdf" },
+    { name = "pypdf", extra = ["image"] },
     { name = "python-docx" },
     { name = "rapidocr" },
     { name = "xlrd" },
@@ -250,7 +250,7 @@ requires-dist = [
     { name = "openpyxl", specifier = ">=3.1.5" },
     { name = "playwright", specifier = ">=1.64.1" },
     { name = "pydantic", specifier = ">=2.14.1" },
-    { name = "pypdf", specifier = ">=7.0.0" },
+    { name = "pypdf", extras = ["image"], specifier = ">=7.0.0" },
     { name = "python-docx", specifier = ">=1.2.0" },
     { name = "rapidocr", specifier = ">=3.10.0" },
     { name = "xlrd", specifier = ">=2.0.2" },
@@ -1027,6 +1027,11 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/01/19/3e8223d0618bd441eb2b3e105de83ce4187e76f5823d876f60a109ee9072/pypdf-7.0.0.tar.gz", hash = "sha256:061aa78dec270854c912dde80c6bc060486fa955399d643da27ea30afeb6571b", size = 7201622, upload-time = "2026-11-06T12:10:03.447Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8a/21/e83122a25e334c718a4da67004fa94acd7215fe9f8e63a9d7c7f979eb52b/pypdf-7.0.0-py3-none-any.whl", hash = "sha256:112a2c7cbabefd8dfe498f7a13977e575e762d58cdb0d832acb8886922602c6f", size = 413949, upload-time = "2026-11-06T12:10:01.205Z" },
+]
+
+[package.optional-dependencies]
+image = [
+    { name = "pillow" },
 ]
 
 [[package]]
