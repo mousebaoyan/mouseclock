@@ -28,17 +28,19 @@ class Screen:
                 result = await self.provider.score(
                     Call(model=MODEL, title=notice.title, section=None)
                 )
+            # A call that answered costs what it says, even when the answer is no good.
+            if result.usage is not None and result.returned_model is not None:
+                usage.append(
+                    Usage(
+                        model=result.returned_model,
+                        input_tokens=result.usage.input_tokens,
+                        output_tokens=result.usage.output_tokens,
+                    )
+                )
             if result.error is not None:
                 raise StepError("error", f"初筛失败: {result.error}")
-            if result.score is None or result.usage is None or result.returned_model is None:
+            if result.score is None or result.usage is None:
                 raise StepError("error", "初筛失败: invalid_response")
-            usage.append(
-                Usage(
-                    model=result.returned_model,
-                    input_tokens=result.usage.input_tokens,
-                    output_tokens=result.usage.output_tokens,
-                )
-            )
             return ScreeningResult(
                 notice_id=notice.id, score=result.score, screened_in=result.score >= THRESHOLD
             )
@@ -46,10 +48,16 @@ class Screen:
         started = time.monotonic()
         results: list[ScreeningResult] = []
         for offset in range(0, len(notices), CONCURRENCY):
-            # Stop scheduling after a failed chunk; never return partial screening.
-            results += await asyncio.gather(
+            # Stop scheduling after a failed chunk; never return partial screening. The chunk's
+            # other calls are waited for, so what they cost is counted.
+            outcomes = await asyncio.gather(
                 *(score(n) for n in notices[offset : offset + CONCURRENCY]),
+                return_exceptions=True,
             )
+            for outcome in outcomes:
+                if isinstance(outcome, BaseException):
+                    raise outcome
+                results.append(outcome)
         logger.info(
             "Screened",
             extra={
