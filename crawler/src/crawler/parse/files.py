@@ -1,5 +1,6 @@
 """The words in the files notices attach (design §5.1): images, PDF (scanned pages too), Word and
-Excel, including the old binary formats. Archives and other files have none to read."""
+Excel, including the old binary formats. Archives and other files have none to read. The LLM
+reads the pictures; this leaves them in their place among the words."""
 
 import io
 import unicodedata
@@ -14,7 +15,7 @@ from docx.text.paragraph import Paragraph
 from legacy_doc import extract_text
 from pypdf import PageObject, PdfReader
 
-from crawler.parse.image import image_text
+from crawler.parse.image import Picture, picture
 
 _PDF = b"%PDF"
 _ZIP = b"PK\x03\x04"
@@ -34,32 +35,33 @@ _WORD = "WordDocument".encode("utf-16-le")
 _RADICALS = {code: unicodedata.normalize("NFKC", chr(code)) for code in range(0x2F00, 0x2FD6)}
 
 
-def file_text(data: bytes) -> str:
-    """Raises ValueError when the file is broken."""
+def file_parts(data: bytes) -> list[str | Picture]:
+    """The file's text and pictures in reading order. Raises ValueError when the file is broken."""
     try:
         if data.startswith(_IMAGE_HEADERS) or (data.startswith(b"RIFF") and data[8:12] == b"WEBP"):
-            return image_text(data)
+            return [picture(data)]
         if data.startswith(_PDF):
-            pages = PdfReader(io.BytesIO(data)).pages
-            return "\n".join(_page_text(page) for page in pages).translate(_RADICALS)
+            return [part for page in PdfReader(io.BytesIO(data)).pages for part in _page(page)]
         if data.startswith(_ZIP):
             parts = set(zipfile.ZipFile(io.BytesIO(data)).namelist())
             if "word/document.xml" in parts:
-                return _docx(data)
+                return [_docx(data)]
             if "xl/workbook.xml" in parts:
-                return _xlsx(data)
+                return [_xlsx(data)]
         elif data.startswith(_OLE):
-            return extract_text(data).text if _WORD in data else _xls(data)
+            return [extract_text(data).text if _WORD in data else _xls(data)]
     # The files come from the colleges' sites, and parsers fail on broken ones in all sorts of ways.
     except Exception as error:
         raise ValueError(type(error).__name__) from error
-    return ""
+    return []
 
 
-def _page_text(page: PageObject) -> str:
+def _page(page: PageObject) -> list[str | Picture]:
     text = page.extract_text()
+    if text.strip():
+        return [text.translate(_RADICALS)]
     # A scanned page is a picture with no text layer; scanners put one picture on each page.
-    return text if text.strip() else "\n".join(image_text(image.data) for image in page.images)
+    return [picture(image.data) for image in page.images]
 
 
 def _lines(lines: Iterable[str]) -> str:

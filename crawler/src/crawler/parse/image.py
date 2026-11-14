@@ -1,43 +1,60 @@
-"""Read text from image attachments."""
+"""Cut images into strips for the LLM to read (design §5.2). It scales every image down to about
+PIXEL_BUDGET pixels, which leaves a long screenshot's characters too small to read."""
 
-import logging
-import resource
-import threading
-import time
+import io
+from dataclasses import dataclass
+from itertools import pairwise
 
-from rapidocr import RapidOCR
-from rapidocr.utils.output import RapidOCROutput
+from PIL import Image
 
-logger = logging.getLogger(__name__)
-_lock = threading.Lock()
-_engine: RapidOCR | None = None
+PIXEL_BUDGET = 1300 * 1300
+# Wider images are scaled down to at most this: the characters of a big scan or poster stay
+# legible without cutting it into dozens of strips. The model takes at most 4096 pixels a side
+# once a request has 15 images.
+MAX_WIDTH = 2048
+# How far a pixel's gray is from the background's for it to count as ink.
+INK = 40
 
 
-def image_text(data: bytes) -> str:
-    """Return recognized lines in reading order, with one OCR call at a time."""
-    global _engine
+@dataclass(frozen=True)
+class Picture:
+    """An image as PNG strips from top to bottom, each within the pixel budget."""
 
-    with _lock:
-        start = time.monotonic()
-        if _engine is None:
-            _engine = RapidOCR(
-                params={
-                    # Find lines on a smaller copy, then crop the legible text from the original.
-                    "Global.use_preprocess_img": False,
-                    "Det.limit_type": "max",
-                    "Det.limit_side_len": 2000,
-                    # A batch is padded to its widest line; one line at a time keeps the peak low.
-                    "Rec.rec_batch_num": 1,
-                }
-            )
-        result = _engine(data)
-        if not isinstance(result, RapidOCROutput):
-            raise TypeError("OCR did not return recognized text")
-        logger.info(
-            "Image OCR completed",
-            extra={
-                "elapsed": time.monotonic() - start,
-                "peak_rss_kib": resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
-            },
-        )
-        return "\n".join(result.txts or [])
+    strips: list[bytes]
+
+
+def picture(data: bytes) -> Picture:
+    with Image.open(io.BytesIO(data)) as opened:
+        image = opened.convert("RGB")
+    if image.width > MAX_WIDTH:
+        image = image.reduce(-(-image.width // MAX_WIDTH))
+    width, height = image.size
+    step = PIXEL_BUDGET // width
+    margin = step // 10
+    # Even cuts, each free to move by a margin to the row with the least ink; every strip still
+    # stays within a step.
+    count = -(-height // (step - 2 * margin))
+    ink = _ink(image)
+    cuts = [0]
+    for index in range(1, count):
+        low = index * height // count - margin
+        window = ink[low : low + 2 * margin]
+        cuts.append(low + window.index(min(window)))
+    cuts.append(height)
+    return Picture([_png(image.crop((0, top, width, bottom))) for top, bottom in pairwise(cuts)])
+
+
+def _ink(image: Image.Image) -> list[int]:
+    """How many pixels in each row are unlike the background."""
+    gray = image.convert("L")
+    histogram = gray.histogram()
+    background = histogram.index(max(histogram))
+    marks = gray.tobytes().translate(bytes(abs(value - background) > INK for value in range(256)))
+    width = image.width
+    return [marks.count(1, top, top + width) for top in range(0, len(marks), width)]
+
+
+def _png(image: Image.Image) -> bytes:
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()

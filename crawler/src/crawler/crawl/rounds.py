@@ -47,6 +47,9 @@ class Attachment:
     info: AttachmentInfo
     # None when the file couldn't be downloaded; the snapshot lists it all the same.
     data: bytes | None
+    # What the LLM's reading its pictures cost, none when the words were kept from before
+    # (design §7.4); it goes with the notice's extraction (§8.6).
+    usage: list[Usage]
 
 
 @dataclass(frozen=True)
@@ -189,5 +192,8 @@ async def _fetch_notice(
     if result.extraction is None:
         return 0
     programs, usage = await steps.extract(notice.title, page, result.extraction)
-    await website.extraction(result.snapshot_id, Extraction(programs=programs, usage=usage))
+    reading = [used for attachment in page.attachments for used in attachment.usage]
+    await website.extraction(
+        result.snapshot_id, Extraction(programs=programs, usage=reading + usage)
+    )
     return len(programs)

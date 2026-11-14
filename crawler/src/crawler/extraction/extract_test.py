@@ -119,6 +119,7 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
             name="安排.txt", url="https://example.edu/1.txt", content_type="text/plain", text=text
         ),
         b"",
+        [],
     )
     _, index = prepare(
         "通知", NoticePage("", "见附件。", hyperlinks=(), attachments=[attachment]), context()
