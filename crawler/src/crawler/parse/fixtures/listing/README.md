@@ -1,6 +1,6 @@
 # 列表结构样例
 
-2026-11-07 通过原版 `Fetcher` 各取一页，只截取列表及翻页结构。标题、摘要、日期、通知链接和图片地址全部替换为自编内容；没有通知正文、快照、附件或学生信息。样例中日期均为 2026-09-10、2026-09-09。
+2026-11-07 通过原版 `Fetcher` 各取一页，只截取列表及翻页结构。标题、摘要、日期、通知链接和图片地址全部替换为自编内容；没有通知正文、快照、附件或学生信息。样例中日期均为 2026-09-10、2026-09-09，`month-groups.html` 另有一条跨年的 2025-12-30。
 
 | 样例 | 系统及结构依据 | 结构来源 |
 | --- | --- | --- |
@@ -15,6 +15,7 @@
 | `opaque-links.html` | 通知链接为不带 `info/` 的字母数字文件名 | [北科大研究生院](https://yzxc.ustb.edu.cn/xlytm/hdap/index.htm) |
 | `month-day-year.html` | 月日与年份分栏，标题和摘要在同一链接内 | [北科大计通学院](https://scce.ustb.edu.cn/xydt/tzgg.htm) |
 | `year-month-day.html` | 年份与月日分栏 | [电子科大信通学院](https://www.sice.uestc.edu.cn/index/tzgg/yjsk.htm) |
+| `month-groups.html` | 按月分组，组标题写「九月，2026」，每行只写日和中文月份；作为需要配置的页面测试，日期为 2026-09-10、2026-09-09、2025-12-30 | [云南大学信息学院通知公告](https://www.ise.ynu.edu.cn/news-list/3/?from_home=1) |
 | `table-rows.html` | 每条通知使用嵌套表格的行排版 | [东南大学研究生院](https://yzb.seu.edu.cn/6676/list.htm) |
 | `date-in-link.html` | 日期在标题链接内部 | [西电人工智能学院](https://sai.xidian.edu.cn/tzgg.htm) |
 | `plain-span.html` | 日期在无 class 的 `span` 内 | [西电研究生院](https://gr.xidian.edu.cn/yjsy/yjszs.htm) |

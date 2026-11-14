@@ -42,6 +42,16 @@ _DATE = re.compile(r"(?<!\d)(\d{4})\s*[-./年]\s*(\d{1,2})\s*[-./月]\s*(\d{1,2}
 _YEAR_LAST_DATE = re.compile(r"(?<!\d)(\d{1,2})[-./](\d{1,2})\s+(\d{4})(?!\d)")
 _YEAR_FIRST_DATE = re.compile(r"(?<!\d)(\d{4})\s+(\d{1,2})[-./](\d{1,2})(?!\d)")
 _SPLIT_DATE = re.compile(r"(?<!\d)(\d{1,2})\s+(\d{4})[-./](\d{1,2})(?!\d)")
+# A date field that is just the month and day: 09-10, 9/10, 9月10日, 九月 10, 10 九月.
+_MONTH_NAME = "十[一二]?|[一二三四五六七八九]"
+_MONTH_DAY = re.compile(rf"(\d{{1,2}}|{_MONTH_NAME})\s*[-/月]\s*(\d{{1,2}})日?")
+_DAY_MONTH = re.compile(rf"(\d{{1,2}})\s*({_MONTH_NAME})月")
+_MONTHS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"]
+# A group title that is just the year, maybe with the month: 2026, 2026年, 2026年7月, 2026-07,
+# "七月, 2026".
+_GROUP_TITLE = re.compile(
+    rf"(?:(?:\d{{1,2}}|{_MONTH_NAME})月[,\uff0c]?)?((?:19|20)\d\d)年?(?:[-./]?\d{{1,2}}月?)?"
+)
 
 
 @dataclass(frozen=True)
@@ -97,6 +107,38 @@ def _date(text: str) -> date | None:
         return date(year, month, day)
     except ValueError:
         return None
+
+
+def _grouped_date(text: str, row: HtmlElement) -> date | None:
+    """A row that gives only the month and day, under a group titled with its year."""
+    if match := _MONTH_DAY.fullmatch(text):
+        month, day = match.groups()
+    elif match := _DAY_MONTH.fullmatch(text):
+        day, month = match.groups()
+    else:
+        return None
+    year = _group_year(row)
+    if year is None:
+        return None
+    try:
+        return date(year, int(month) if month.isdigit() else _MONTHS.index(month) + 1, int(day))
+    except ValueError:
+        return None
+
+
+def _group_year(row: HtmlElement) -> int | None:
+    # The title is the nearest thing before the row, or before a list it's in, that has words and
+    # no link (the rows before it have their links).
+    for node in (row, *row.iterancestors()):
+        if node.tag == "body":
+            return None
+        for sibling in node.itersiblings(preceding=True):
+            text = "".join("".join(sibling.itertext()).split())
+            if text and next(sibling.iter("a"), None) is None:
+                if match := _GROUP_TITLE.fullmatch(text):
+                    return int(match[1])
+                break
+    return None
 
 
 def _url(base: str, href: str) -> str | None:
@@ -155,10 +197,13 @@ def parse_listing(
                 title = _value(row, selectors.title)
                 target = _url(url, _value(row, selectors.link, href=True))
                 if title and target:
+                    shown = _value(row, selectors.date)
                     items.setdefault(
                         target,
                         ListedItem(
-                            url=target, title=title, published_on=_date(_value(row, selectors.date))
+                            url=target,
+                            title=title,
+                            published_on=_date(shown) or _grouped_date(shown, row),
                         ),
                     )
             return ListPage(
