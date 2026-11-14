@@ -62,6 +62,7 @@ async function snapshot(noticeId: number, attachmentText?: string) {
                   url: "https://x.edu.cn/f.docx",
                   content_type: "x",
                   text: attachmentText,
+                  read_from_pictures: false,
                 },
               ],
       },

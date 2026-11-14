@@ -114,6 +114,9 @@ class AttachmentInfo(BaseModel):
     url: Annotated[str, Field(max_length=2000)]
     content_type: Annotated[str, Field(max_length=200, min_length=1)]
     text: Annotated[str, Field(max_length=2097152)]
+    read_from_pictures: Annotated[
+        bool, Field(description="文字里有 LLM 从图片或扫描页读出来的部分")
+    ]
 
 
 type ValueItem = Annotated[str, Field(max_length=500, min_length=1)]

@@ -50,6 +50,11 @@ const REASONS: Record<Reason, { label: string; color: TagColor; hint: string }> 
     color: "violet",
     hint: "抽取给出的原文句子在快照中找不到，请对照原文确认",
   },
+  evidence_in_picture: {
+    label: "证据在图片里",
+    color: "gray",
+    hint: "证据出自图片或扫描件，文字由模型识别，可能有看似正确的错字，请打开原文件核对",
+  },
   low_confidence: {
     label: "置信度低",
     color: "sky",

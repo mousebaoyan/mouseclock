@@ -81,6 +81,14 @@ async function snapshot(noticeId: number, text: string) {
             url: "https://x.edu.cn/f.docx",
             content_type: "x",
             text: "附件一 申请表",
+            read_from_pictures: false,
+          },
+          {
+            name: "海报.png",
+            url: "https://x.edu.cn/p.png",
+            content_type: "image/png",
+            text: "拟招收100人\n咨询邮箱：cs@x.edu.cn",
+            read_from_pictures: true,
           },
         ],
       },
@@ -360,6 +368,31 @@ test("fields without their quotes, unsure ones and deadlines before the notice w
     { reason: "low_confidence", key: "majors", program_id: program.id },
     { reason: "evidence_not_found", key: "quota", program_id: program.id },
     { reason: "no_deadline", key: null, program_id: program.id },
+  ]);
+});
+
+test("fields quoted from a picture wait for review, as the LLM may have misread it", async () => {
+  const { cs, snapshot: snap } = await setUp("p.edu.cn");
+  await extract(snap, [
+    {
+      college_id: cs,
+      fields: {
+        apply: APPLY,
+        quota: { value: "100 人", ...sure("拟招收100人", 1) },
+        contacts: { value: ["cs@x.edu.cn"], ...sure("咨询邮箱：cs@x.edu.cn", 1) },
+        materials: { value: ["申请表"], ...sure("附件一 申请表", 0) },
+      },
+    },
+  ]);
+  const [program] = await programsOf(cs);
+  expect(Object.keys(await fieldsOf(program.id)).sort()).toEqual([
+    "apply:end",
+    "apply:start",
+    "materials",
+  ]);
+  expect(await reviewOf(snap)).toEqual([
+    { reason: "evidence_in_picture", key: "quota", program_id: program.id },
+    { reason: "evidence_in_picture", key: "contacts", program_id: program.id },
   ]);
 });
 

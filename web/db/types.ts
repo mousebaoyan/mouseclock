@@ -28,6 +28,7 @@ export interface Attachments {
   data: Buffer | null;
   name: string;
   position: number;
+  read_from_pictures: boolean;
   snapshot_id: number;
   text: string;
   url: string;

@@ -4,7 +4,7 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import type { ExtractedFields, Kind, Role } from "../programs/schemas.ts";
+import type { Evidence, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
 import type { UnresolvedDate } from "./schemas.ts";
 import {
   applyOf,
@@ -264,7 +264,13 @@ export async function recordScreening(
   });
 }
 
-type AttachmentSubmission = { name: string; url: string; content_type: string; text: string };
+type AttachmentSubmission = {
+  name: string;
+  url: string;
+  content_type: string;
+  text: string;
+  read_from_pictures: boolean;
+};
 
 // A new snapshot only when the words changed, the attachments' included (design §7.4).
 export async function recordSnapshot(
@@ -486,6 +492,7 @@ export type ExtractedProgram = {
 export type ReviewReason =
   // a field held back from a version
   | "evidence_not_found"
+  | "evidence_in_picture"
   | "low_confidence"
   | "implausible"
   | "conflicts_edit"
@@ -520,14 +527,21 @@ function squash(text: string) {
   return text.replace(/\s+/g, "");
 }
 
-export function evidenceFound(
-  docs: { body: string; attachments: string[] },
-  evidence: { quote: string; attachment?: number }[],
-) {
+// The texts a snapshot's evidence is looked up in: its body and its attachments, by position.
+export type Docs = { body: string; attachments: { text: string; read_from_pictures: boolean }[] };
+
+export function evidenceFound(docs: Docs, evidence: Evidence[]) {
   return evidence.every((e) => {
-    const doc = e.attachment === undefined ? docs.body : docs.attachments.at(e.attachment);
+    const doc = e.attachment === undefined ? docs.body : docs.attachments.at(e.attachment)?.text;
     return doc !== undefined && squash(doc).includes(squash(e.quote));
   });
+}
+
+// The LLM may misread a picture, and its misreading is in the snapshot all the same (design §8.3).
+function fromPictures(docs: Docs, evidence: Evidence[]) {
+  return evidence.some(
+    (e) => e.attachment !== undefined && docs.attachments.at(e.attachment)?.read_from_pictures,
+  );
 }
 
 // Checks an extraction and merges each of its programs into versions (design §8.3, §8.4).
@@ -611,8 +625,7 @@ export async function recordExtraction(
   });
 }
 
-// The texts a snapshot's evidence is looked up in: its body and its attachments, by position.
-export async function docsOf(trx: Transaction<DB>, snapshotId: number) {
+export async function docsOf(trx: Transaction<DB>, snapshotId: number): Promise<Docs> {
   const { text } = await trx
     .selectFrom("snapshots")
     .select("text")
@@ -620,18 +633,18 @@ export async function docsOf(trx: Transaction<DB>, snapshotId: number) {
     .executeTakeFirstOrThrow();
   const attachments = await trx
     .selectFrom("attachments")
-    .select("text")
+    .select(["text", "read_from_pictures"])
     .where("snapshot_id", "=", snapshotId)
     .orderBy("position")
     .execute();
-  return { body: text, attachments: attachments.map((a) => a.text) };
+  return { body: text, attachments };
 }
 
 export async function mergeProgram(
   trx: Transaction<DB>,
   snapshotId: number,
   publishedOn: string | null,
-  docs: { body: string; attachments: string[] },
+  docs: Docs,
   candidates: { college_id: number; cohort: number; kind: Kind }[],
   program: ExtractedProgram,
 ) {
@@ -695,11 +708,13 @@ export async function mergeProgram(
   for (const row of toStoredFields(program.fields)) {
     const reason = !evidenceFound(docs, row.evidence)
       ? "evidence_not_found"
-      : row.confidence < CONFIDENT
-        ? "low_confidence"
-        : row.key.startsWith("apply:") && implausible
-          ? "implausible"
-          : null;
+      : fromPictures(docs, row.evidence)
+        ? "evidence_in_picture"
+        : row.confidence < CONFIDENT
+          ? "low_confidence"
+          : row.key.startsWith("apply:") && implausible
+            ? "implausible"
+            : null;
     if (reason === null) accepted.push(row);
     else held.push(fieldItem(reason, snapshotId, programId, version.id, row));
   }

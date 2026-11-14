@@ -414,6 +414,7 @@ test("versions list their notices, what each changed and the attachments", async
         url: `https://college.example/files/${position}.pdf`,
         content_type: "application/pdf",
         text: "",
+        read_from_pictures: false,
         data: position === 0 ? Buffer.from("%PDF") : null,
       })),
     )

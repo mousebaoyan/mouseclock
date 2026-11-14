@@ -72,20 +72,27 @@ class ReadNotice:
         )
         data = await _download(pages, link.url, page_url)
         text = ""
+        pictures = False
         usage: list[Usage] = []
         if data is not None:
             try:
-                text, usage = await self._text(link.url, data)
+                text, pictures, usage = await self._text(link.url, data)
             except ValueError as error:
                 logger.warning("Attachment unreadable: %s", error, extra={"url": link.url})
         info = AttachmentInfo(
-            name=link.name, url=link.url, content_type=content_type, text=text[:MAX_TEXT]
+            name=link.name,
+            url=link.url,
+            content_type=content_type,
+            text=text[:MAX_TEXT],
+            read_from_pictures=pictures,
         )
         return Attachment(info, data, usage)
 
-    async def _text(self, url: str, data: bytes) -> tuple[str, list[Usage]]:
+    async def _text(self, url: str, data: bytes) -> tuple[str, bool, list[Usage]]:
+        """The file's words, whether the LLM read any of them from pictures, and what that cost."""
+        # Only words read from pictures are kept.
         if (kept := self.readings.text(url, data)) is not None:
-            return kept, []
+            return kept, True, []
         texts: list[str] = []
         usage: list[Usage] = []
         for part in await asyncio.to_thread(file_parts, data):
@@ -98,7 +105,7 @@ class ReadNotice:
         text = "\n".join(texts)
         if usage:
             self.readings.keep(url, data, text)
-        return text, usage
+        return text, bool(usage), usage
 
 
 async def _download(pages: PageSession, url: str, page_url: str) -> bytes | None:

@@ -32,6 +32,7 @@ export const REASONS = [
   "conflicts_edit",
   "implausible",
   "evidence_not_found",
+  "evidence_in_picture",
   "low_confidence",
   "unknown_program",
   "unknown_college",
@@ -43,6 +44,7 @@ const FIELD_REASONS: ReviewReason[] = [
   "conflicts_edit",
   "implausible",
   "evidence_not_found",
+  "evidence_in_picture",
   "low_confidence",
 ];
 const PLACING_REASONS: ReviewReason[] = [
