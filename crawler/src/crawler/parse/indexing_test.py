@@ -120,8 +120,11 @@ def test_date_ids_link_exact_source_with_values_and_attachment() -> None:
         )
 
 
-def test_dates_in_addresses_are_excluded_but_anchor_labels_are_kept() -> None:
-    text = "https://example.org/2027年6月1日。6月18日截止。"
+@pytest.mark.parametrize(
+    "url", ["https://example.org/2027年6月1日", "https://example.org/?date=2027-06-01"]
+)
+def test_dates_in_addresses_are_excluded_but_anchor_labels_are_kept(url: str) -> None:
+    text = f"{url}。6月18日截止。"
     start = text.index("6月18日")
     index = index_documents(
         [Document(text, hyperlinks=(Hyperlink(start, start + 5, "https://example.org/notice"),))],
