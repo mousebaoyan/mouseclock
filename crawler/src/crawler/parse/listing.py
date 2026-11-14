@@ -42,6 +42,12 @@ _DATE = re.compile(r"(?<!\d)(\d{4})\s*[-./年]\s*(\d{1,2})\s*[-./月]\s*(\d{1,2}
 _YEAR_LAST_DATE = re.compile(r"(?<!\d)(\d{1,2})[-./](\d{1,2})\s+(\d{4})(?!\d)")
 _YEAR_FIRST_DATE = re.compile(r"(?<!\d)(\d{4})\s+(\d{1,2})[-./](\d{1,2})(?!\d)")
 _SPLIT_DATE = re.compile(r"(?<!\d)(\d{1,2})\s+(\d{4})[-./](\d{1,2})(?!\d)")
+# Month and day without the year: 09-10, 9月10日, 九月 10, 10 九月.
+_MONTH_NAME = "十[一二]?|[一二三四五六七八九]"
+_MONTH_FIRST = re.compile(rf"(?<!\d)(\d{{1,2}}|{_MONTH_NAME})\s*[-/月]\s*(\d{{1,2}})(?!\d)")
+_DAY_FIRST = re.compile(rf"(?<!\d)(\d{{1,2}})\s*({_MONTH_NAME})月")
+_MONTHS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十", "十一", "十二"]
+_YEAR = re.compile(r"(?<!\d)((?:19|20)\d\d)(?!\d)")
 
 
 @dataclass(frozen=True)
@@ -97,6 +103,38 @@ def _date(text: str) -> date | None:
         return date(year, month, day)
     except ValueError:
         return None
+
+
+def _grouped_date(text: str, row: HtmlElement) -> date | None:
+    """A row that gives only the month and day, under a group titled with its year."""
+    if match := _MONTH_FIRST.search(text):
+        month, day = match.groups()
+    elif match := _DAY_FIRST.search(text):
+        day, month = match.groups()
+    else:
+        return None
+    year = _group_year(row)
+    if year is None:
+        return None
+    try:
+        return date(year, int(month) if month.isdigit() else _MONTHS.index(month) + 1, int(day))
+    except ValueError:
+        return None
+
+
+def _group_year(row: HtmlElement) -> int | None:
+    # The title is the nearest thing before the row, or before a list it's in, that has words and
+    # no link (the rows before it have their links): short, like "七月, 2026" or 2026年.
+    for node in (row, *row.iterancestors()):
+        if node.tag == "body":
+            return None
+        for sibling in node.itersiblings(preceding=True):
+            text = "".join("".join(sibling.itertext()).split())
+            if text and next(sibling.iter("a"), None) is None:
+                if len(text) <= 12 and (match := _YEAR.search(text)):
+                    return int(match[1])
+                break
+    return None
 
 
 def _url(base: str, href: str) -> str | None:
@@ -155,10 +193,13 @@ def parse_listing(
                 title = _value(row, selectors.title)
                 target = _url(url, _value(row, selectors.link, href=True))
                 if title and target:
+                    shown = _value(row, selectors.date)
                     items.setdefault(
                         target,
                         ListedItem(
-                            url=target, title=title, published_on=_date(_value(row, selectors.date))
+                            url=target,
+                            title=title,
+                            published_on=_date(shown) or _grouped_date(shown, row),
                         ),
                     )
             return ListPage(

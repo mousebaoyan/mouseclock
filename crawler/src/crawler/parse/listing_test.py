@@ -86,6 +86,29 @@ def test_configured_structure_and_legacy_encoding() -> None:
     assert result.items[0].url == "https://example.edu.cn/showarticle/Article/example/101"
 
 
+def test_rows_with_only_the_month_and_day_take_the_year_from_their_group_title() -> None:
+    selectors = Selectors(
+        items="//li[contains(@class,'list-group-item')]",
+        title=".//a",
+        link=".//a/@href",
+        date=".//div[contains(@class,'date-box')]",
+    )
+    grouped = parse_listing((FIXTURES / "month-groups.html").read_bytes(), BASE, selectors)
+    ungrouped = parse_listing(
+        b'<ul><li><span>09-10</span><a href="1.htm">\xe7\x94\xb2</a></li></ul>',
+        BASE,
+        Selectors(items="//li", title=".//a", link=".//a/@href", date=".//span"),
+    )
+
+    assert [(item.title, item.published_on) for item in grouped.items] == [
+        ("示例招生通知甲", date(2026, 9, 10)),
+        ("示例招生通知乙", date(2026, 9, 9)),
+        ("示例招生通知丙", date(2025, 12, 30)),
+    ]
+    # No year is guessed.
+    assert [item.published_on for item in ungrouped.items] == [None]
+
+
 def test_documented_http_configuration_reads_the_real_page_structure() -> None:
     config: dict[str, JsonValue] = {
         "selectors": {
