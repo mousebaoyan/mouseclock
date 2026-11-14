@@ -620,13 +620,24 @@ L3 以上可以不提申请，直接修改，同样要写理由、附依据。�
 
 | 部分 | 放在哪 | 说明 |
 | --- | --- | --- |
-| 网站 | 香港的服务器，和鼠洞同一台 | 容器部署，前面是 1Panel 的 OpenResty；数据库用服务器上 1Panel 的 PostgreSQL |
-| 抓取节点 | 上海的机器：4 核、3.6GB 内存 | 容器部署，挂一个卷存读过的图片（第 7.4 节）；浏览器抓取同时最多开 2 个页面（约 450 MiB，第 5.2 节），3.6GB 内存够用 |
+| 网站 | 香港的服务器，和鼠洞同一台 | 容器部署（`web/deploy/compose.yml`），前面是 1Panel 的 OpenResty；数据库用服务器上 1Panel 的 PostgreSQL |
+| 抓取节点 | 上海的机器：4 核、3.6GB 内存 | 容器部署（`crawler/deploy/compose.yml`），挂一个卷存读过的图片（第 7.4 节）；浏览器抓取同时最多开 2 个页面（约 450 MiB，第 5.2 节），3.6GB 内存够用 |
 
 - 抓取节点每分钟向网站领一次活：到期要抓的来源和管理员要试抓的来源。抓取节点停了，网站照常能用，只是没有新数据；抓取看板会显示抓取节点多久没来领活。
 - 为什么分开：实测 11 所学校和研究所的官网和研招网，香港和上海都能访问（浙大要用 HTTP），但从上海访问快 2–4 倍；浏览器抓取和附件解析吃 CPU 和内存，放在上海也不占网站服务器的资源。判别和抽取都调用外部接口，抓取节点不跑模型。
-- **备份**：数据库和快照每天备份，做法参照鼠洞。
-- **监控**：除了抓取看板，网站也接入服务器上的监控，和鼠洞一样。
+- **镜像**：在 `main` 上打 `v1.2.3` 这样的版本标签时，GitHub Actions 构建网站和抓取节点的镜像，推到 `ghcr.io/mousebaoyan/mouseclock-web` 和 `mouseclock-crawler`（标签是版本号和 `latest`）。两个包设为公开，两台机器不用登录就能拉；镜像里没有密钥。机器上只拉镜像，不编译。
+- **网站**：`web/deploy/compose.yml` 在服务器上和 `.env` 一起放在 `/opt/1panel/www/sites/mouseclock/`。加入 `1panel-network`，通过容器名连 PostgreSQL；端口只监听 `127.0.0.1:3280`；根文件系统只读，内存上限 512MB，V8 堆 256MB（抓取节点一次最多交 50MB 的文件）。
+- **数据库**：1Panel 的 PostgreSQL 里的 `mouseclock` 库和同名账号，这个账号只有这个库的权限；迁移在启动时自动执行。
+- **反代和域名**：1Panel 里的反向代理网站 `clock.mousebaoyan.cn`，证书和 HTTP/3 用 1Panel 的站点设置，其余配置见 `web/deploy/openresty.conf`。Cloudflare 上 `*.mousebaoyan.cn` 已经指向这台服务器，仅 DNS，和鼠洞一样。
+- **抓取节点**：`crawler/deploy/compose.yml` 和 `.env` 放在上海那台机器的 `/opt/mouseclock/`。停止时等进行中的几轮做完，最多 10 分钟；读过的图片存在卷 `readings` 里，重建容器也不丢。
+- **发布**：
+  1. 先把线上的库导出一份，做法同鼠洞。
+  2. 在 `main` 上打标签并推送，等 release 工作流把两个镜像推到 GHCR。
+  3. 两台机器上各自在项目目录里 `docker compose pull && docker compose up -d`。
+  4. 确认 `/healthz` 返回 200，抓取看板上抓取节点按时来领活。
+- **备份**：数据库每天备份，做法同鼠洞：1Panel 的计划任务，本机和 Google Drive 各留 7 份。快照和附件的文件都在库里，一起备份。
+- **日志**：两边都只往 stdout 写 JSON 日志，Docker 按 10MB 一个文件轮转，留 5 个。
+- **监控**：除了抓取看板，网站的 `/healthz` 也接入服务器上的 Gatus，容器内和经过公网各一条（`web/deploy/gatus-endpoints.json`），加法同鼠洞。
 
 ## 17. 路线图
 

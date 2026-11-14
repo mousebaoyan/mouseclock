@@ -1,0 +1,31 @@
+# The website on the server, next to 1Panel's PostgreSQL; see docs/design.md §16. It lives in
+# /opt/1panel/www/sites/mouseclock/, beside .env with DATABASE_URL, PUBLIC_URL, MOUSEHOLE_URL,
+# MOUSEHOLE_CLIENT_ID and MOUSEHOLE_CLIENT_SECRET.
+services:
+  mouseclock:
+    image: ghcr.io/mousebaoyan/mouseclock-web:${MOUSECLOCK_VERSION:-latest}
+    container_name: mouseclock
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      # 3000 and 3080 are taken on the server.
+      - 127.0.0.1:3280:3000
+    networks:
+      - 1panel-network
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 512m
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+networks:
+  1panel-network:
+    external: true

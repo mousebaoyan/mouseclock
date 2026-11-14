@@ -1,0 +1,5 @@
+.react-router
+build
+deploy
+node_modules
+.env

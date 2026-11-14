@@ -1,0 +1,34 @@
+# The crawler on its machine; see docs/design.md §16. It lives in /opt/mouseclock/, beside .env
+# with MOUSECLOCK_URL, MOUSECLOCK_TOKEN, SYSTEM_ONE_API_KEY and LLM_API_KEY.
+services:
+  crawler:
+    image: ghcr.io/mousebaoyan/mouseclock-crawler:${CRAWLER_VERSION:-latest}
+    container_name: mouseclock-crawler
+    restart: unless-stopped
+    env_file: .env
+    # Reaps the processes Chromium leaves behind.
+    init: true
+    # A stop waits for the rounds in progress; one cut short is handed out again when its lease
+    # runs out, two hours on.
+    stop_grace_period: 10m
+    volumes:
+      # The words the LLM read in pictures (design §7.4); without it every picture is read again.
+      - readings:/home/crawler/.cache/mouseclock
+    read_only: true
+    tmpfs:
+      - /tmp
+    # Chromium's pages share memory through it; Docker's 64 MB is too little.
+    shm_size: 256m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "5"
+
+volumes:
+  readings:

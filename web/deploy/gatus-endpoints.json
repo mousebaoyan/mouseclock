@@ -1,0 +1,28 @@
+[
+  {
+    "name": "鼠钟 health",
+    "group": "local",
+    "url": "http://mouseclock:3000/healthz",
+    "interval": "60s",
+    "conditions": [
+      "[CONNECTED] == true",
+      "[RESPONSE_TIME] < 2000",
+      "[STATUS] == 200",
+      "[BODY] == ok"
+    ],
+    "client": { "timeout": "10s" }
+  },
+  {
+    "name": "鼠钟 HTTPS",
+    "group": "direct",
+    "url": "https://clock.mousebaoyan.cn/healthz",
+    "interval": "60s",
+    "conditions": [
+      "[CONNECTED] == true",
+      "[RESPONSE_TIME] < 5000",
+      "[STATUS] == 200",
+      "[BODY] == ok"
+    ],
+    "client": { "timeout": "10s" }
+  }
+]
