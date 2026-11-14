@@ -1,7 +1,5 @@
 # The crawler with Chromium's headless shell, built from this directory: `docker build -t crawler .`
-# Run it with --init, which reaps the processes Chromium leaves behind, a stop timeout long
-# enough for the rounds in progress to finish, and a volume at /home/crawler/.cache/mouseclock
-# that keeps the words the LLM read in attachments (design §7.4).
+# Built by GitHub Actions and run as deploy/compose.yml says; see design §16.
 FROM python:3.14-slim-trixie AS build
 COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /bin/
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_NO_DEV=1 UV_PYTHON_DOWNLOADS=0
