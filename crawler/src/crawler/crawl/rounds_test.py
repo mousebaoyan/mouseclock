@@ -20,9 +20,10 @@ from crawler.crawl.contract import (
 from crawler.crawl.fetch import Fetcher, FetchError
 from crawler.crawl.rounds import Attachment, NoticePage, StepError, Steps, crawl_source
 from crawler.crawl.website import Website
+from crawler.extraction.chat import Chat
+from crawler.extraction.chat_test import completion
 from crawler.extraction.extract import Extract
 from crawler.extraction.numbered import SelectedFields
-from crawler.extraction.responses import Responses
 
 SOURCE = WorkSource(id=7, url="http://a/list.htm", browser=False, config=None, backfill=False)
 ITEMS = [ListedItem(url=f"http://a/{n}.htm", title=f"通知 {n}") for n in range(1, 5)]
@@ -220,40 +221,29 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
 
     def model(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
-        assert json.loads(payload["input"][1]["content"])["title"] == "t"
+        assert json.loads(payload["messages"][2]["content"])["title"] == "t"
         return httpx.Response(
             200,
-            json={
-                "model": "deepseek-flash",
-                "status": "completed",
-                "output": [
+            json=completion(
+                json.dumps(
                     {
-                        "type": "message",
-                        "content": [
+                        "programs": [
                             {
-                                "type": "output_text",
-                                "text": json.dumps(
-                                    {
-                                        "programs": [
-                                            {
-                                                "college_id": 12,
-                                                "program_id": None,
-                                                "cohort": 2027,
-                                                "kind": "summer_camp",
-                                                "role": "call",
-                                                "name": "夏令营",
-                                                "fields": fields,
-                                                "unresolved_dates": [],
-                                            }
-                                        ]
-                                    }
-                                ),
+                                "college_id": 12,
+                                "program_id": None,
+                                "cohort": 2027,
+                                "kind": "summer_camp",
+                                "role": "call",
+                                "name": "夏令营",
+                                "fields": fields,
+                                "unresolved_dates": [],
                             }
-                        ],
+                        ]
                     }
-                ],
-                "usage": {"input_tokens": 200, "output_tokens": 50},
-            },
+                ),
+                input_tokens=200,
+                output_tokens=50,
+            ),
         )
 
     def website(request: httpx.Request) -> httpx.Response:
@@ -286,7 +276,7 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
 
     async def run() -> None:
         async with (
-            Responses("local-test", httpx.MockTransport(model)) as llm,
+            Chat("local-test", httpx.MockTransport(model)) as llm,
             Fetcher(httpx.MockTransport(lambda _: httpx.Response(500))) as fetcher,
             Website("http://site", "token", httpx.MockTransport(website)) as client,
         ):

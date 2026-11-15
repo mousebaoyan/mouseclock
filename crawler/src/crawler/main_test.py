@@ -13,8 +13,9 @@ from crawler.crawl.fetch import Fetcher
 from crawler.crawl.probe_test import BODY, CONFIG
 from crawler.crawl.rounds import StepError, Steps
 from crawler.crawl.website import Website
+from crawler.extraction.chat import Chat
+from crawler.extraction.chat_test import completion
 from crawler.extraction.probe import ProbeConfig
-from crawler.extraction.responses import Responses
 from crawler.log import JsonFormatter
 from crawler.main import load_config, serve
 
@@ -189,22 +190,7 @@ def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits
         assert CONFIG.selectors is not None
         return httpx.Response(
             200,
-            json={
-                "model": "fixed-model",
-                "status": "completed",
-                "output": [
-                    {
-                        "type": "message",
-                        "content": [
-                            {
-                                "type": "output_text",
-                                "text": CONFIG.selectors.model_dump_json(),
-                            }
-                        ],
-                    }
-                ],
-                "usage": {"input_tokens": 120, "output_tokens": 40},
-            },
+            json=completion(CONFIG.selectors.model_dump_json(), input_tokens=120, output_tokens=40),
         )
 
     async def list_items(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
@@ -218,7 +204,7 @@ def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits
             Website(
                 "https://website.example", "fake-token", httpx.MockTransport(website_response)
             ) as website,
-            Responses("fake-key", httpx.MockTransport(model_response)) as model,
+            Chat("fake-key", httpx.MockTransport(model_response)) as model,
         ):
             running = asyncio.create_task(
                 serve(

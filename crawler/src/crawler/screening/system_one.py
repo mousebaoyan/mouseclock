@@ -5,8 +5,9 @@ from typing import Annotated, Literal
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, ValidationError
 
-API_URL = "https://api.siliconflow.cn/v1/systemone"
-DEFAULT_MODELS = ("Kev-4b",)
+# The ECNU platform's decision model, which speaks the System One protocol (design §8.1).
+API_URL = "https://chat.ecnu.edu.cn/open/api/v1/systemone"
+DEFAULT_MODELS = ("ecnu-decision",)
 INPUT_CNY_PER_MILLION = 0.0
 OUTPUT_CNY_PER_MILLION = 0.0
 INSTRUCTIONS = (

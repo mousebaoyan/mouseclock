@@ -15,12 +15,12 @@ from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 from crawler.crawl.contract import ExtractionContext
 from crawler.crawl.fetch import Fetcher, FetchError
 from crawler.crawl.rounds import NoticePage, StepError
+from crawler.extraction.chat import MODEL, Chat, Completion
 from crawler.extraction.diagnostics import date_coverage
 from crawler.extraction.extract import RoundSelection, prepare, resolve_programs
 from crawler.extraction.metrics import Evaluation
 from crawler.extraction.numbered import SelectionError
 from crawler.extraction.pages import Page, PageError, read_page
-from crawler.extraction.responses import MODEL, Response, Responses
 from crawler.extraction.schema import Extraction, Notice, Program
 from crawler.parse.indexing import Document
 
@@ -28,7 +28,7 @@ CONCURRENCY = 3
 
 
 class Result(BaseModel):
-    response: Response | None = None
+    response: Completion | None = None
     elapsed_seconds: float
     observed_at: datetime
     error: str | None = None
@@ -71,17 +71,18 @@ def colleges_by_school(path: Path) -> dict[str, list[dict[str, JsonValue]]]:
     return schools
 
 
-def cost_cny(result: Result, *, off_peak: bool = False, cached: bool = True) -> float | None:
+def cost_credits(result: Result, *, off_peak: bool = False, cached: bool = True) -> float | None:
     usage = result.response.usage if result.response else None
     if usage is None:
         return None
-    hits = usage.input_tokens_details.cached_tokens if usage.input_tokens_details else None
+    hits = usage.prompt_tokens_details.cached_tokens if usage.prompt_tokens_details else None
     if cached and hits is None:
         return None
     hit = hits if cached and hits is not None else 0
-    # Official CNY/M tokens; the experiment explicitly selects its billing period.
+    # The platform's credits per million tokens at peak; off-peak is half. The experiment
+    # explicitly selects its billing period.
     return (
-        ((usage.input_tokens - hit) * 2 + hit * 0.04 + usage.output_tokens * 8)
+        ((usage.prompt_tokens - hit) * 600 + hit * 60 + usage.completion_tokens * 2400)
         / 1e6
         * (0.5 if off_peak else 1)
     )
@@ -93,11 +94,11 @@ def summarize(
     report = evaluation.report()
     usages = [r.response.usage for r in results if r.response and r.response.usage is not None]
     hits = [
-        u.input_tokens_details.cached_tokens if u.input_tokens_details else None for u in usages
+        u.prompt_tokens_details.cached_tokens if u.prompt_tokens_details else None for u in usages
     ]
-    inputs = sum(u.input_tokens for u in usages)
+    inputs = sum(u.prompt_tokens for u in usages)
     known_hits = sum(n for n in hits if n is not None)
-    costs = [cost_cny(r, off_peak=off_peak) for r in results]
+    costs = [cost_credits(r, off_peak=off_peak) for r in results]
     report.update(
         {
             "calls": len(results),
@@ -105,15 +106,15 @@ def summarize(
             "failure_types": dict[str, JsonValue](Counter(r.error for r in results if r.error)),
             "known_usage_calls": len(usages),
             "input_tokens": inputs,
-            "output_tokens": sum(u.output_tokens for u in usages),
+            "output_tokens": sum(u.completion_tokens for u in usages),
             "cache_hit_tokens": known_hits,
             "cache_hit_rate": known_hits / inputs
             if inputs and len(usages) == len(results) and all(n is not None for n in hits)
             else None,
-            "estimated_total_cny": sum(c for c in costs if c is not None)
+            "estimated_total_credits": sum(c for c in costs if c is not None)
             if all(c is not None for c in costs)
             else None,
-            "known_estimated_cny": sum(c for c in costs if c is not None),
+            "known_estimated_credits": sum(c for c in costs if c is not None),
             "unknown_cost_calls": sum(c is None for c in costs),
             "mean_seconds": mean(r.elapsed_seconds for r in results) if results else None,
         }
@@ -123,7 +124,7 @@ def summarize(
 
 def markdown(report: dict[str, JsonValue]) -> str:
     return (
-        "# 官方编号抽取复验\n\n固定标注分母。失败保留分母。"
+        "# 编号抽取复验\n\n固定标注分母。失败保留分母。"
         "费用按用量估算。未核对账单。\n\n```json\n"
         + json.dumps(report["experiments"], ensure_ascii=False, indent=2)
         + "\n```\n"
@@ -188,14 +189,14 @@ async def evaluate(options: Options) -> int:
             entry = CachedCall.model_validate_json(line)
             if (
                 entry.result.response is not None
-                and entry.result.response.status == "completed"
+                and entry.result.response.finished
                 and entry.result.error is None
             ):
                 cache[json.dumps(entry.call, sort_keys=True)] = entry.result
     evaluation = Evaluation()
     results: list[Result] = []
     semaphore = asyncio.Semaphore(CONCURRENCY)
-    async with Responses(key or "") as llm:
+    async with Chat(key or "") as llm:
 
         async def run(notice: Notice) -> None:
             context = ExtractionContext.model_validate(
@@ -227,7 +228,7 @@ async def evaluate(options: Options) -> int:
                 if (
                     result.error is None
                     and result.response is not None
-                    and result.response.status == "completed"
+                    and result.response.finished
                 ):
                     with records_path.open("a", encoding="utf-8", newline="\n") as stream:
                         stream.write(CachedCall(call=call, result=result).model_dump_json() + "\n")
@@ -293,7 +294,7 @@ def main() -> None:
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument(
-        "--off-peak", action="store_true", help="Use official off-peak token prices for this run"
+        "--off-peak", action="store_true", help="Price this run at the platform's off-peak rates"
     )
     raise SystemExit(asyncio.run(evaluate(Options.model_validate(vars(parser.parse_args())))))
 

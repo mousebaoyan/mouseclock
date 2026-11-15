@@ -8,8 +8,8 @@ from crawler.screening.system_one import Call, SystemOne
 
 # Calibrated on this model's labeled titles (design §8.1); changing the model requires
 # rerunning crawler.screening.evaluate and selecting its threshold again.
-MODEL = "SemIf"
-THRESHOLD = 0.1
+MODEL = "ecnu-decision"
+THRESHOLD = 0.5
 # Calls in flight at once, across all the rounds that share this Screen.
 CONCURRENCY = 2
 logger = logging.getLogger(__name__)

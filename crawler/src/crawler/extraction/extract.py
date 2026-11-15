@@ -4,6 +4,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, StringConstraints,
 
 from crawler.crawl.contract import ExtractedProgram, ExtractionContext, UnresolvedDate, Usage
 from crawler.crawl.rounds import NoticePage, StepError
+from crawler.extraction.chat import Chat, make_request
 from crawler.extraction.numbered import (
     SelectedExtraction,
     SelectedFields,
@@ -13,7 +14,6 @@ from crawler.extraction.numbered import (
     resolve,
 )
 from crawler.extraction.prompt import INSTRUCTIONS
-from crawler.extraction.responses import Responses, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.indexing import Document, NoticeIndex, index_documents
 
@@ -128,7 +128,7 @@ def resolve_programs(
 
 
 class Extract:
-    def __init__(self, llm: Responses) -> None:
+    def __init__(self, llm: Chat) -> None:
         self.llm = llm
 
     async def __call__(
@@ -142,8 +142,8 @@ class Extract:
         usage.append(
             Usage(
                 model=response.model,
-                input_tokens=tokens.input_tokens,
-                output_tokens=tokens.output_tokens,
+                input_tokens=tokens.prompt_tokens,
+                output_tokens=tokens.completion_tokens,
             )
         )
         try:

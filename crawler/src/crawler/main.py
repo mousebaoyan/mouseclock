@@ -23,10 +23,10 @@ from crawler.crawl.probe import GenerateConfig, probe_source
 from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import Steps, crawl_source
 from crawler.crawl.website import Website
+from crawler.extraction.chat import Chat
 from crawler.extraction.extract import Extract
 from crawler.extraction.pictures import ReadPicture
 from crawler.extraction.probe import ProbeConfig
-from crawler.extraction.responses import Responses
 from crawler.log import JsonFormatter
 from crawler.screening.screen import Screen
 from crawler.screening.system_one import SystemOne
@@ -123,7 +123,7 @@ async def _run(config: Config) -> None:
             Fetcher() as fetcher,
             Browser(fetcher) as browser,
             Website(str(config.mouseclock_url), config.mouseclock_token) as website,
-            Responses(config.llm_api_key) as llm,
+            Chat(config.llm_api_key) as llm,
         ):
             with closing(Readings(READINGS)) as readings:
                 steps = Steps(

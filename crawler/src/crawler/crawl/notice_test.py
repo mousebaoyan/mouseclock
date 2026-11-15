@@ -16,8 +16,9 @@ from crawler.crawl.fetch_test import FakeSites
 from crawler.crawl.notice import ReadNotice
 from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import NoticePage, StepError
+from crawler.extraction.chat import Chat
+from crawler.extraction.chat_test import completion
 from crawler.extraction.pictures import ReadPicture
-from crawler.extraction.responses import Responses
 
 SOURCE = WorkSource(
     id=7,
@@ -51,18 +52,10 @@ class FakeModel:
         self.calls: list[list[str]] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
-        content = json.loads(request.content)["input"][0]["content"]
-        self.calls.append([part["image_url"] for part in content])
-        message = {"type": "output_text", "text": f"第{len(self.calls)}次读的文字"}
-        return httpx.Response(
-            200,
-            json={
-                "model": "deepseek-flash",
-                "status": "completed",
-                "output": [{"type": "message", "content": [message]}],
-                "usage": {"input_tokens": 1000, "output_tokens": 100},
-            },
-        )
+        content = json.loads(request.content)["messages"][1]["content"]
+        self.calls.append([part["image_url"]["url"] for part in content])
+        text = f"第{len(self.calls)}次读的文字"
+        return httpx.Response(200, json=completion(text, input_tokens=1000, output_tokens=100))
 
 
 @pytest.fixture
@@ -81,7 +74,7 @@ def read(
     transport = httpx.MockTransport((model or FakeModel()).handle)
 
     async def use(fetcher: Fetcher) -> NoticePage | None:
-        async with Responses("local-test", transport) as llm:
+        async with Chat("local-test", transport) as llm:
             read_notice = ReadNotice(ReadPicture(llm), readings)
             return await read_notice(
                 PageSession(fetcher, None), SOURCE, url, [] if usage is None else usage
@@ -201,7 +194,7 @@ def test_a_picture_the_llm_cant_read_fails_the_notice_and_the_ones_read_still_co
     usage: list[Usage] = []
 
     async def use(fetcher: Fetcher) -> NoticePage | None:
-        async with Responses("local-test", httpx.MockTransport(handle)) as llm:
+        async with Chat("local-test", httpx.MockTransport(handle)) as llm:
             read_notice = ReadNotice(ReadPicture(llm), readings)
             return await read_notice(PageSession(fetcher, None), SOURCE, PAGE, usage)
 

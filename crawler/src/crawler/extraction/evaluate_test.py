@@ -10,12 +10,13 @@ from pydantic import JsonValue, TypeAdapter
 from crawler.crawl.contract import Contacts, Evidence, ExtractedProgram, ExtractionContext
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.rounds import NoticePage
-from crawler.extraction.evaluate import CachedCall, Options, Result, cost_cny, evaluate
+from crawler.extraction.chat import MODEL, Chat, Completion, CompletionUsage, PromptDetails
+from crawler.extraction.chat_test import completion as answer
+from crawler.extraction.evaluate import CachedCall, Options, Result, cost_credits, evaluate
 from crawler.extraction.extract import RoundSelection, prepare
 from crawler.extraction.metrics import Evaluation, pair_programs
 from crawler.extraction.numbered import SelectedFields
 from crawler.extraction.pages import Page, read_page, save_page
-from crawler.extraction.responses import MODEL, InputDetails, Response, Responses, ResponseUsage
 from crawler.extraction.schema import Extraction, LabelProgram, Notice
 from crawler.parse.indexing import NoticeIndex
 
@@ -38,16 +39,7 @@ def make_call(item: Notice, text: str) -> dict[str, JsonValue]:
 
 
 def completion(content: str) -> dict[str, JsonValue]:
-    return {
-        "model": MODEL,
-        "status": "completed",
-        "output": [{"type": "message", "content": [{"type": "output_text", "text": content}]}],
-        "usage": {
-            "input_tokens": 12,
-            "output_tokens": 7,
-            "input_tokens_details": {"cached_tokens": 0},
-        },
-    }
+    return answer(content, input_tokens=12, output_tokens=7, cached_tokens=0)
 
 
 def notice() -> Notice:
@@ -206,7 +198,7 @@ def test_reuse_only_uses_cached_body_and_response_without_network(tmp_path: Path
     entry = CachedCall(
         call=make_call(item, text),
         result=Result(
-            response=Response.model_validate(completion(selected_extraction().model_dump_json())),
+            response=Completion.model_validate(completion(selected_extraction().model_dump_json())),
             elapsed_seconds=1,
             observed_at=datetime(2026, 5, 1, tzinfo=UTC),
         ),
@@ -226,7 +218,7 @@ def test_reuse_only_uses_cached_body_and_response_without_network(tmp_path: Path
     assert status == 0
     report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert report["experiments"][MODEL]["exact_notices"] == 1
-    assert report["experiments"][MODEL]["estimated_total_cny"] is not None
+    assert report["experiments"][MODEL]["estimated_total_credits"] is not None
 
 
 def test_invalid_selection_replays_raw_response_after_resolver_fix(
@@ -252,11 +244,11 @@ def test_invalid_selection_replays_raw_response_after_resolver_fix(
         content = selected_extraction().model_dump_json().replace("D1", "D999")
         return httpx.Response(200, json=completion(content))
 
-    def local_llm(key: str) -> Responses:
-        return Responses(key, httpx.MockTransport(respond))
+    def local_llm(key: str) -> Chat:
+        return Chat(key, httpx.MockTransport(respond))
 
     monkeypatch.setenv("LLM_API_KEY", "local-test-credential")
-    monkeypatch.setattr("crawler.extraction.evaluate.Responses", local_llm)
+    monkeypatch.setattr("crawler.extraction.evaluate.Chat", local_llm)
     options = Options(
         dataset=dataset,
         output=tmp_path,
@@ -270,8 +262,8 @@ def test_invalid_selection_replays_raw_response_after_resolver_fix(
     )
     assert entry.result.error is None
     assert entry.result.response is not None
-    assert entry.result.response.usage == ResponseUsage(
-        input_tokens=12, output_tokens=7, input_tokens_details=InputDetails(cached_tokens=0)
+    assert entry.result.response.usage == CompletionUsage(
+        prompt_tokens=12, completion_tokens=7, prompt_tokens_details=PromptDetails(cached_tokens=0)
     )
     assert asyncio.run(evaluate(options)) == 1
     assert calls == 1
@@ -355,10 +347,10 @@ def test_failed_requests_are_not_cached_and_retry_on_next_run(
 
     monkeypatch.setenv("LLM_API_KEY", "local-test-credential")
 
-    def local_llm(key: str) -> Responses:
-        return Responses(key, httpx.MockTransport(respond))
+    def local_llm(key: str) -> Chat:
+        return Chat(key, httpx.MockTransport(respond))
 
-    monkeypatch.setattr("crawler.extraction.evaluate.Responses", local_llm)
+    monkeypatch.setattr("crawler.extraction.evaluate.Chat", local_llm)
     options = Options(
         dataset=dataset,
         output=tmp_path,
@@ -385,13 +377,13 @@ def test_page_reader_honors_declared_gbk_encoding(tmp_path: Path) -> None:
     assert asyncio.run(run()).text.strip() == "自编通知正文。"
 
 
-def test_unknown_usage_is_not_free_and_cached_input_uses_the_official_rate() -> None:
+def test_unknown_usage_is_not_free_and_cached_input_uses_the_platform_rate() -> None:
     result = Result(elapsed_seconds=1, observed_at=datetime(2026, 11, 9, tzinfo=UTC))
-    assert cost_cny(result) is None
-    result.response = Response.model_validate(completion("{}"))
-    assert cost_cny(result) == (12 * 2 + 7 * 8) / 1e6
-    assert cost_cny(result, off_peak=True) == (12 * 2 + 7 * 8) / 2e6
+    assert cost_credits(result) is None
+    result.response = Completion.model_validate(completion("{}"))
+    assert cost_credits(result) == (12 * 600 + 7 * 2400) / 1e6
+    assert cost_credits(result, off_peak=True) == (12 * 600 + 7 * 2400) / 2e6
     assert result.response.usage is not None
-    result.response.usage.input_tokens_details = None
-    assert cost_cny(result) is None
-    assert cost_cny(result, cached=False) is not None
+    result.response.usage.prompt_tokens_details = None
+    assert cost_credits(result) is None
+    assert cost_credits(result, cached=False) is not None
