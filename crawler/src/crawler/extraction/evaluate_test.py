@@ -377,7 +377,7 @@ def test_page_reader_honors_declared_gbk_encoding(tmp_path: Path) -> None:
     assert asyncio.run(run()).text.strip() == "自编通知正文。"
 
 
-def test_unknown_usage_is_not_free_and_cached_input_uses_the_official_rate() -> None:
+def test_unknown_usage_is_not_free_and_cached_input_uses_the_platform_rate() -> None:
     result = Result(elapsed_seconds=1, observed_at=datetime(2026, 11, 9, tzinfo=UTC))
     assert cost_credits(result) is None
     result.response = Completion.model_validate(completion("{}"))

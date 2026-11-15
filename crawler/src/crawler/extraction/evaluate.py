@@ -124,7 +124,7 @@ def summarize(
 
 def markdown(report: dict[str, JsonValue]) -> str:
     return (
-        "# 官方编号抽取复验\n\n固定标注分母。失败保留分母。"
+        "# 编号抽取复验\n\n固定标注分母。失败保留分母。"
         "费用按用量估算。未核对账单。\n\n```json\n"
         + json.dumps(report["experiments"], ensure_ascii=False, indent=2)
         + "\n```\n"
@@ -294,7 +294,7 @@ def main() -> None:
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument(
-        "--off-peak", action="store_true", help="Use official off-peak token prices for this run"
+        "--off-peak", action="store_true", help="Price this run at the platform's off-peak rates"
     )
     raise SystemExit(asyncio.run(evaluate(Options.model_validate(vars(parser.parse_args())))))
 

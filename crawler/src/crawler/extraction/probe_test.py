@@ -96,21 +96,23 @@ def test_generated_config_preserves_usage() -> None:
 
 
 @pytest.mark.parametrize(
-    ("text", "finish_reason"),
+    ("text", "finish_reason", "failure"),
     [
-        ("not json", "stop"),
-        ("{}", "stop"),
-        ('{"items":"[","title":"./a","link":"./a"}', "completed"),
-        (json.dumps(SELECTORS), "length"),
+        ("not json", "stop", "invalid_config"),
+        ("{}", "stop", "invalid_config"),
+        ('{"items":"[","title":"./a","link":"./a"}', "stop", "invalid_config"),
+        (json.dumps(SELECTORS), "length", "length"),
     ],
 )
-def test_invalid_answers_fail_with_known_usage_retained(text: str, finish_reason: str) -> None:
+def test_invalid_answers_fail_with_known_usage_retained(
+    text: str, finish_reason: str, failure: str
+) -> None:
     async def run() -> None:
         usage: list[Usage] = []
         async with Chat(
             "local-test", httpx.MockTransport(lambda _: answer(text, finish_reason=finish_reason))
         ) as llm:
-            with pytest.raises(StepError):
+            with pytest.raises(StepError, match=failure):
                 await ProbeConfig(llm).generate(HTML, URL, None, usage)
         assert usage[0].input_tokens == 120
         assert usage[0].output_tokens == 20
