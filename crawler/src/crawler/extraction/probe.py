@@ -3,7 +3,7 @@ from pydantic import JsonValue, ValidationError
 
 from crawler.crawl.contract import Usage
 from crawler.crawl.rounds import StepError
-from crawler.extraction.responses import Responses, make_request
+from crawler.extraction.chat import Chat, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.listing import ListConfig, Selectors
 from crawler.parse.webpage import parse_webpage
@@ -42,7 +42,7 @@ def prepare(body: bytes, url: str, content_type: str | None) -> dict[str, JsonVa
 
 
 class ProbeConfig:
-    def __init__(self, llm: Responses) -> None:
+    def __init__(self, llm: Chat) -> None:
         self.llm = llm
 
     async def generate(
@@ -56,8 +56,8 @@ class ProbeConfig:
         usage.append(
             Usage(
                 model=response.model,
-                input_tokens=tokens.input_tokens,
-                output_tokens=tokens.output_tokens,
+                input_tokens=tokens.prompt_tokens,
+                output_tokens=tokens.completion_tokens,
             )
         )
         try:

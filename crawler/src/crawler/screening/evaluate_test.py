@@ -37,7 +37,7 @@ def test_invalid_system_one_score_retains_usage() -> None:
     async def run() -> Result:
         content = json.dumps(
             {
-                "model": "Kev-4b",
+                "model": "ecnu-decision",
                 "usage": {"input_tokens": 100, "output_tokens": 1},
                 "answers": {"relevant": {"type": "noul", "noul": -1}},
             }
@@ -46,7 +46,7 @@ def test_invalid_system_one_score_retains_usage() -> None:
             "test-placeholder", httpx.MockTransport(lambda _: httpx.Response(200, content=content))
         )
         try:
-            return await provider.score(Call(model="Kev-4b", title="Camp", section=None))
+            return await provider.score(Call(model="ecnu-decision", title="Camp", section=None))
         finally:
             await provider.close()
 
@@ -104,7 +104,7 @@ def test_failed_request_does_not_leak_response_body() -> None:
             "test-placeholder", httpx.MockTransport(lambda _: httpx.Response(401, text="sensitive"))
         )
         try:
-            return await provider.score(Call(model="Kev-4b", title="Camp", section=None))
+            return await provider.score(Call(model="ecnu-decision", title="Camp", section=None))
         finally:
             await provider.close()
 
@@ -121,7 +121,7 @@ def test_programming_errors_are_not_reported_as_invalid_responses() -> None:
     async def run() -> None:
         provider = SystemOne("test-placeholder", httpx.MockTransport(handle))
         try:
-            await provider.score(Call(model="Kev-4b", title="Camp", section=None))
+            await provider.score(Call(model="ecnu-decision", title="Camp", section=None))
         finally:
             await provider.close()
 
@@ -134,7 +134,7 @@ def test_reuse_preserves_threshold_precision_and_recomputes_labels(tmp_path: Pat
     threshold = 0.12345678901234568
     rows = [
         Cached(
-            call=Call(model="Kev-4b", title=item.title, section=section),
+            call=Call(model="ecnu-decision", title=item.title, section=section),
             result=Result(
                 score=threshold, elapsed_seconds=1, observed_at=datetime(2026, 10, 31, tzinfo=UTC)
             ),
@@ -144,18 +144,20 @@ def test_reuse_preserves_threshold_precision_and_recomputes_labels(tmp_path: Pat
     (tmp_path / "scores.jsonl").write_text(
         "".join(row.model_dump_json() + "\n" for row in rows), encoding="utf-8"
     )
-    metrics, runs = asyncio.run(evaluate_models([item], ["Kev-4b"], tmp_path, None))
+    metrics, runs = asyncio.run(evaluate_models([item], ["ecnu-decision"], tmp_path, None))
     assert all(row.recall == 1 for row in metrics if row.threshold <= threshold)
     write_report(tmp_path, [item], metrics, runs)
     text = (tmp_path / "report.md").read_text(encoding="utf-8")
     highest_rows = [
-        line for line in text.split("## 全部门槛")[0].splitlines() if line.startswith("| Kev-4b |")
+        line
+        for line in text.split("## 全部门槛")[0].splitlines()
+        if line.startswith("| ecnu-decision |")
     ]
     assert len(highest_rows) == 2
     assert all(float(line.split("|")[3].strip()) == threshold for line in highest_rows)
     assert all(row.threshold <= threshold for row in metrics if row.recall == 1)
     item.relevant = "0"
-    metrics, _ = asyncio.run(evaluate_models([item], ["Kev-4b"], tmp_path, None))
+    metrics, _ = asyncio.run(evaluate_models([item], ["ecnu-decision"], tmp_path, None))
     assert all(row.recall is None for row in metrics)
     assert all(row.filtering == 1 for row in metrics if row.threshold > threshold)
 
@@ -174,7 +176,7 @@ def test_cli_reports_failed_calls_and_exits_nonzero(
         writer.writerows(item.model_dump() for item in samples)
     rows = [
         Cached(
-            call=Call(model="Kev-4b", title=item.title, section=section),
+            call=Call(model="ecnu-decision", title=item.title, section=section),
             result=Result(
                 score=None if pilot_fails or index == 1 else 0.8,
                 error="http_503" if pilot_fails or index == 1 else None,
@@ -203,7 +205,7 @@ def test_cli_reports_failed_calls_and_exits_nonzero(
     assert main() == 1
     report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
     assert report["status"] == "failed"
-    assert not any(row["method"] == "Kev-4b" for row in report["metrics"])
+    assert not any(row["method"] == "ecnu-decision" for row in report["metrics"])
 
 
 def test_missing_environment_key_is_an_immediate_error(

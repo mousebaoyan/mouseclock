@@ -7,6 +7,8 @@ import pytest
 
 from crawler.crawl.contract import AttachmentInfo, ExtractionContext, Usage
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
+from crawler.extraction.chat import Chat
+from crawler.extraction.chat_test import completion
 from crawler.extraction.extract import (
     Extract,
     RoundSelection,
@@ -14,7 +16,6 @@ from crawler.extraction.extract import (
     resolve_programs,
 )
 from crawler.extraction.numbered import SelectedFields, SelectionError
-from crawler.extraction.responses import Responses
 
 
 def context() -> ExtractionContext:
@@ -60,30 +61,20 @@ def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
 
     def handle(request: httpx.Request) -> httpx.Response:
         payload = json.loads(request.content)
-        shared = json.loads(payload["input"][0]["content"])
-        notice = json.loads(payload["input"][1]["content"])
+        shared = json.loads(payload["messages"][1]["content"])
+        notice = json.loads(payload["messages"][2]["content"])
         assert shared["programs"][0]["id"] == 100
         assert notice["title"] == "夏令营延期"
         assert "published_on" not in shared
         return httpx.Response(
             200,
-            json={
-                "model": "deepseek-flash",
-                "status": "completed",
-                "output": [
-                    {
-                        "type": "message",
-                        "content": [
-                            {"type": "output_text", "text": json.dumps({"programs": [selection()]})}
-                        ],
-                    }
-                ],
-                "usage": {"input_tokens": 200, "output_tokens": 50},
-            },
+            json=completion(
+                json.dumps({"programs": [selection()]}), input_tokens=200, output_tokens=50
+            ),
         )
 
     async def run() -> None:
-        async with Responses("local-test", httpx.MockTransport(handle)) as llm:
+        async with Chat("local-test", httpx.MockTransport(handle)) as llm:
             extract = Extract(llm)
             usage: list[Usage] = []
             programs = await extract("夏令营延期", page, context(), usage)
@@ -161,12 +152,7 @@ def test_raw_date_cannot_be_fabricated_or_replace_a_resolved_time() -> None:
 def answer(text: str) -> httpx.Response:
     return httpx.Response(
         200,
-        json={
-            "model": "deepseek-flash",
-            "status": "completed",
-            "output": [{"type": "message", "content": [{"type": "output_text", "text": text}]}],
-            "usage": {"input_tokens": 100, "output_tokens": 10},
-        },
+        json=completion(text),
     )
 
 
@@ -182,7 +168,7 @@ def test_invalid_selection_fails_the_entire_step_and_still_costs(text: str, code
     usage: list[Usage] = []
 
     async def run() -> None:
-        async with Responses("local-test", httpx.MockTransport(lambda _: answer(text))) as llm:
+        async with Chat("local-test", httpx.MockTransport(lambda _: answer(text))) as llm:
             extract = Extract(llm)
             with pytest.raises(StepError, match=f"抽取失败: {code}"):
                 await extract(
@@ -198,21 +184,12 @@ def test_invalid_selection_fails_the_entire_step_and_still_costs(text: str, code
 
 def test_missing_usage_is_not_reported_as_a_free_success() -> None:
     async def run() -> None:
-        llm = Responses(
+        llm = Chat(
             "local-test",
             httpx.MockTransport(
                 lambda _: httpx.Response(
                     200,
-                    json={
-                        "model": "deepseek-flash",
-                        "status": "completed",
-                        "output": [
-                            {
-                                "type": "message",
-                                "content": [{"type": "output_text", "text": '{"programs":[]}'}],
-                            }
-                        ],
-                    },
+                    json=completion('{"programs":[]}', usage=False),
                 )
             ),
         )

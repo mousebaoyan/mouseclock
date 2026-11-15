@@ -6,7 +6,7 @@ from pydantic import JsonValue
 
 from crawler.crawl.contract import Usage
 from crawler.crawl.rounds import StepError
-from crawler.extraction.responses import MODEL, REASONING_EFFORT, TEMPERATURE, Responses
+from crawler.extraction.chat import MODEL, TEMPERATURE, Chat
 from crawler.parse.image import Picture
 
 INSTRUCTIONS = (
@@ -21,27 +21,29 @@ MAX_OUTPUT_TOKENS = 16384
 
 
 class ReadPicture:
-    def __init__(self, llm: Responses) -> None:
+    def __init__(self, llm: Chat) -> None:
         self.llm = llm
 
     async def __call__(self, picture: Picture, usage: list[Usage]) -> str:
         images: list[JsonValue] = [
             {
-                "type": "input_image",
-                "image_url": "data:image/png;base64," + base64.b64encode(strip).decode(),
-                "detail": "high",
+                "type": "image_url",
+                "image_url": {
+                    "url": "data:image/png;base64," + base64.b64encode(strip).decode(),
+                    "detail": "high",
+                },
             }
             for strip in picture.strips
         ]
         response = await self.llm.generate(
             {
                 "model": MODEL,
-                "instructions": INSTRUCTIONS,
-                "input": [{"role": "user", "content": images}],
-                "reasoning": {"effort": REASONING_EFFORT},
+                "messages": [
+                    {"role": "system", "content": INSTRUCTIONS},
+                    {"role": "user", "content": images},
+                ],
                 "temperature": TEMPERATURE,
-                "max_output_tokens": MAX_OUTPUT_TOKENS,
-                "store": False,
+                "max_tokens": MAX_OUTPUT_TOKENS,
             }
         )
         tokens = response.usage
@@ -50,8 +52,8 @@ class ReadPicture:
         usage.append(
             Usage(
                 model=response.model,
-                input_tokens=tokens.input_tokens,
-                output_tokens=tokens.output_tokens,
+                input_tokens=tokens.prompt_tokens,
+                output_tokens=tokens.completion_tokens,
             )
         )
         return response.output_text()

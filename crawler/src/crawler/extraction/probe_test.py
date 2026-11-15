@@ -7,10 +7,11 @@ from pydantic import JsonValue
 
 from crawler.crawl.contract import Usage
 from crawler.crawl.rounds import NoticePage, StepError
+from crawler.extraction.chat import CONCURRENCY, Chat
+from crawler.extraction.chat_test import completion
 from crawler.extraction.extract import Extract
 from crawler.extraction.extract_test import context
 from crawler.extraction.probe import MAX_HTML_CHARACTERS, ProbeConfig, prepare
-from crawler.extraction.responses import CONCURRENCY, Responses
 from crawler.extraction.schema import response_schema
 from crawler.parse.listing import ListConfig, Selectors, parse_listing
 
@@ -25,18 +26,15 @@ HTML = b'<main><article><a href="/1">Example notice</a></article></main>'
 URL = "https://example.edu/list"
 
 
-def answer(text: str, *, status: str = "completed", usage: bool = True) -> httpx.Response:
-    body: dict[str, JsonValue] = {
-        "model": "deepseek-flash",
-        "status": status,
-        "output": [{"type": "message", "content": [{"type": "output_text", "text": text}]}],
-    }
-    if usage:
-        body["usage"] = {
-            "input_tokens": 120,
-            "output_tokens": 20,
-            "input_tokens_details": {"cached_tokens": 90},
-        }
+def answer(text: str, *, finish_reason: str = "stop", usage: bool = True) -> httpx.Response:
+    body = completion(
+        text,
+        input_tokens=120,
+        output_tokens=20,
+        cached_tokens=90,
+        finish_reason=finish_reason,
+        usage=usage,
+    )
     return httpx.Response(200, json=body)
 
 
@@ -61,11 +59,11 @@ def test_page_changes_do_not_change_instructions_or_schema_and_keep_dom_position
     </main>"""
     first = prepare(body, URL, None)
     second = prepare(HTML, "https://other.example/list", None)
-    inputs_a, inputs_b = first.pop("input"), second.pop("input")
+    inputs_a, inputs_b = first.pop("messages"), second.pop("messages")
     assert first == second
     assert isinstance(inputs_a, list)
     assert isinstance(inputs_b, list)
-    assert inputs_a[0] == inputs_b[0]
+    assert inputs_a[:2] == inputs_b[:2]
     page_message = inputs_a[-1]
     assert isinstance(page_message, dict)
     content = page_message["content"]
@@ -87,7 +85,7 @@ def test_page_changes_do_not_change_instructions_or_schema_and_keep_dom_position
 def test_generated_config_preserves_usage() -> None:
     async def run() -> None:
         usage: list[Usage] = []
-        async with Responses(
+        async with Chat(
             "local-test", httpx.MockTransport(lambda _: answer(json.dumps(SELECTORS)))
         ) as llm:
             config = await ProbeConfig(llm).generate(HTML, URL, None, usage)
@@ -98,19 +96,19 @@ def test_generated_config_preserves_usage() -> None:
 
 
 @pytest.mark.parametrize(
-    ("text", "status"),
+    ("text", "finish_reason"),
     [
-        ("not json", "completed"),
-        ("{}", "completed"),
+        ("not json", "stop"),
+        ("{}", "stop"),
         ('{"items":"[","title":"./a","link":"./a"}', "completed"),
-        (json.dumps(SELECTORS), "incomplete"),
+        (json.dumps(SELECTORS), "length"),
     ],
 )
-def test_invalid_answers_fail_with_known_usage_retained(text: str, status: str) -> None:
+def test_invalid_answers_fail_with_known_usage_retained(text: str, finish_reason: str) -> None:
     async def run() -> None:
         usage: list[Usage] = []
-        async with Responses(
-            "local-test", httpx.MockTransport(lambda _: answer(text, status=status))
+        async with Chat(
+            "local-test", httpx.MockTransport(lambda _: answer(text, finish_reason=finish_reason))
         ) as llm:
             with pytest.raises(StepError):
                 await ProbeConfig(llm).generate(HTML, URL, None, usage)
@@ -123,7 +121,7 @@ def test_invalid_answers_fail_with_known_usage_retained(text: str, status: str) 
 def test_missing_usage_is_reported_as_unknown() -> None:
     async def run() -> None:
         usage: list[Usage] = []
-        async with Responses(
+        async with Chat(
             "local-test", httpx.MockTransport(lambda _: answer(json.dumps(SELECTORS), usage=False))
         ) as llm:
             with pytest.raises(StepError, match="missing_usage"):
@@ -157,12 +155,12 @@ def test_probe_and_extraction_share_the_same_model_limit() -> None:
             payload = json.loads(request.content)
             value: dict[str, JsonValue] = (
                 SELECTORS
-                if payload["text"]["format"]["name"] == "list_configuration"
+                if payload["response_format"]["json_schema"]["name"] == "list_configuration"
                 else {"programs": []}
             )
             return answer(json.dumps(value))
 
-        async with Responses("local-test", httpx.MockTransport(handle)) as llm:
+        async with Chat("local-test", httpx.MockTransport(handle)) as llm:
             probe = ProbeConfig(llm)
             extract = Extract(llm)
             page = NoticePage("", "无关材料。", hyperlinks=(), attachments=[])

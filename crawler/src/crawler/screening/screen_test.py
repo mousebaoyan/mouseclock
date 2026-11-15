@@ -24,7 +24,7 @@ def response(score: float) -> httpx.Response:
     return httpx.Response(
         200,
         json={
-            "model": "SemIf",
+            "model": "ecnu-decision",
             "answers": {"relevant": {"type": "noul", "noul": score}},
             "usage": {"input_tokens": 20, "output_tokens": 1},
         },
@@ -38,7 +38,7 @@ def test_batch_preserves_notice_mapping_threshold_boundary_and_usage() -> None:
         def handle(request: httpx.Request) -> httpx.Response:
             body = json.loads(request.content)
             assert "section" not in body["state"]
-            assert body["model"] == "SemIf"
+            assert body["model"] == "ecnu-decision"
             title = body["state"]["title"]
             return response(THRESHOLD if title == "At threshold" else THRESHOLD - 0.0001)
 
@@ -70,7 +70,7 @@ def test_batch_preserves_notice_mapping_threshold_boundary_and_usage() -> None:
     assert [(r.notice_id, r.screened_in) for r in results] == [(11, True), (12, False)]
     assert sum(u.input_tokens for u in usage) == 40
     assert sum(u.output_tokens for u in usage) == 2
-    assert {u.model for u in usage} == {"SemIf"}
+    assert {u.model for u in usage} == {"ecnu-decision"}
 
 
 def test_provider_failure_fails_the_screening_and_keeps_what_it_cost_so_far() -> None:
@@ -90,7 +90,7 @@ def test_provider_failure_fails_the_screening_and_keeps_what_it_cost_so_far() ->
                 return httpx.Response(
                     200,
                     json={
-                        "model": "SemIf",
+                        "model": "ecnu-decision",
                         "answers": {},
                         "usage": {"input_tokens": 20, "output_tokens": 1},
                     },
