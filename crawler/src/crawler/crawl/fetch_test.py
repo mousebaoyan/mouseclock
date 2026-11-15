@@ -1,6 +1,6 @@
 import asyncio
 from collections import Counter
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from itertools import pairwise
 from urllib.parse import urlsplit
 
@@ -85,3 +85,19 @@ def test_a_redirect_to_another_site_waits_its_turn_there() -> None:
     assert moved.url == "http://b/new"
     assert len(sites.times("b")) == 2
     assert all(gap >= INTERVAL for gap in gaps(sites.times("b")))
+
+
+def test_a_file_over_the_limit_is_not_downloaded_whole() -> None:
+    sent: list[int] = []
+
+    async def chunks() -> AsyncIterator[bytes]:
+        for _ in range(100):
+            sent.append(1000)
+            yield b"x" * 1000
+
+    sites = FakeSites({"http://a/big.pdf": httpx.Response(200, content=chunks())})
+
+    file = sites.run(lambda f: f.get("http://a/big.pdf", max_size=5000))
+
+    assert len(file.body) > 5000
+    assert sum(sent) < 10_000

@@ -184,7 +184,8 @@ class PageSession:
             return await self._browser_session.get(url)
         return await self._fetcher.get(url)
 
-    async def download(self, url: str, *, page_url: str) -> Response:
+    async def download(self, url: str, *, page_url: str, max_size: int) -> Response:
         if self._browser_session is not None:
+            # Playwright reads a body whole; its timeout bounds how much.
             return await self._browser_session.download(url, page_url=page_url)
-        return await self._fetcher.get(url)
+        return await self._fetcher.get(url, max_size)

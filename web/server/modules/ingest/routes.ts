@@ -159,17 +159,16 @@ const SnapshotResult = z
   })
   .openapi("SnapshotResult");
 
-const router = createRouter<CrawlerEnv>();
-router.use(
-  "/crawler/*",
-  authenticate,
+const limit = (maxSize: number, message: string) =>
   bodyLimit({
-    maxSize: 50 * MB,
+    maxSize,
     onError() {
-      throw new AppError(413, "too_large", "内容太大");
+      throw new AppError(413, "too_large", message);
     },
-  }),
-);
+  });
+
+const router = createRouter<CrawlerEnv>();
+router.use("/crawler/*", authenticate, limit(50 * MB, "内容太大"));
 
 export const ingestRoutes = router
   .openapi(
@@ -314,8 +313,9 @@ export const ingestRoutes = router
     createRoute({
       method: "put",
       path: "/crawler/snapshots/{id}/attachments/{position}",
-      summary: "上传一个附件的文件，请求体就是文件本身",
+      summary: "上传一个附件的文件，请求体就是文件本身，最大 10MB",
       security,
+      middleware: [limit(10 * MB, "文件太大")] as const,
       request: {
         params: z.object({ id: IntParam, position: IntParam }),
         body: {

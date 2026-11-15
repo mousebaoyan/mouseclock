@@ -76,25 +76,32 @@ class Fetcher:
             finally:
                 site.finished_at = self._clock()
 
-    async def get(self, url: str) -> Response:
+    async def get(self, url: str, max_size: int | None = None) -> Response:
+        """A body longer than max_size stops being read there, so the caller sees it is too long
+        without the whole file being downloaded."""
         # Each hop on its own, so a redirect to another site waits its turn there too.
         for _ in range(MAX_REDIRECTS + 1):
-            response = await self._send(url)
+            response, body = await self._send(url, max_size)
             if response.next_request is None:
                 return Response(
                     str(response.url),
                     response.status_code,
                     response.headers.get("content-type"),
-                    response.content,
+                    body,
                 )
             url = str(response.next_request.url)
         raise FetchError("too_many_redirects", url)
 
-    async def _send(self, url: str) -> httpx.Response:
+    async def _send(self, url: str, max_size: int | None) -> tuple[httpx.Response, bytes]:
         async with self.permit(url):
             started = self._clock()
+            body = bytearray()
             try:
-                response = await self._client.get(url)
+                async with self._client.stream("GET", url) as response:
+                    async for chunk in response.aiter_bytes():
+                        body += chunk
+                        if max_size is not None and len(body) > max_size:
+                            break
             except httpx.TimeoutException as error:
                 raise FetchError("timeout", url) from error
             except httpx.TransportError as error:
@@ -107,4 +114,4 @@ class Fetcher:
                     "elapsed": self._clock() - started,
                 },
             )
-            return response
+            return response, bytes(body)

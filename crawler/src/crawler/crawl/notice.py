@@ -14,10 +14,10 @@ from crawler.parse.image import Picture
 from crawler.parse.notice import AttachmentLink, parse_notice
 
 # What the website keeps (docs/api.md §6): 50 attachments to a snapshot, 2 MiB of text to one,
-# files up to 50 MB.
+# files up to 10 MiB.
 MAX_ATTACHMENTS = 50
 MAX_TEXT = 2 * 1024 * 1024
-MAX_FILE = 50 * 1024 * 1024
+MAX_FILE = 10 * 1024 * 1024
 # Only the types Python itself knows, so every machine names them alike.
 _TYPES = mimetypes.MimeTypes()
 # An empty answer, or a web page in place of the file: an error, or a captcha the crawler doesn't
@@ -107,7 +107,7 @@ class ReadNotice:
 
 async def _download(pages: PageSession, url: str, page_url: str) -> bytes | None:
     try:
-        response = await pages.download(url, page_url=page_url)
+        response = await pages.download(url, page_url=page_url, max_size=MAX_FILE)
     except FetchError as error:
         logger.warning("Attachment not downloaded: %s", error.failure, extra={"url": url})
         return None

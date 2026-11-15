@@ -291,7 +291,7 @@ def test_downloads_use_the_rounds_context_request_client(driver: FakeBrowser) ->
                 async with browser.session(SOURCE) as session:
                     await session.get("https://a/notice")
                     attachment = await session.download(
-                        "https://a/file.pdf", page_url="https://a/notice"
+                        "https://a/file.pdf", page_url="https://a/notice", max_size=1000
                     )
                     assert attachment.body == f"%PDF context {number}: https://a/notice".encode()
                     assert attachment.content_type == "application/pdf"

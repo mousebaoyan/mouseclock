@@ -1594,7 +1594,7 @@
     },
     "/crawler/snapshots/{id}/attachments/{position}": {
       "put": {
-        "summary": "上传一个附件的文件，请求体就是文件本身",
+        "summary": "上传一个附件的文件，请求体就是文件本身，最大 10MB",
         "security": [
           {
             "crawlerToken": []
