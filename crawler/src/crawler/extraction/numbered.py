@@ -126,6 +126,9 @@ def resolve(selection: SelectedExtraction, index: NoticeIndex) -> Extraction:
             ],
         }
 
+    # The model sometimes picks a field and fills it with nothing, as an application window of nulls
+    # for "dates to be announced", which isn't to be given (design §8.2); the website rejects the
+    # whole extraction over such a field, so it is left out. An item given twice counts once.
     programs: list[JsonValue] = []
     try:
         for program in selection.programs:
@@ -142,7 +145,8 @@ def resolve(selection: SelectedExtraction, index: NoticeIndex) -> Extraction:
                 for edge, ref in (("start", field.value.start), ("end", field.value.end)):
                     if ref is not None:
                         value[edge] = time_value(ref, evidence)
-                fields[key] = quoted(value, evidence, field.confidence)
+                if value:
+                    fields[key] = quoted(value, evidence, field.confidence)
             entrance = program.fields.apply_url
             if entrance is not None:
                 evidence = list(entrance.evidence)
@@ -159,12 +163,15 @@ def resolve(selection: SelectedExtraction, index: NoticeIndex) -> Extraction:
                 evidence = list(dates.evidence)
                 items: list[JsonValue] = []
                 for item in dates.value:
+                    if item.start is None and item.end is None:
+                        continue
                     point: dict[str, JsonValue] = {"label": item.label}
                     for edge, ref in (("start", item.start), ("end", item.end)):
                         if ref is not None:
                             point[edge] = time_value(ref, evidence)
                     items.append(point)
-                fields["dates"] = quoted(items, evidence, dates.confidence)
+                if items:
+                    fields["dates"] = quoted(items, evidence, dates.confidence)
             for key, text_field in (
                 ("degrees", program.fields.degrees),
                 ("majors", program.fields.majors),
@@ -175,9 +182,9 @@ def resolve(selection: SelectedExtraction, index: NoticeIndex) -> Extraction:
                 ("benefits", program.fields.benefits),
                 ("contacts", program.fields.contacts),
             ):
-                if text_field is not None:
+                if text_field is not None and text_field.value:
                     text_value = (
-                        list[JsonValue](text_field.value)
+                        list[JsonValue](dict.fromkeys(text_field.value))
                         if isinstance(text_field.value, list)
                         else text_field.value
                     )

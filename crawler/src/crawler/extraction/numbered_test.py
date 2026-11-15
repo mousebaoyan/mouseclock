@@ -4,8 +4,12 @@ import pytest
 
 from crawler.extraction.numbered import (
     DateRef,
+    SelectedApply,
+    SelectedDate,
+    SelectedEvent,
     SelectedExtraction,
     SelectedFields,
+    Selection,
     SelectionError,
     resolve,
 )
@@ -66,8 +70,6 @@ def test_month_range_end_and_email_are_taken_from_index() -> None:
     )
     selection = selected_extraction()
     program = selection.programs[0]
-    from crawler.extraction.numbered import SelectedEvent, Selection
-
     program.fields.apply = None
     program.fields.event = Selection(
         value=SelectedEvent(
@@ -88,3 +90,30 @@ def test_month_range_end_and_email_are_taken_from_index() -> None:
     }
     assert fields.apply_url is not None
     assert fields.apply_url.value == "mailto:apply@example.edu.cn"
+
+
+def test_fields_filled_with_nothing_are_left_out_and_repeats_count_once() -> None:
+    index = index_documents(
+        [Document("报名和考核时间另行通知。线上面试。")], published_on=date(2026, 5, 1)
+    )
+    selection = selected_extraction()
+    fields = selection.programs[0].fields
+    fields.apply = Selection(
+        value=SelectedApply(start=None, end=None, rolling=None), evidence=["S1"], confidence=0.5
+    )
+    fields.event = Selection(
+        value=SelectedEvent(start=None, end=None, mode="online", place=None),
+        evidence=["S2"],
+        confidence=0.9,
+    )
+    fields.dates = Selection(
+        value=[SelectedDate(label="考核", start=None, end=None)], evidence=["S1"], confidence=0.5
+    )
+    fields.degrees = Selection(value=["master", "master"], evidence=["S1"], confidence=0.9)
+    fields.majors = Selection(value=[], evidence=["S1"], confidence=0.9)
+    resolved = resolve(selection, index).programs[0].fields
+    assert (resolved.apply, resolved.dates, resolved.majors) == (None, None, None)
+    assert resolved.event is not None
+    assert resolved.event.value.model_dump(mode="json", exclude_none=True) == {"mode": "online"}
+    assert resolved.degrees is not None
+    assert resolved.degrees.value == ["master"]
