@@ -69,6 +69,9 @@ def resolve_programs(
 ) -> list[ExtractedProgram]:
     colleges = {c.id: c for c in context.colleges}
     candidates = {p.id: p for p in context.programs}
+    chosen = [item.program_id for item in selected.programs if item.program_id is not None]
+    if len(set(chosen)) < len(chosen):
+        raise SelectionError("duplicate_program")
     programs: list[ExtractedProgram] = []
     for item in selected.programs:
         college = colleges.get(item.college_id)

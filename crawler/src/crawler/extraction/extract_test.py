@@ -104,6 +104,15 @@ def test_unknown_ids_and_mismatched_existing_project_are_rejected(key: str, valu
         resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
 
 
+def test_the_same_existing_project_twice_is_rejected() -> None:
+    _, index = prepare(
+        "通知", NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[]), context()
+    )
+    selected = RoundSelection.model_validate({"programs": [selection(), selection()]})
+    with pytest.raises(SelectionError, match="duplicate_program"):
+        resolve_programs(selected, index, context())
+
+
 def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value() -> None:
     text = "报名截止为下周二17点。"
     attachment = Attachment(
