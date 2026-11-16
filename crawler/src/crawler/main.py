@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Annotated
 
 import httpx
-from pydantic import BaseModel, ConfigDict, HttpUrl, StringConstraints, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, StringConstraints, ValidationError
 
 from crawler.crawl.browser import Browser
 from crawler.crawl.contract import WorkProbe, WorkSource
@@ -23,7 +23,7 @@ from crawler.crawl.probe import GenerateConfig, probe_source
 from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import Steps, crawl_source
 from crawler.crawl.website import Website
-from crawler.extraction.chat import Chat
+from crawler.extraction.chat import CONCURRENCY, Chat
 from crawler.extraction.extract import Extract
 from crawler.extraction.pictures import ReadPicture
 from crawler.extraction.probe import ProbeConfig
@@ -47,6 +47,8 @@ class Config(BaseModel):
     mouseclock_token: Secret
     system_one_api_key: Secret
     llm_api_key: Secret
+    # Calls in flight per model: fewer when the keys are used elsewhere too.
+    model_concurrency: Annotated[int, Field(ge=1)] = CONCURRENCY
 
 
 def load_config(environ: Mapping[str, str]) -> Config:
@@ -123,12 +125,12 @@ async def _run(config: Config) -> None:
             Fetcher() as fetcher,
             Browser(fetcher) as browser,
             Website(str(config.mouseclock_url), config.mouseclock_token) as website,
-            Chat(config.llm_api_key) as llm,
+            Chat(config.llm_api_key, concurrency=config.model_concurrency) as llm,
         ):
             with closing(Readings(READINGS)) as readings:
                 steps = Steps(
                     list_items=list_items,
-                    screen=Screen(system_one),
+                    screen=Screen(system_one, config.model_concurrency),
                     read=ReadNotice(ReadPicture(llm), readings),
                     extract=Extract(llm),
                 )

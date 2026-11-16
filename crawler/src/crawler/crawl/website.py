@@ -7,6 +7,7 @@ import httpx
 from pydantic import BaseModel
 
 from crawler.crawl.contract import (
+    Error,
     Extraction,
     Listing,
     ListingResult,
@@ -19,6 +20,11 @@ from crawler.crawl.contract import (
 )
 
 TIMEOUT = 60.0
+
+
+class RefusedError(httpx.HTTPStatusError):
+    """The website turned down what was sent, saying why (docs/api.md §1). Where one notice's
+    data is turned down, only that notice fails; elsewhere it is an HTTP error like any other."""
 
 
 class Website:
@@ -76,5 +82,9 @@ class Website:
         # Values the crawler doesn't have are left out rather than sent as null (development §1).
         json = None if body is None else body.model_dump(mode="json", exclude_none=True)
         response = await self._client.request(method, path, json=json)
+        # It checks more than the contract's types say, as that an application window has a time.
+        if response.status_code == 400:
+            message = Error.model_validate_json(response.content).error.message
+            raise RefusedError(message, request=response.request, response=response)
         response.raise_for_status()
         return response.content

@@ -77,16 +77,21 @@ def resolve_programs(
         college = colleges.get(item.college_id)
         if college is None:
             raise SelectionError("unknown_college")
-        if item.program_id is not None:
-            candidate = candidates.get(item.program_id)
+        program_id = item.program_id
+        if program_id is not None:
+            candidate = candidates.get(program_id)
             if candidate is None:
                 raise SelectionError("unknown_program")
+            # The model sometimes picks the program another year of the same series, its name
+            # differing only in the year, while its cohort is the notice's own. Such a pick isn't
+            # the program; it goes as a new one, which the website holds for review when the
+            # school has one of the same college, cohort and kind after all (design §8.4).
             if (candidate.college_id, candidate.cohort, candidate.kind) != (
                 item.college_id,
                 item.cohort,
                 item.kind,
             ):
-                raise SelectionError("program_metadata_mismatch")
+                program_id = None
         resolved = resolve(
             SelectedExtraction(
                 programs=[
@@ -118,7 +123,7 @@ def resolve_programs(
         programs.append(
             ExtractedProgram(
                 college_id=item.college_id,
-                program_id=item.program_id,
+                program_id=program_id,
                 cohort=item.cohort,
                 kind=item.kind,
                 role=item.role,

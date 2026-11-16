@@ -91,10 +91,8 @@ def test_step_uses_ids_and_only_updates_the_new_deadline() -> None:
     asyncio.run(run())
 
 
-@pytest.mark.parametrize(
-    ("key", "value"), [("college_id", 99), ("program_id", 99), ("cohort", 2028)]
-)
-def test_unknown_ids_and_mismatched_existing_project_are_rejected(key: str, value: int) -> None:
+@pytest.mark.parametrize(("key", "value"), [("college_id", 99), ("program_id", 99)])
+def test_unknown_ids_are_rejected(key: str, value: int) -> None:
     item = selection()
     item[key] = value
     _, index = prepare(
@@ -102,6 +100,18 @@ def test_unknown_ids_and_mismatched_existing_project_are_rejected(key: str, valu
     )
     with pytest.raises(SelectionError):
         resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
+
+
+def test_an_existing_project_of_another_cohort_is_taken_as_a_new_one() -> None:
+    item = selection()
+    item["cohort"] = 2028
+    _, index = prepare(
+        "通知", NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[]), context()
+    )
+    [program] = resolve_programs(
+        RoundSelection.model_validate({"programs": [item]}), index, context()
+    )
+    assert (program.program_id, program.cohort) == (None, 2028)
 
 
 def test_the_same_existing_project_twice_is_rejected() -> None:

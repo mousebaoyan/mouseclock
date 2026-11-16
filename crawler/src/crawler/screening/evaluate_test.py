@@ -114,6 +114,25 @@ def test_failed_request_does_not_leak_response_body() -> None:
     assert result.score is None
 
 
+def test_a_burst_of_platform_errors_is_waited_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("crawler.screening.system_one.RETRY_DELAYS", (0, 0))
+    answer = {
+        "model": "ecnu-decision",
+        "answers": {"relevant": {"type": "noul", "noul": 0.9}},
+        "usage": {"input_tokens": 10, "output_tokens": 1},
+    }
+    answers = iter([httpx.Response(503), httpx.Response(429), httpx.Response(200, json=answer)])
+
+    async def run() -> Result:
+        provider = SystemOne("test-placeholder", httpx.MockTransport(lambda _: next(answers)))
+        try:
+            return await provider.score(Call(model="ecnu-decision", title="Camp", section=None))
+        finally:
+            await provider.close()
+
+    assert asyncio.run(run()).score == 0.9
+
+
 def test_programming_errors_are_not_reported_as_invalid_responses() -> None:
     def handle(_: httpx.Request) -> httpx.Response:
         raise ValueError("programming-error")

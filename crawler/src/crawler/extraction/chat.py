@@ -19,8 +19,11 @@ MODEL = "ecnu-max"
 TEMPERATURE = 0
 MAX_OUTPUT_TOKENS = 8192
 TIMEOUT = 180
-# The platform lets one key have 3 calls to a model in flight.
+# The platform lets one key have 3 calls to a model in flight; MODEL_CONCURRENCY lowers it when
+# the key is used elsewhere too.
 CONCURRENCY = 2
+# The platform's 429s and 5xx come in bursts that pass in seconds to minutes (design §7.3).
+RETRY_DELAYS = (10, 30)
 logger = logging.getLogger(__name__)
 type TokenCount = Annotated[int, Field(strict=True, ge=0)]
 
@@ -90,11 +93,16 @@ def make_request(
 
 
 class Chat:
-    def __init__(self, key: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    def __init__(
+        self,
+        key: str,
+        transport: httpx.AsyncBaseTransport | None = None,
+        concurrency: int = CONCURRENCY,
+    ) -> None:
         self.client = httpx.AsyncClient(
             headers={"Authorization": f"Bearer {key}"}, timeout=TIMEOUT, transport=transport
         )
-        self.slots = asyncio.Semaphore(CONCURRENCY)
+        self.slots = asyncio.Semaphore(concurrency)
 
     async def __aenter__(self) -> Self:
         await self.client.__aenter__()
@@ -109,13 +117,19 @@ class Chat:
         await self.client.__aexit__(exc_type, exc, tb)
 
     async def generate(self, payload: dict[str, JsonValue]) -> Completion:
-        try:
-            async with self.slots:
-                started = time.monotonic()
-                response = await self.client.post(API_URL, json=payload)
-                elapsed = time.monotonic() - started
-        except httpx.HTTPError as error:
-            raise StepError("error", f"模型调用失败: {type(error).__name__}") from error
+        # The slot is kept while waiting to try again, so the key has fewer calls in flight.
+        async with self.slots:
+            for delay in RETRY_DELAYS:
+                response, elapsed = await self._post(payload)
+                if response.status_code != 429 and response.status_code < 500:
+                    break
+                logger.warning(
+                    "Model call failed, trying again",
+                    extra={"status": response.status_code, "delay": delay},
+                )
+                await asyncio.sleep(delay)
+            else:
+                response, elapsed = await self._post(payload)
         if response.status_code != 200:
             raise StepError("error", f"模型调用失败: http_{response.status_code}")
         try:
@@ -136,3 +150,11 @@ class Chat:
             },
         )
         return result
+
+    async def _post(self, payload: dict[str, JsonValue]) -> tuple[httpx.Response, float]:
+        started = time.monotonic()
+        try:
+            response = await self.client.post(API_URL, json=payload)
+        except httpx.HTTPError as error:
+            raise StepError("error", f"模型调用失败: {type(error).__name__}") from error
+        return response, time.monotonic() - started

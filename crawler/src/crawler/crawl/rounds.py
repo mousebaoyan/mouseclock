@@ -27,7 +27,7 @@ from crawler.crawl.contract import (
     WorkSource,
 )
 from crawler.crawl.fetch import FetchError
-from crawler.crawl.website import Website
+from crawler.crawl.website import RefusedError, Website
 from crawler.log import crawl_round
 from crawler.parse.indexing import Hyperlink
 
@@ -80,9 +80,11 @@ class Steps:
     ]
 
 
-def _failure(error: FetchError | StepError) -> tuple[Failure, str | None]:
+def _failure(error: FetchError | StepError | RefusedError) -> tuple[Failure, str | None]:
     if isinstance(error, StepError):
         return error.failure, error.detail
+    if isinstance(error, RefusedError):
+        return "error", f"网站拒收: {error}"
     return error.failure, error.url
 
 
@@ -149,7 +151,8 @@ async def crawl_source(
             usage = []
             try:
                 programs = await _fetch_notice(notice, source, pages, website, steps, clock, usage)
-            except (FetchError, StepError) as error:
+            # What the website refuses for one notice fails only that notice, and says why.
+            except (FetchError, StepError, RefusedError) as error:
                 logger.warning("Fetching a notice failed: %s", error, extra={"url": notice.url})
                 failure, detail = _failure(error)
                 failures.append(NoticeFailure(url=notice.url, failure=failure, detail=detail))

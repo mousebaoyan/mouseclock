@@ -1,5 +1,6 @@
 # The crawler on its machine; see docs/design.md §16. It lives in /opt/mouseclock/, beside .env
-# with MOUSECLOCK_URL, MOUSECLOCK_TOKEN, SYSTEM_ONE_API_KEY and LLM_API_KEY.
+# with MOUSECLOCK_URL, MOUSECLOCK_TOKEN, SYSTEM_ONE_API_KEY and LLM_API_KEY, and MODEL_CONCURRENCY
+# when the keys are used elsewhere too.
 services:
   crawler:
     image: ghcr.io/mousebaoyan/mouseclock-crawler:${CRAWLER_VERSION:-latest}

@@ -340,7 +340,7 @@ def test_failed_requests_are_not_cached_and_retry_on_next_run(
         nonlocal calls
         calls += 1
         return (
-            httpx.Response(503)
+            httpx.Response(400)
             if calls == 1
             else httpx.Response(200, json=completion(selected_extraction().model_dump_json()))
         )

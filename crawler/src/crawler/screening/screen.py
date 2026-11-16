@@ -10,15 +10,16 @@ from crawler.screening.system_one import Call, SystemOne
 # rerunning crawler.screening.evaluate and selecting its threshold again.
 MODEL = "ecnu-decision"
 THRESHOLD = 0.5
-# Calls in flight at once, across all the rounds that share this Screen.
+# Calls in flight at once, across all the rounds that share this Screen; MODEL_CONCURRENCY sets it.
 CONCURRENCY = 2
 logger = logging.getLogger(__name__)
 
 
 class Screen:
-    def __init__(self, provider: SystemOne) -> None:
+    def __init__(self, provider: SystemOne, concurrency: int = CONCURRENCY) -> None:
         self.provider = provider
-        self.slots = asyncio.Semaphore(CONCURRENCY)
+        self.concurrency = concurrency
+        self.slots = asyncio.Semaphore(concurrency)
 
     async def __call__(
         self, source: WorkSource, notices: list[PendingNotice], usage: list[Usage]
@@ -47,11 +48,11 @@ class Screen:
 
         started = time.monotonic()
         results: list[ScreeningResult] = []
-        for offset in range(0, len(notices), CONCURRENCY):
+        for offset in range(0, len(notices), self.concurrency):
             # Stop scheduling after a failed chunk; never return partial screening. The chunk's
             # other calls are waited for, so what they cost is counted.
             outcomes = await asyncio.gather(
-                *(score(n) for n in notices[offset : offset + CONCURRENCY]),
+                *(score(n) for n in notices[offset : offset + self.concurrency]),
                 return_exceptions=True,
             )
             for outcome in outcomes:

@@ -38,11 +38,18 @@ def pending(notice_id: int, step: str) -> dict[str, Any]:
 
 class FakeWebsite:
     """The website's crawler API: answers `pending` to the listing, asks to extract snapshots of
-    notices not in `extracted`, and records each call."""
+    notices not in `extracted`, refuses the extractions of snapshots in `refused`, and records
+    each call."""
 
-    def __init__(self, pending: list[dict[str, Any]], extracted: frozenset[int]) -> None:
+    def __init__(
+        self,
+        pending: list[dict[str, Any]],
+        extracted: frozenset[int],
+        refused: frozenset[int] = frozenset(),
+    ) -> None:
         self.pending = pending
         self.extracted = extracted
+        self.refused = refused
         self.calls: list[tuple[str, Any]] = []
 
     def handle(self, request: httpx.Request) -> httpx.Response:
@@ -63,6 +70,11 @@ class FakeWebsite:
                     if notice in self.extracted
                     else CONTEXT.model_dump(mode="json"),
                 },
+            )
+        match = re.fullmatch(r"/snapshots/(\d+)/extraction", path)
+        if match and int(match[1]) in self.refused:
+            return httpx.Response(
+                400, json={"error": {"code": "invalid_request", "message": "招收类型有重复"}}
             )
         return httpx.Response(204)
 
@@ -324,6 +336,28 @@ def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
             "failure": "unreachable",
             "detail": "http://a/files/application.pdf",
         },
+    ]
+    assert run["usage"] == [
+        {"purpose": "extraction", "model": "m", "input_tokens": 10, "output_tokens": 1}
+    ]
+
+
+def test_an_extraction_the_website_refuses_fails_only_its_notice() -> None:
+    site = FakeWebsite(
+        [pending(1, "fetch"), pending(2, "fetch")], extracted=frozenset(), refused=frozenset({10})
+    )
+
+    async def read(
+        _pages: PageSession, _source: WorkSource, _url: str, _usage: list[Usage]
+    ) -> NoticePage:
+        return page("冬令营")
+
+    site.run(Steps(list_items, screen, read, extract))
+
+    assert len(site.called("POST /snapshots/20/extraction")) == 1
+    [run] = site.called("POST /runs")
+    assert run["notice_failures"] == [
+        {"url": "http://a/1.htm", "failure": "error", "detail": "网站拒收: 招收类型有重复"}
     ]
     assert run["usage"] == [
         {"purpose": "extraction", "model": "m", "input_tokens": 10, "output_tokens": 1}

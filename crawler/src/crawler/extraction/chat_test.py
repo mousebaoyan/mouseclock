@@ -126,16 +126,35 @@ def test_empty_or_missing_output_is_not_an_irrelevant_notice(body: dict[str, Jso
         Completion.model_validate(body).output_text()
 
 
-@pytest.mark.parametrize("status", [401, 429, 503])
-def test_http_failure_reports_status_without_response_body_or_key(status: int) -> None:
+@pytest.mark.parametrize(("status", "tries"), [(401, 1), (429, 3), (503, 3)])
+def test_http_failure_reports_status_without_response_body_or_key(
+    monkeypatch: pytest.MonkeyPatch, status: int, tries: int
+) -> None:
+    monkeypatch.setattr("crawler.extraction.chat.RETRY_DELAYS", (0, 0))
+    requests: list[httpx.Request] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(status, text="sensitive upstream detail")
+
     async def run() -> None:
-        client = Chat(
-            "local-test",
-            httpx.MockTransport(lambda _: httpx.Response(status, text="sensitive upstream detail")),
-        )
-        async with client:
+        async with Chat("local-test", httpx.MockTransport(handle)) as client:
             with pytest.raises(StepError) as caught:
                 await client.generate({})
             assert caught.value.detail == f"模型调用失败: http_{status}"
 
     asyncio.run(run())
+    assert len(requests) == tries
+
+
+def test_a_burst_of_platform_errors_is_waited_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("crawler.extraction.chat.RETRY_DELAYS", (0, 0))
+    answers = iter(
+        [httpx.Response(500), httpx.Response(429), httpx.Response(200, json=completion("{}"))]
+    )
+
+    async def run() -> Completion:
+        async with Chat("local-test", httpx.MockTransport(lambda _: next(answers))) as client:
+            return await client.generate({})
+
+    assert asyncio.run(run()).output_text() == "{}"
