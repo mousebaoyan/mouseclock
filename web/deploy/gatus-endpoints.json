@@ -15,7 +15,7 @@
   {
     "name": "鼠钟 HTTPS",
     "group": "direct",
-    "url": "https://clock.mousebaoyan.cn/healthz",
+    "url": "https://ddl.mousebaoyan.cn/healthz",
     "interval": "60s",
     "conditions": [
       "[CONNECTED] == true",
