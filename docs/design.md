@@ -641,7 +641,7 @@ L3 以上可以不提申请，直接修改，同样要写理由、附依据。�
 - **镜像**：在 `main` 上打 `v1.2.3` 这样的版本标签时，GitHub Actions 构建网站和抓取节点的镜像，推到 `ghcr.io/mousebaoyan/mouseclock-web` 和 `mouseclock-crawler`（标签是版本号和 `latest`）。两个包设为公开，两台机器不用登录就能拉；镜像里没有密钥。机器上只拉镜像，不编译。
 - **网站**：`web/deploy/compose.yml` 在服务器上和 `.env` 一起放在 `/opt/1panel/www/sites/mouseclock/`。加入 `1panel-network`，通过容器名连 PostgreSQL；端口只监听 `127.0.0.1:3280`；根文件系统只读，内存上限 512MB，V8 堆 256MB（抓取节点交的附件文件最大 10MB）。
 - **数据库**：1Panel 的 PostgreSQL 里的 `mouseclock` 库和同名账号，这个账号只有这个库的权限；迁移在启动时自动执行。
-- **反代和域名**：1Panel 里的反向代理网站 `clock.mousebaoyan.cn`，证书和 HTTP/3 用 1Panel 的站点设置，其余配置见 `web/deploy/openresty.conf`。Cloudflare 上 `*.mousebaoyan.cn` 已经指向这台服务器，仅 DNS，和鼠洞一样。
+- **反代和域名**：1Panel 里的反向代理网站 `ddl.mousebaoyan.cn`，证书和 HTTP/3 用 1Panel 的站点设置，其余配置见 `web/deploy/openresty.conf`。Cloudflare 上 `*.mousebaoyan.cn` 已经指向这台服务器，仅 DNS，和鼠洞一样。
 - **抓取节点**：`crawler/deploy/compose.yml` 和 `.env` 放在上海那台机器的 `/opt/mouseclock/`。停止时等进行中的几轮做完，最多 10 分钟；读过的图片存在卷 `readings` 里，重建容器也不丢。
 - **发布**：
   1. 先把线上的库导出一份，做法同鼠洞。
