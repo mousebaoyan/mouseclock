@@ -20,13 +20,12 @@ import { recordAudit } from "../review/service.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
 const LEASE_MS = 2 * 3600_000;
-// Design §7.3: twice a day, every four hours in the busy months.
-const INTERVAL_MS = 12 * 3600_000;
-const BUSY_INTERVAL_MS = 4 * 3600_000;
+// Design §7.3: a round a day from 18:00 Beijing time, when the model platform's off-peak prices
+// start.
+const ROUND_HOUR_UTC = 10;
 export const BUSY_MONTHS = new Set([3, 4, 5, 6, 7, 8, 9, 12, 1]);
-// Notices of programs still open are fetched again once a day to catch changes (design §7.4),
-// in their source's round; those without a deadline, for this long after the program appeared.
-const RECHECK_MS = 24 * 3600_000;
+// Notices of programs still open are fetched again in each round to catch changes (design §7.4);
+// those without a deadline, for this long after the program appeared.
 const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
@@ -112,13 +111,16 @@ export async function crawlerTokenId(token: string) {
   return row?.id ?? null;
 }
 
-function beijingMonth(now: Date) {
-  return new Date(now.getTime() + 8 * 3600_000).getUTCMonth() + 1;
+// When the latest round began: a source or notice not done since is due.
+function roundStart(now: Date) {
+  const start = new Date(now);
+  start.setUTCHours(ROUND_HOUR_UTC, 0, 0, 0);
+  if (start > now) start.setUTCDate(start.getUTCDate() - 1);
+  return start;
 }
 
 export async function takeWork(tokenId: number, now: Date) {
   const leaseEnd = new Date(now.getTime() + LEASE_MS);
-  const interval = BUSY_MONTHS.has(beijingMonth(now)) ? BUSY_INTERVAL_MS : INTERVAL_MS;
   return db.transaction().execute(async (trx) => {
     await trx
       .updateTable("crawler_tokens")
@@ -126,13 +128,7 @@ export async function takeWork(tokenId: number, now: Date) {
       .where("id", "=", tokenId)
       .execute();
 
-    const sources = await leaseSources(
-      trx,
-      now,
-      new Date(now.getTime() - interval),
-      leaseEnd,
-      MAX_SOURCES,
-    );
+    const sources = await leaseSources(trx, now, roundStart(now), leaseEnd, MAX_SOURCES);
     const probes = await leaseProbes(trx, now, leaseEnd, MAX_PROBES);
 
     return {
@@ -169,7 +165,7 @@ async function recordUsage(
 
 // Saves what the list showed and returns the source's notices that still need work: new ones
 // to screen; screened-in ones not yet extracted, which a round cut short leaves behind; and
-// those of programs still open, not fetched for a day (design §7.4).
+// those of programs still open, not fetched in this round yet (design §7.4).
 export async function recordListing(sourceId: number, items: ListedItem[]) {
   const now = new Date();
   return db.transaction().execute(async (trx) => {
@@ -211,7 +207,7 @@ export async function recordListing(sourceId: number, items: ListedItem[]) {
             ),
           ]),
           eb.and([
-            eb("n.checked_at", "<", new Date(now.getTime() - RECHECK_MS)),
+            eb("n.checked_at", "<", roundStart(now)),
             eb.exists(
               eb
                 .selectFrom("snapshots as s")

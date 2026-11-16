@@ -29,7 +29,7 @@ class PendingNotice(BaseModel):
     step: Annotated[
         Literal["screen", "fetch"],
         Field(
-            description="screen：还没初筛；fetch：要抓正文，初筛通过还没抽取的，或者项目还没截止、一天没抓过的"
+            description="screen：还没初筛；fetch：要抓正文，初筛通过还没抽取的，或者项目还没截止、这一轮还没抓过的"
         ),
     ]
 
