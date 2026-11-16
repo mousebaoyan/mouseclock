@@ -29,6 +29,7 @@ SOURCE = WorkSource(id=7, url="http://a/list.htm", browser=False, config=None, b
 ITEMS = [ListedItem(url=f"http://a/{n}.htm", title=f"通知 {n}") for n in range(1, 5)]
 CONTEXT = ExtractionContext(published_on=None, colleges=[], programs=[])
 USAGE = [Usage(model="m", input_tokens=10, output_tokens=1)]
+CHECK_USAGE = [Usage(model="second", input_tokens=20, output_tokens=2)]
 
 
 def pending(notice_id: int, step: str) -> dict[str, Any]:
@@ -146,8 +147,9 @@ async def check(
     _page: NoticePage,
     _context: ExtractionContext,
     programs: list[ExtractedProgram],
-    _usage: list[Usage],
+    usage: list[Usage],
 ) -> list[ExtractedProgram]:
+    usage += CHECK_USAGE
     return [program.model_copy(update={"checked": ["new"]}) for program in programs]
 
 
@@ -279,7 +281,8 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
             return httpx.Response(200, json=body)
         return response
 
-    # Reading the picture went before the extraction, and its usage goes with it.
+    # Reading the picture went before the extraction and the check after, and their usage goes
+    # with it.
     picture = Attachment(
         AttachmentInfo(
             name="日程.png",
@@ -321,6 +324,7 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
     assert posted["usage"] == [
         {"model": "deepseek-flash", "input_tokens": 6000, "output_tokens": 1000},
         {"model": "deepseek-flash", "input_tokens": 200, "output_tokens": 50},
+        {"model": "second", "input_tokens": 20, "output_tokens": 2},
     ]
 
 
@@ -376,7 +380,8 @@ def test_an_extraction_the_website_refuses_fails_only_its_notice() -> None:
         {"url": "http://a/1.htm", "failure": "error", "detail": "网站拒收: 招收类型有重复"}
     ]
     assert run["usage"] == [
-        {"purpose": "extraction", "model": "m", "input_tokens": 10, "output_tokens": 1}
+        {"purpose": "extraction", "model": "m", "input_tokens": 10, "output_tokens": 1},
+        {"purpose": "extraction", "model": "second", "input_tokens": 20, "output_tokens": 2},
     ]
 
 

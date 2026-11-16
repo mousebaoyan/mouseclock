@@ -63,10 +63,18 @@ def marks(checked: ExtractedProgram) -> dict[str, bool | None]:
     return {name: entry.checked for name, entry in checked.fields if entry is not None}
 
 
-def png() -> bytes:
+def poster(text: str) -> Attachment:
+    """A picture whose words the first reading made out as the text."""
     buffer = io.BytesIO()
     Image.new("RGB", (40, 20), "white").save(buffer, "PNG")
-    return buffer.getvalue()
+    info = AttachmentInfo(
+        name="海报.png",
+        url="http://a/p.png",
+        content_type="image/png",
+        text=text,
+        read_from_pictures=True,
+    )
+    return Attachment(info, buffer.getvalue())
 
 
 def run_check(
@@ -97,17 +105,9 @@ def run_check(
 
 
 def test_a_value_read_from_a_picture_is_borne_out_when_a_second_reading_has_it_too() -> None:
-    poster = Attachment(
-        AttachmentInfo(
-            name="海报.png",
-            url="http://a/p.png",
-            content_type="image/png",
-            text="报名截止 6月30日17:00\n名额20人",
-            read_from_pictures=True,
-        ),
-        png(),
+    page = NoticePage(
+        "", "详见海报。", hyperlinks=(), attachments=[poster("报名截止 6月30日17:00\n名额20人")]
     )
-    page = NoticePage("", "详见海报。", hyperlinks=(), attachments=[poster])
     fields = ExtractedFields.model_validate(
         {
             "apply": {
@@ -141,7 +141,36 @@ def test_a_value_read_from_a_picture_is_borne_out_when_a_second_reading_has_it_t
     assert marks(checked) == {"apply": True, "quota": None, "majors": None}
 
 
-def selection(fields: dict[str, object]) -> str:
+@pytest.mark.parametrize(
+    ("reading", "borne_out"),
+    [
+        ("绩点 3.5 以上 电话 021-12345678", True),
+        ("绩点 5.3 以上 电话 021-12345678", None),
+        ("绩点 3.5 以上 电话 12345678-021", None),
+    ],
+)
+def test_numbers_read_from_a_picture_are_borne_out_only_as_written(
+    reading: str, borne_out: bool | None
+) -> None:
+    words = "绩点3.5以上 电话021-12345678"
+    page = NoticePage("", "详见海报。", hyperlinks=(), attachments=[poster(words)])
+    fields = {
+        "requirements": {
+            "value": [words],
+            "evidence": [{"quote": words, "attachment": 0}],
+            "confidence": 0.9,
+        }
+    }
+
+    [checked], _ = run_check(
+        lambda _asked, _payload: reading, page, context({"id": 100}), [program(fields=fields)]
+    )
+
+    assert marks(checked) == {"requirements": borne_out}
+
+
+def selection(fields: dict[str, object], **changes: object) -> str:
+    """A second extraction of one program."""
     selected = dict.fromkeys(SelectedFields.model_fields) | fields
     return json.dumps(
         {
@@ -156,6 +185,7 @@ def selection(fields: dict[str, object]) -> str:
                     "fields": selected,
                     "unresolved_dates": [],
                 }
+                | changes
             ]
         }
     )
@@ -196,27 +226,111 @@ def test_an_unsure_value_and_a_missing_deadline_are_borne_out_by_a_second_extrac
     assert checked.checked == ["no_deadline"]
 
 
-def test_a_missing_deadline_the_second_extraction_finds_is_left_for_review() -> None:
-    page = NoticePage("", "报名截止6月30日。", hyperlinks=(), attachments=[])
-    second = selection(
-        {
-            "apply": {
-                "value": {
-                    "start": None,
-                    "end": {"date_id": "D1", "edge": "first"},
-                    "rolling": None,
-                },
-                "evidence": ["S1"],
-                "confidence": 0.9,
-            }
-        }
-    )
+@pytest.mark.parametrize(
+    ("text", "second"),
+    [
+        (
+            "报名截止6月30日。",
+            selection(
+                {
+                    "apply": {
+                        "value": {
+                            "start": None,
+                            "end": {"date_id": "D1", "edge": "first"},
+                            "rolling": None,
+                        },
+                        "evidence": ["S1"],
+                        "confidence": 0.9,
+                    }
+                }
+            ),
+        ),
+        (
+            "报名截止到六月底。",
+            selection(
+                {},
+                unresolved_dates=[{"field": "apply.end", "text": "六月底", "evidence": ["S1"]}],
+            ),
+        ),
+    ],
+)
+def test_a_missing_deadline_the_second_extraction_finds_is_left_for_review(
+    text: str, second: str
+) -> None:
+    page = NoticePage("", text, hyperlinks=(), attachments=[])
 
     [checked], _ = run_check(
         lambda _asked, _payload: second, page, context({"id": 100}), [program(role="call")]
     )
 
     assert checked.checked is None
+
+
+@pytest.mark.parametrize(
+    ("reading", "extracted", "borne_out"),
+    [
+        ("名额20人", "20 人", True),
+        ("名额28人", "20 人", None),
+        ("名额20人", "28 人", None),
+    ],
+)
+def test_an_unsure_value_from_a_picture_is_borne_out_by_both_the_reading_and_the_extraction(
+    reading: str, extracted: str, borne_out: bool | None
+) -> None:
+    page = NoticePage("", "详见海报。", hyperlinks=(), attachments=[poster("名额20人")])
+    fields = {
+        "quota": {
+            "value": "20 人",
+            "evidence": [{"quote": "名额20人", "attachment": 0}],
+            "confidence": 0.5,
+        }
+    }
+    second = selection({"quota": {"value": extracted, "evidence": ["S1"], "confidence": 0.9}})
+
+    [checked], _ = run_check(
+        lambda asked, _payload: reading if asked == "picture" else second,
+        page,
+        context({"id": 100}),
+        [program(fields=fields)],
+    )
+
+    assert marks(checked) == {"quota": borne_out}
+
+
+@pytest.mark.parametrize(
+    ("ids", "second_id", "borne_out"),
+    [
+        # The second extraction has only the first of the two programs.
+        ((100, 101), 100, [True, None]),
+        # Two new programs alike can't be told apart.
+        ((None, None), None, [None, None]),
+    ],
+)
+def test_an_unsure_value_is_compared_only_with_the_same_program_of_the_second_extraction(
+    ids: tuple[int | None, ...], second_id: int | None, borne_out: list[bool | None]
+) -> None:
+    page = NoticePage("", "招收硕士研究生。", hyperlinks=(), attachments=[])
+    fields = {
+        "degrees": {
+            "value": ["master"],
+            "evidence": [{"quote": "招收硕士研究生。"}],
+            "confidence": 0.5,
+        }
+    }
+    second = selection(
+        {"degrees": {"value": ["master"], "evidence": ["S1"], "confidence": 0.9}},
+        program_id=second_id,
+    )
+    known: list[dict[str, object]] = [{"id": i} for i in ids if i]
+
+    checked, _ = run_check(
+        lambda _asked, _payload: second,
+        page,
+        context(*known),
+        [program(program_id=i, fields=fields) for i in ids],
+    )
+
+    assert [marks(p)["degrees"] for p in checked] == borne_out
 
 
 @pytest.mark.parametrize(
@@ -313,12 +427,11 @@ def test_when_the_second_model_fails_everything_waits_for_review_as_it_would() -
         }
     )
 
+    new = program(program_id=None, role="call", fields=fields)
+
     [checked], calls = run_check(
-        lambda _asked, _payload: "不是 JSON",
-        page,
-        context({"id": 100}),
-        [program(role="call", fields=fields)],
+        lambda _asked, _payload: "不是 JSON", page, context({"id": 100}), [new]
     )
 
-    assert calls == [f"{SECOND_MODEL} notice_extraction"]
-    assert checked == program(role="call", fields=fields)
+    assert calls == ["ecnu-max same_program", f"{SECOND_MODEL} notice_extraction"]
+    assert checked == new

@@ -626,7 +626,7 @@
             "items": {
               "$ref": "#/components/schemas/Usage"
             },
-            "maxItems": 100
+            "maxItems": 5000
           }
         },
         "required": [

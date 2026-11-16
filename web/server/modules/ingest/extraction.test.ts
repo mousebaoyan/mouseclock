@@ -405,14 +405,17 @@ test("fields a second model bore out go on the table, whether quoted from a pict
       fields: {
         quota: { value: "100 人", ...sure("拟招收100人", 1), checked: true },
         majors: { value: ["软件工程"], evidence: APPLY.evidence, confidence: 0.3, checked: true },
-        // Bearing a value out doesn't put a quote that isn't there in the notice.
+        // Bearing a value out answers neither a quote that isn't in the notice nor a deadline
+        // before it.
         contacts: { value: ["cs@y.edu.cn"], ...sure("咨询邮箱：cs@y.edu.cn", 1), checked: true },
+        apply: { ...APPLY, value: { end: { date: "2026-05-01" } }, checked: true },
       },
     },
   ]);
   const [program] = await programsOf(cs);
   expect(Object.keys(await fieldsOf(program.id)).sort()).toEqual(["majors", "quota"]);
   expect(await reviewOf(snap)).toEqual([
+    { reason: "implausible", key: "apply:end", program_id: program.id },
     { reason: "evidence_not_found", key: "contacts", program_id: program.id },
     { reason: "no_deadline", key: null, program_id: program.id },
   ]);

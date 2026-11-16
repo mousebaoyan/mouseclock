@@ -366,7 +366,8 @@ export const ingestRoutes = router
                       const ids = programs.flatMap((p) => p.program_id ?? []);
                       return new Set(ids).size === ids.length;
                     }, "同一个项目只能出现一次"),
-                  usage: z.array(Usage).max(100),
+                  // Each picture read, read again and each check is a call of its own.
+                  usage: z.array(Usage).max(5000),
                 })
                 .openapi("Extraction", { description: "通知涉及的项目；一个都没有就是无关" }),
             },

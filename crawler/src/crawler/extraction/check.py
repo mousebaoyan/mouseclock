@@ -94,16 +94,17 @@ class Check:
         programs: list[ExtractedProgram],
         usage: list[Usage],
     ) -> list[ExtractedProgram]:
-        programs = await self._recognise(title, context, programs, usage)
+        recognised = await self._recognise(title, context, programs, usage)
         readings = await self._read_again(page, programs, usage)
         others = (
             await self._extract_again(title, page, context, usage)
-            if any(_unsure(p) or _no_deadline(p, context) for p in programs)
+            if any(_unsure(p) or _no_deadline(p, context) for p in recognised)
             else []
         )
         checked: list[ExtractedProgram] = []
-        for program in programs:
-            other = _counterpart(program, others)
+        for extracted, program in zip(programs, recognised, strict=True):
+            # One extraction is compared with the other as it was, before recognising.
+            other = _counterpart(extracted, programs, others)
             borne_out = {
                 name: entry.model_copy(update={"checked": True})
                 for name, entry in _entries(program.fields)
@@ -289,13 +290,18 @@ def _no_deadline(program: ExtractedProgram, context: ExtractionContext) -> bool:
 
 
 def _counterpart(
-    program: ExtractedProgram, others: list[ExtractedProgram]
+    program: ExtractedProgram, programs: list[ExtractedProgram], others: list[ExtractedProgram]
 ) -> ExtractedProgram | None:
-    """The program of the second extraction that is this one: the same existing program, or
-    else the only one of the same college, cohort and kind."""
-    same = [o for o in others if o.program_id is not None and o.program_id == program.program_id]
-    matches = same or [o for o in others if _key(o) == _key(program)]
-    return matches[0] if len(matches) == 1 else None
+    """The program of the second extraction that is this one: both are the same existing program,
+    or both a new one of the same college, cohort and kind. Two such in either extraction can't be
+    told apart."""
+    alike = [p for p in programs if _identity(p) == _identity(program)]
+    matches = [o for o in others if _identity(o) == _identity(program)]
+    return matches[0] if len(alike) == len(matches) == 1 else None
+
+
+def _identity(program: ExtractedProgram) -> tuple[int | None, int, int, str]:
+    return program.program_id, *_key(program)
 
 
 def _borne_out(
@@ -339,7 +345,7 @@ def _found(value: JsonValue, text: str, published_on: date | None) -> bool:
     times = {
         repr(_dump(v)) for m in find_dates(text, published_on) for v in (m.value, m.end_value) if v
     }
-    numbers = set(re.findall(r"\d+", unicodedata.normalize("NFKC", text)))
+    numbers = _numbers(text)
 
     def found(v: JsonValue) -> bool:
         if isinstance(v, dict):
@@ -347,7 +353,13 @@ def _found(value: JsonValue, text: str, published_on: date | None) -> bool:
         if isinstance(v, list):
             return all(map(found, v))
         if isinstance(v, str):
-            return set(re.findall(r"\d+", unicodedata.normalize("NFKC", v))) <= numbers
+            return _numbers(v) <= numbers
         return True
 
     return found(value)
+
+
+def _numbers(text: str) -> set[str]:
+    """The numbers as written, with their decimal points and the dashes between the parts of a
+    phone number: 3.5 is no reading of 5.3."""
+    return set(re.findall(r"\d+(?:[.\-]\d+)*", unicodedata.normalize("NFKC", text)))

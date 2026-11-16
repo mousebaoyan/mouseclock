@@ -526,7 +526,7 @@ class Extraction(BaseModel):
         extra="forbid",
     )
     programs: Annotated[list[ExtractedProgram], Field(max_length=50)]
-    usage: Annotated[list[Usage], Field(max_length=100)]
+    usage: Annotated[list[Usage], Field(max_length=5000)]
 
 
 class SnapshotResult(BaseModel):
