@@ -493,6 +493,7 @@ export type ExtractedProgram = {
   role: Role;
   fields: ExtractedFields;
   unresolved_dates?: UnresolvedDate[];
+  checked?: ("no_deadline" | "new")[];
 };
 
 // Why something waits on the review page instead of going on the table (design §8.3, §8.4).
@@ -661,8 +662,9 @@ export async function mergeProgram(
   if (programId === undefined) {
     programId = await createProgram(trx, program);
     // A second batch is a program of its own (design §8.2), but so is a program the model
-    // failed to recognise; a person tells them apart.
+    // failed to recognise; a person tells them apart when the models don't agree.
     if (
+      !program.checked?.includes("new") &&
       candidates.some(
         (c) =>
           c.college_id === program.college_id &&
@@ -716,9 +718,9 @@ export async function mergeProgram(
   for (const row of toStoredFields(program.fields)) {
     const reason = !evidenceFound(docs, row.evidence)
       ? "evidence_not_found"
-      : fromPictures(docs, row.evidence)
+      : !row.checked && fromPictures(docs, row.evidence)
         ? "evidence_in_picture"
-        : row.confidence < CONFIDENT
+        : !row.checked && row.confidence < CONFIDENT
           ? "low_confidence"
           : row.key.startsWith("apply:") && implausible
             ? "implausible"
@@ -758,7 +760,7 @@ export async function mergeProgram(
       .where("reason", "=", "no_deadline")
       .where("status", "=", "pending")
       .executeTakeFirst();
-    if (apply_deadline === null && !asked) {
+    if (apply_deadline === null && !asked && !program.checked?.includes("no_deadline")) {
       held.push({
         reason: "no_deadline",
         snapshot_id: snapshotId,

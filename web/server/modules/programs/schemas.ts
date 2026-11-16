@@ -113,13 +113,18 @@ export const DateItem = z
   .refine(hasTime, "其他时间的每一项都要有时间")
   .openapi("DateItem");
 
-// A field as extraction gives it: the value, the sentences behind it, and how sure the model is.
+// A field as extraction gives it: the value, the sentences behind it, how sure the model is, and
+// whether a second model bore it out.
 function entry<S extends z.ZodType>(value: S) {
   return z
     .strictObject({
       value,
       evidence: z.array(Evidence).min(1).max(20),
       confidence: z.number().min(0).max(1),
+      checked: z.literal(true).optional().openapi({
+        description:
+          "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值",
+      }),
     })
     .optional();
 }

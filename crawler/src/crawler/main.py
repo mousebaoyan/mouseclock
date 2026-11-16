@@ -23,7 +23,8 @@ from crawler.crawl.probe import GenerateConfig, probe_source
 from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import Steps, crawl_source
 from crawler.crawl.website import Website
-from crawler.extraction.chat import CONCURRENCY, Chat
+from crawler.extraction.chat import CONCURRENCY, SECOND_MODEL, Chat
+from crawler.extraction.check import Check
 from crawler.extraction.extract import Extract
 from crawler.extraction.pictures import ReadPicture
 from crawler.extraction.probe import ProbeConfig
@@ -126,6 +127,9 @@ async def _run(config: Config) -> None:
             Browser(fetcher) as browser,
             Website(str(config.mouseclock_url), config.mouseclock_token) as website,
             Chat(config.llm_api_key, concurrency=config.model_concurrency) as llm,
+            Chat(
+                config.llm_api_key, concurrency=config.model_concurrency, model=SECOND_MODEL
+            ) as second,
         ):
             with closing(Readings(READINGS)) as readings:
                 steps = Steps(
@@ -133,6 +137,7 @@ async def _run(config: Config) -> None:
                     screen=Screen(system_one, config.model_concurrency),
                     read=ReadNotice(ReadPicture(llm), readings),
                     extract=Extract(llm),
+                    check=Check(llm, second),
                 )
                 await serve(website, browser, steps, stopping, ProbeConfig(llm).generate)
     finally:

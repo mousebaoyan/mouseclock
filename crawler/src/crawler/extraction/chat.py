@@ -16,11 +16,14 @@ from crawler.crawl.rounds import StepError
 API_URL = "https://chat.ecnu.edu.cn/open/api/v1/chat/completions"
 # DeepSeek V4.1 Flash on the platform; it thinks only when asked to.
 MODEL = "ecnu-max"
+# Qwen3.8 Flash on the platform, the second model that checks what the first wasn't sure of
+# (design §8.3): another family errs elsewhere, it reads pictures too, at a third of the price.
+SECOND_MODEL = "ecnu-plus"
 TEMPERATURE = 0
 MAX_OUTPUT_TOKENS = 8192
 TIMEOUT = 180
-# The platform lets one key have 3 calls to a model in flight; MODEL_CONCURRENCY lowers it when
-# the key is used elsewhere too.
+# The platform lets one key have 3 calls to ecnu-max in flight and 5 to ecnu-plus;
+# MODEL_CONCURRENCY lowers it when the key is used elsewhere too.
 CONCURRENCY = 2
 # The platform's 429s and 5xx come in bursts that pass in seconds to minutes (design §7.3).
 RETRY_DELAYS = (10, 30)
@@ -77,7 +80,6 @@ def make_request(
 ) -> dict[str, JsonValue]:
     # Keep shared context ahead of notice data and independent of mapping insertion order.
     return {
-        "model": MODEL,
         "messages": [
             {"role": "system", "content": instructions},
             {"role": "user", "content": json.dumps(school, ensure_ascii=False, sort_keys=True)},
@@ -98,11 +100,14 @@ class Chat:
         key: str,
         transport: httpx.AsyncBaseTransport | None = None,
         concurrency: int = CONCURRENCY,
+        model: str = MODEL,
     ) -> None:
         self.client = httpx.AsyncClient(
             headers={"Authorization": f"Bearer {key}"}, timeout=TIMEOUT, transport=transport
         )
+        # The platform counts the calls in flight for each model on its own.
         self.slots = asyncio.Semaphore(concurrency)
+        self.model = model
 
     async def __aenter__(self) -> Self:
         await self.client.__aenter__()
@@ -154,7 +159,7 @@ class Chat:
     async def _post(self, payload: dict[str, JsonValue]) -> tuple[httpx.Response, float]:
         started = time.monotonic()
         try:
-            response = await self.client.post(API_URL, json=payload)
+            response = await self.client.post(API_URL, json={**payload, "model": self.model})
         except httpx.HTTPError as error:
             raise StepError("error", f"模型调用失败: {type(error).__name__}") from error
         return response, time.monotonic() - started

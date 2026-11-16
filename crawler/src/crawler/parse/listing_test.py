@@ -11,7 +11,7 @@ from crawler.crawl.fetch import Fetcher
 from crawler.crawl.fetch_test import FakeSites
 from crawler.crawl.listing import list_items
 from crawler.crawl.rounds import NoticePage, StepError, Steps, crawl_source
-from crawler.crawl.rounds_test import FakeWebsite, extract, screen
+from crawler.crawl.rounds_test import FakeWebsite, check, extract, screen
 from crawler.crawl.website import Website
 from crawler.parse.listing import Selectors, parse_listing
 
@@ -325,7 +325,7 @@ def test_bad_configuration_is_recorded_by_the_round(
                 source(config=config),
                 Browser(fetcher),
                 client,
-                Steps(list_items, screen, read, extract),
+                Steps(list_items, screen, read, extract, check),
             )
 
     sites.run(run)

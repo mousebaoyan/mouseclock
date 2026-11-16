@@ -70,7 +70,7 @@ def test_a_failing_round_leaves_the_others_and_stopping_waits_for_them() -> None
             await serve(
                 website,
                 Browser(fetcher),
-                Steps(list_items, unused, unused, unused),
+                Steps(list_items, unused, unused, unused, unused),
                 stopping,
                 unused,
             )
@@ -133,7 +133,7 @@ def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
             await serve(
                 website,
                 Browser(fetcher),
-                Steps(list_items, unused, unused, unused),
+                Steps(list_items, unused, unused, unused, unused),
                 stopping,
                 unused,
             )
@@ -210,7 +210,7 @@ def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits
                 serve(
                     website,
                     Browser(fetcher),
-                    Steps(list_items, unused, unused, unused),
+                    Steps(list_items, unused, unused, unused, unused),
                     stopping,
                     ProbeConfig(model).generate,
                 )

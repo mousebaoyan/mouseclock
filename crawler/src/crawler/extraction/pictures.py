@@ -6,7 +6,7 @@ from pydantic import JsonValue
 
 from crawler.crawl.contract import Usage
 from crawler.crawl.rounds import StepError
-from crawler.extraction.chat import MODEL, TEMPERATURE, Chat
+from crawler.extraction.chat import TEMPERATURE, Chat
 from crawler.parse.image import Picture
 
 INSTRUCTIONS = (
@@ -37,7 +37,6 @@ class ReadPicture:
         ]
         response = await self.llm.generate(
             {
-                "model": MODEL,
                 "messages": [
                     {"role": "system", "content": INSTRUCTIONS},
                     {"role": "user", "content": images},
