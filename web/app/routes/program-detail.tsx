@@ -1,7 +1,15 @@
 import type { InferResponseType } from "hono/client";
 import type { ReactNode } from "react";
-import { data, Form, Link, redirect, useRouteLoaderData, useSearchParams } from "react-router";
-import { FormMessage } from "~/components/form";
+import {
+  data,
+  Form,
+  Link,
+  redirect,
+  useNavigation,
+  useRouteLoaderData,
+  useSearchParams,
+} from "react-router";
+import { Field, FormMessage } from "~/components/form";
 import { ExternalLink, Quote } from "~/components/icons";
 import { Facts, Page, Panel } from "~/components/page";
 import { SchoolLogo } from "~/components/school-logo";
@@ -85,6 +93,12 @@ export async function action({ request, params, context }: Route.ActionArgs) {
       return data({ intent, field, error: (await res.json()).error.message }, res.status);
     }
     return redirect(`/programs/${params.id}`);
+  }
+  if (intent === "delete") {
+    const json = { reason: formText(form, "reason") };
+    const res = await api.programs[":id"].$delete({ param, json });
+    if (res.status === 204) return redirect("/");
+    return data({ intent, field: null, error: (await res.json()).error.message }, res.status);
   }
   if (intent !== "verify" && intent !== "revert" && intent !== "revoke") {
     throw data("不支持的操作", { status: 400 });
@@ -270,6 +284,12 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
                 </Form>
               )}
             </Panel>
+          )}
+          {can?.admin && (
+            <RemovePanel
+              confirming={search.has("delete")}
+              error={actionData?.intent === "delete" ? actionData.error : undefined}
+            />
           )}
           <Panel title="版本记录" flush>
             <ol className="divide-y">
@@ -486,4 +506,54 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
   list("benefits");
   list("contacts");
   return rows;
+}
+
+// For a program that shouldn't be there, such as one made from a notice that isn't about
+// admissions. The address asks for the confirmation, as for revoking someone's edits.
+function RemovePanel({ confirming, error }: { confirming: boolean; error?: string }) {
+  const busy = useNavigation().state !== "idle";
+  return (
+    <Panel title="管理">
+      {confirming ? (
+        <Form method="post" preventScrollReset className="space-y-3">
+          <input type="hidden" name="intent" value="delete" />
+          <p className="text-[13px] text-muted-foreground">
+            删除后项目不再显示，待审核条目一并关闭；版本、快照和修改记录保留
+          </p>
+          <Field label="删除理由">
+            <input
+              name="reason"
+              required
+              maxLength={500}
+              placeholder="例如：不属于招生通知"
+              className="field"
+            />
+          </Field>
+          <FormMessage error={error} />
+          <div className="flex gap-2">
+            <Button size="sm" variant="destructive" disabled={busy}>
+              {busy ? "正在删除…" : "确认删除"}
+            </Button>
+            <Link
+              to="."
+              replace
+              preventScrollReset
+              className={buttonVariants({ variant: "outline", size: "sm" })}
+            >
+              取消
+            </Link>
+          </div>
+        </Form>
+      ) : (
+        <Link
+          to="?delete"
+          replace
+          preventScrollReset
+          className={buttonVariants({ variant: "outline", size: "sm" })}
+        >
+          删除项目
+        </Link>
+      )}
+    </Panel>
+  );
 }

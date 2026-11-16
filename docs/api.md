@@ -60,6 +60,7 @@
 | | `POST /feedback/{id}/approve`、`POST /feedback/{id}/reject` | 审核修改申请 |
 | | `POST /programs/{id}/verify` | 标记已核对，L3 以上，只认网页会话 |
 | | `POST /programs/{id}/resolve-dispute` | 复核争议，管理员 |
+| | `DELETE /programs/{id}` | 删除项目，管理员，只认网页会话：带 `{ reason }`，理由必填。软删除，版本、快照和记录都留着，它待审的条目一起关掉，记进操作日志 |
 | 求收录 | `GET`、`POST /inclusion-requests` | 列表、提交 |
 | | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回 |
 | 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
