@@ -2,7 +2,7 @@ import { testClient } from "hono/testing";
 import { beforeAll, expect, test } from "vitest";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
-import { createCrawlerToken } from "./service.ts";
+import { createCrawlerToken, takeWork } from "./service.ts";
 
 const api = testClient(app).api.v1.crawler;
 
@@ -125,7 +125,7 @@ test("a due source is handed out once until its round is reported, its failed ca
 
   await db
     .updateTable("sources")
-    .set({ crawled_at: new Date(Date.now() - 13 * 3600_000) })
+    .set({ crawled_at: new Date(Date.now() - 25 * 3600_000) })
     .where("id", "=", source.id)
     .execute();
   expect(await handedOut()).toMatchObject([{ backfill: false }]);
@@ -304,4 +304,23 @@ test("a notice of a program still open comes back to be fetched once a day", asy
     .where("college_id", "=", extraction.colleges[0].id)
     .execute();
   expect((await list(source.id, items)).pending).toEqual([]);
+});
+
+test("a source is due again from 18:00 Beijing time the next day", async () => {
+  const source = await newSource("daily.edu.cn");
+  const token = await db
+    .selectFrom("crawler_tokens")
+    .select("id")
+    .where("name", "=", "test")
+    .executeTakeFirstOrThrow();
+  // Crawled at 18:30 Beijing time.
+  await db
+    .updateTable("sources")
+    .set({ crawled_at: new Date("2026-11-15T10:30:00Z") })
+    .where("id", "=", source.id)
+    .execute();
+  const handedOut = async (now: string) =>
+    (await takeWork(token.id, new Date(now))).sources.some((s) => s.id === source.id);
+  expect(await handedOut("2026-11-16T09:59:59Z")).toBe(false);
+  expect(await handedOut("2026-11-16T10:00:00Z")).toBe(true);
 });
