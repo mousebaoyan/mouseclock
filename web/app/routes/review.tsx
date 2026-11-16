@@ -216,7 +216,7 @@ function Queue({ items, thisYear }: { items: Items; thisYear: number }) {
           );
         })}
       </nav>
-      {items.items.length === 0 ? (
+      {items.total === 0 ? (
         <Empty>「{label}」已全部处理</Empty>
       ) : (
         <section aria-label={label} className="min-w-0 space-y-3">
@@ -245,9 +245,10 @@ function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear
   return (
     <article
       aria-busy={busy}
+      inert={busy}
       className={cn(
         "rounded-xl border bg-card shadow-card transition-opacity",
-        busy && "pointer-events-none opacity-50",
+        busy && "opacity-50",
       )}
     >
       <header className="space-y-0.5 border-b px-4 py-3 sm:px-5">
@@ -316,6 +317,8 @@ function FieldCheck({
 }) {
   const { current } = field;
   const now = current && formatValue(field.key, current.value, thisYear);
+  const source =
+    current && (current.version === null ? "人工修改" : `第 ${current.version} 版通知`);
   return (
     <>
       <div>
@@ -323,11 +326,11 @@ function FieldCheck({
         {conflict && now !== null ? (
           <dl className="mt-1.5 grid divide-y overflow-hidden rounded-lg border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
             <div className="px-3.5 py-2.5">
-              <dt className="text-xs text-muted-foreground">现在（人工修改）</dt>
+              <dt className="text-xs text-muted-foreground">现在（{source}）</dt>
               <dd className="mt-1">{now}</dd>
             </div>
             <div className="px-3.5 py-2.5">
-              <dt className="text-xs text-muted-foreground">新通知</dt>
+              <dt className="text-xs text-muted-foreground">新通知（第 {field.version} 版）</dt>
               <dd className="mt-1 font-medium">
                 <Value fieldKey={field.key} value={field.value} thisYear={thisYear} />
               </dd>
@@ -339,7 +342,9 @@ function FieldCheck({
               <Value fieldKey={field.key} value={field.value} thisYear={thisYear} />
             </div>
             {now !== null && now !== formatValue(field.key, field.value, thisYear) && (
-              <p className="mt-1 text-[13px] text-muted-foreground">总表现在：{now}</p>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                总表现在：{now}（{source}）
+              </p>
             )}
           </>
         )}
@@ -665,7 +670,7 @@ function Placing({
           <Button name="intent" value="accept">
             确定
           </Button>
-          <Button variant="outline" name="intent" value="reject">
+          <Button variant="outline" name="intent" value="reject" formNoValidate>
             不收这条通知
           </Button>
         </div>
