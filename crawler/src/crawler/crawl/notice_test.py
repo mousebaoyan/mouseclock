@@ -189,7 +189,7 @@ def test_a_picture_the_llm_cant_read_fails_the_notice_and_the_ones_read_still_co
     model = FakeModel()
 
     def handle(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(503) if model.calls else model.handle(request)
+        return httpx.Response(400) if model.calls else model.handle(request)
 
     usage: list[Usage] = []
 
@@ -198,6 +198,6 @@ def test_a_picture_the_llm_cant_read_fails_the_notice_and_the_ones_read_still_co
             read_notice = ReadNotice(ReadPicture(llm), readings)
             return await read_notice(PageSession(fetcher, None), SOURCE, PAGE, usage)
 
-    with pytest.raises(StepError, match="http_503"):
+    with pytest.raises(StepError, match="http_400"):
         FakeSites(pages).run(use)
     assert [u.input_tokens for u in usage] == [1000]
