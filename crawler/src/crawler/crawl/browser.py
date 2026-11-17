@@ -4,7 +4,7 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Self
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit
 
 from playwright.async_api import (
     BrowserContext,
@@ -37,6 +37,9 @@ PAGE_LIMIT = 2
 _REDIRECTS = {301, 302, 303, 307, 308}
 _BLOCKED = {"image", "font", "media"}
 _CHALLENGES = {202, 412}
+# Hosts that answer a plain request with a captcha a browser never meets, so their pages open in a
+# browser whatever the source says: 公众号的文章, which notice lists link to (design §7.2).
+BROWSER_HOSTS = frozenset({"mp.weixin.qq.com"})
 logger = logging.getLogger(__name__)
 
 
@@ -80,14 +83,19 @@ class Browser:
     @asynccontextmanager
     async def session(self, source: WorkSource | WorkProbe) -> AsyncGenerator[PageSession]:
         if not source.browser:
-            yield PageSession(self.fetcher, None)
+            yield PageSession(self.fetcher, None, self)
             return
+        async with self.context() as context:
+            yield PageSession(self.fetcher, BrowserSession(self, context), self)
+
+    @asynccontextmanager
+    async def context(self) -> AsyncGenerator[BrowserContext]:
         async with await self._browser.new_context(
             user_agent=self._user_agent, service_workers="block", accept_downloads=False
         ) as context:
             await context.route("**/*", _route)
             context.on("page", _close_popup)
-            yield PageSession(self.fetcher, BrowserSession(self, context))
+            yield context
 
 
 class BrowserSession:
@@ -175,13 +183,24 @@ class BrowserSession:
 
 
 class PageSession:
-    def __init__(self, fetcher: Fetcher, browser_session: BrowserSession | None) -> None:
+    """A round's way to its pages. Tests that read pages by plain requests alone give no browser."""
+
+    def __init__(
+        self,
+        fetcher: Fetcher,
+        browser_session: BrowserSession | None,
+        browser: Browser | None = None,
+    ) -> None:
         self._fetcher = fetcher
         self._browser_session = browser_session
+        self._browser = browser
 
     async def get(self, url: str) -> Response:
         if self._browser_session is not None:
             return await self._browser_session.get(url)
+        if self._browser is not None and urlsplit(url).hostname in BROWSER_HOSTS:
+            async with self._browser.context() as context:
+                return await BrowserSession(self._browser, context).get(url)
         return await self._fetcher.get(url)
 
     async def download(self, url: str, *, page_url: str, max_size: int) -> Response:

@@ -71,6 +71,15 @@ VSB_FILE = "https://example.edu.cn/system/_content/download.jsp?urltype=news.Dow
         ("ucas", "示例大学2027年有若干个培养单位招收硕士研究生。\n一、培养目标", []),
         ("ucas-unit", "示例研究所创建于1956年。\n单位代码\t80000", []),
         ("abody", "根据评审细则\uff0c现将推荐名单公示如下。\n序号\t姓名\n1\t张三\n示例学院", []),
+        (
+            "wechat",
+            "为促进优秀大学生交流\uff0c我院拟举办2027年优秀大学生学术沙龙。\n"
+            "报名时间\uff1a即日起至6月30日12点",
+            [
+                ("图片", "https://mmbiz.qpic.cn/mmbiz_gif/example/640?wx_fmt=gif"),
+                ("图片", "https://mmbiz.qpic.cn/mmbiz_png/example/640?wx_fmt=png"),
+            ],
+        ),
     ],
 )
 def test_site_system_templates_keep_the_body_and_its_attachments_in_order(

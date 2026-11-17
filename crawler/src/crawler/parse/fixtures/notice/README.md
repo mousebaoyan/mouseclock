@@ -13,5 +13,6 @@
 | `ucas.html` | 国科大研招网的文章页：正文在 `b-abody`，外面的 `b-pagecontent` 还有发布单位和日期 | [国科大硕士招生](https://admission.ucas.ac.cn/showarticle/newslist/1beb211c-ea0d-4c97-b5ce-61efa7addfcd) |
 | `ucas-unit.html` | 国科大研招网的招生单位页：没有 `b-abody`，正文是整个 `b-pagecontent` | [计算所硕士招生](https://www.ict.ac.cn/yjsjy/zsxx/sszs/)链到的招生目录 |
 | `abody.html` | 国科大前沿交叉科学学院：正文在 `abody` | [国科大前沿交叉科学学院](https://sais.ucas.ac.cn/index.php/zh/xwgs/tgzs) |
+| `wechat.html` | 公众号文章：正文在 `rich_media_content`（`js_content`），标题和公众号名在正文外；图片懒加载，`src` 是 `data:` 占位图，地址在 `data-src`，带 `#imgIndex=` 片段 | 2026-11-17 用浏览器打开北科计算机与通信工程学院通知列表链到的一篇公众号文章 |
 
 导航、页脚、侧栏的「常用下载」和二维码图片这些正文以外的链接，`vsb.html` 里留了几个，测试它们不被当成附件。下载、跳转、验证码页和失败的情况在 `crawl/notice_test.py` 里用自编的页面和现生成的附件测，不访问外网。
