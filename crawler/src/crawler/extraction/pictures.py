@@ -1,6 +1,7 @@
 """Read the words in pictures with the LLM, as they are (design §5.2)."""
 
 import base64
+from itertools import batched
 
 from pydantic import JsonValue
 
@@ -18,6 +19,9 @@ INSTRUCTIONS = (
 )
 # A long screenshot can hold more words than an extraction's answer.
 MAX_OUTPUT_TOKENS = 16384
+# A long list read in one call outruns the output limit or the timeout, so a picture goes a few
+# strips at a time; strips are cut where there is no text (design §5.2).
+STRIPS_PER_CALL = 2
 
 
 class ReadPicture:
@@ -25,6 +29,14 @@ class ReadPicture:
         self.llm = llm
 
     async def __call__(self, picture: Picture, usage: list[Usage]) -> str:
+        return "\n".join(
+            [
+                await self._read(strips, usage)
+                for strips in batched(picture.strips, STRIPS_PER_CALL, strict=False)
+            ]
+        )
+
+    async def _read(self, strips: tuple[bytes, ...], usage: list[Usage]) -> str:
         images: list[JsonValue] = [
             {
                 "type": "image_url",
@@ -33,7 +45,7 @@ class ReadPicture:
                     "detail": "high",
                 },
             }
-            for strip in picture.strips
+            for strip in strips
         ]
         response = await self.llm.generate(
             {
