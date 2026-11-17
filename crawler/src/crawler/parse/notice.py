@@ -144,8 +144,10 @@ def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[Atta
             continue
         if element.tag == "img":
             # Pages that load pictures as they scroll into view, 公众号的文章 among them, keep the
-            # address in data-src and a placeholder in src.
-            src = element.get("data-src") or element.get("src")
+            # address in data-src while src is empty or a placeholder.
+            src = element.get("src")
+            if not src or src.startswith("data:"):
+                src = element.get("data-src")
             if src and element in in_body and not any(icon in src for icon in _ICONS):
                 target = urldefrag(urljoin(url, src)).url
                 links.setdefault(target, _name(element, target))

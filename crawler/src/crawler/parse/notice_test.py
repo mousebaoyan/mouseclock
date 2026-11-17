@@ -108,3 +108,15 @@ def test_links_keep_where_their_words_are_and_resolve_against_the_final_address(
 def test_a_page_no_template_knows_is_not_guessed_at() -> None:
     with pytest.raises(ValueError, match="认不出正文"):
         parse_notice("<nav>导航</nav><div>自编的正文</div>".encode(), URL, None)
+
+
+def test_a_picture_is_taken_from_data_src_only_while_src_is_a_placeholder() -> None:
+    page = (
+        '<div class="v_news_content"><p>示例</p><img src="/full.png" data-src="/thumb.png">'
+        '<img src="data:image/gif;base64,R0lGOD" data-src="/lazy.png"></div>'
+    )
+    notice = parse_notice(page.encode(), URL, None)
+    assert notice.attachments == [
+        AttachmentLink("full.png", "https://example.edu.cn/full.png"),
+        AttachmentLink("lazy.png", "https://example.edu.cn/lazy.png"),
+    ]
