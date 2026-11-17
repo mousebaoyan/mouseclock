@@ -417,20 +417,30 @@ def test_the_models_are_not_taken_at_their_word_against_the_deadlines(
     assert (checked.program_id, checked.checked) == (program_id, marks)
 
 
+def said(verdict: str, same_as: int | None = None) -> str:
+    return json.dumps({"answer": verdict, "same_as": same_as, "reason": "改了时间"})
+
+
 @pytest.mark.parametrize(
-    ("role", "deadline", "verdict", "program_id", "marks"),
+    ("role", "deadline", "answer", "calls", "program_id", "marks"),
     [
         # The deadline it has, or a list's deadline to confirm a place: nothing to ask.
-        ("update", "2026-06-10", None, 101, None),
-        ("result", "2026-06-20", None, 101, None),
+        ("update", "2026-06-10", None, 0, 101, None),
+        ("result", "2026-06-20", None, 0, 101, None),
         # Another deadline is a change of time, or another call taken for that one.
-        ("update", "2026-06-20", "same", 101, None),
-        ("update", "2026-06-20", "different", None, ["new"]),
-        ("update", "2026-06-20", "unsure", None, None),
+        ("update", "2026-06-20", said("same", 101), 2, 101, None),
+        ("update", "2026-06-20", said("different"), 2, None, ["new"]),
+        ("update", "2026-06-20", said("unsure"), 2, None, None),
+        ("update", "2026-06-20", "不是 JSON", 1, None, None),
     ],
 )
 def test_a_program_extraction_named_is_asked_about_when_the_notice_moves_its_deadline(
-    role: str, deadline: str, verdict: str | None, program_id: int | None, marks: list[str] | None
+    role: str,
+    deadline: str,
+    answer: str | None,
+    calls: int,
+    program_id: int | None,
+    marks: list[str] | None,
 ) -> None:
     page = NoticePage("", "夏令营报名时间调整。", hyperlinks=(), attachments=[])
     apply = {
@@ -438,20 +448,47 @@ def test_a_program_extraction_named_is_asked_about_when_the_notice_moves_its_dea
         "evidence": [{"quote": "夏令营报名时间调整。"}],
         "confidence": 0.9,
     }
-    answer = json.dumps(
-        {"answer": verdict, "same_as": 101 if verdict == "same" else None, "reason": "改了时间"}
-    )
     known: dict[str, object] = {"id": 101, "apply": {"end": {"date": "2026-06-10"}}}
 
-    [checked], calls = run_check(
-        lambda _asked, _payload: answer,
+    [checked], asked = run_check(
+        lambda _asked, _payload: answer or "",
         page,
         context(known),
         [program(program_id=101, role=role, fields={"apply": apply})],
     )
 
-    assert len(calls) == (2 if verdict else 0)
+    assert len(asked) == calls
     assert (checked.program_id, checked.checked) == (program_id, marks)
+
+
+def test_programs_taken_for_one_another_go_to_a_person_rather_than_the_same_id() -> None:
+    page = NoticePage("", "三个夏令营调整时间。", hyperlinks=(), attachments=[])
+
+    def apply(day: str) -> dict[str, object]:
+        return {
+            "value": {"end": {"date": f"2026-06-{day}"}},
+            "evidence": [{"quote": "三个夏令营调整时间。"}],
+            "confidence": 0.9,
+        }
+
+    def answer(_asked: str, payload: dict[str, object]) -> str:
+        # Each moved one taken for the program with its new deadline.
+        return said("same", 102 if "改到20日" in json.dumps(payload, ensure_ascii=False) else 103)
+
+    known: list[dict[str, object]] = [
+        {"id": i, "apply": {"end": {"date": f"2026-06-{d}"}}}
+        for i, d in ((101, "10"), (102, "20"), (103, "30"))
+    ]
+    moved = [(101, "20"), (102, "30"), (103, "30")]
+
+    checked, _ = run_check(
+        answer,
+        page,
+        context(*known),
+        [program(program_id=i, name=f"改到{d}日", fields={"apply": apply(d)}) for i, d in moved],
+    )
+
+    assert [p.program_id for p in checked] == [None, None, 103]
 
 
 def test_when_the_second_model_fails_everything_waits_for_review_as_it_would() -> None:

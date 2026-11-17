@@ -639,7 +639,7 @@ test("notices count by when they came out, and a list only adds what the program
   }
 });
 
-test("a program made from a list takes its call's name, unless a person has named it", async () => {
+test("a program made before its call takes the call's name, unless a person has named it", async () => {
   const { cs, se, notice, snapshot: list } = await setUp("named.edu.cn");
   await extract(list, [
     { college_id: cs, role: "result", name: "计算机学院入营名单", fields: {} },
@@ -655,6 +655,10 @@ test("a program made from a list takes its call's name, unless a person has name
     editor,
   );
   expect(edit.status).toBe(200);
+  const update = await noticeOn(notice, "2026-05-20", "夏令营时间调整。");
+  await extract(update, [
+    { program_id: listed.id, college_id: cs, role: "update", name: "夏令营时间调整", fields: {} },
+  ]);
   const call = await noticeOn(notice, "2026-05-01", "夏令营报名通知。");
   await extract(call, [
     { program_id: listed.id, college_id: cs, fields: {} },

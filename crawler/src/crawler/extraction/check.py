@@ -141,6 +141,8 @@ class Check:
             ):
                 recognised.append(program)
                 continue
+            # Unknown until both models say, so a failed check leaves it for review.
+            program = program.model_copy(update={"program_id": None})
             try:
                 first, second = [
                     await self._ask(chat, title, context.published_on, program, alike, usage)
@@ -150,7 +152,6 @@ class Check:
                 logger.warning("Recognising a program failed: %s", error)
                 recognised.append(program)
                 continue
-            program = program.model_copy(update={"program_id": None})
             match = next((c for c in alike if c.id == first.same_as), None)
             if first.answer == second.answer == "different":
                 # Both models missing it isn't enough where it is likely the same: a list belongs
@@ -169,11 +170,18 @@ class Check:
                 program = program.model_copy(update={"program_id": match.id})
             recognised.append(program)
         # A notice is one version of a program: two of its programs taken for the same one stay
-        # as extracted, for a person to tell apart.
+        # as extracted, and any still taken for the same one then go to a person to tell apart.
         chosen = Counter(p.program_id for p in recognised if p.program_id is not None)
-        return [
+        kept = [
             new if new.program_id is None or chosen[new.program_id] == 1 else old
             for old, new in zip(programs, recognised, strict=True)
+        ]
+        chosen = Counter(p.program_id for p in kept if p.program_id is not None)
+        return [
+            p
+            if p.program_id is None or chosen[p.program_id] == 1
+            else p.model_copy(update={"program_id": None})
+            for p in kept
         ]
 
     async def _ask(

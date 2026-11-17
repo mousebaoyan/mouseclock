@@ -696,8 +696,8 @@ export async function mergeProgram(
     held.push({ reason: "unknown_program", snapshot_id: snapshotId, payload: program });
     return held;
   }
-  // A program made from a list read before its call is named after the list; the call names it,
-  // unless a person has (design §8.4).
+  // A program made before its call was read, from a list or an update, is named after that notice;
+  // the call names it, unless a person has (design §8.4).
   if (program.role === "call") {
     await trx
       .updateTable("programs")
@@ -711,7 +711,7 @@ export async function mergeProgram(
                 .selectFrom("program_versions")
                 .select("id")
                 .where("program_id", "=", programId)
-                .where("role", "<>", "result"),
+                .where("role", "=", "call"),
             ),
             eb.exists(
               eb
