@@ -2,6 +2,7 @@ import io
 import json
 from collections.abc import Iterator
 from contextlib import closing
+from itertools import batched
 from pathlib import Path
 
 import docx
@@ -18,7 +19,8 @@ from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import NoticePage, StepError
 from crawler.extraction.chat import Chat
 from crawler.extraction.chat_test import completion
-from crawler.extraction.pictures import ReadPicture
+from crawler.extraction.pictures import STRIPS_PER_CALL, ReadPicture
+from crawler.parse.image import picture
 
 SOURCE = WorkSource(
     id=7,
@@ -168,6 +170,28 @@ def test_the_llm_reads_a_picture_once_while_the_file_stays_the_same(readings: Re
     assert all(page.attachments[0].info.read_from_pictures for page in (first, again, changed))
     assert [len(images) for images in model.calls] == [1, 1]
     assert model.calls[0][0].startswith("data:image/png;base64,")
+
+
+def test_a_long_picture_is_read_a_few_strips_at_a_time_in_order(readings: Readings) -> None:
+    body = '<div class="v_news_content"><p>自编的复试名单。</p><p><img src="list.png"></p></div>'
+    stream = io.BytesIO()
+    Image.new("RGB", (600, 20000), "white").save(stream, "PNG")
+    strips = picture(stream.getvalue()).strips
+    pages = {
+        PAGE: httpx.Response(200, html=body),
+        "https://example.edu.cn/info/1001/list.png": httpx.Response(200, content=stream.getvalue()),
+    }
+    model = FakeModel()
+
+    page = read(pages, readings, model=model)
+
+    assert page is not None
+    assert len(strips) > STRIPS_PER_CALL
+    groups = list(batched(strips, STRIPS_PER_CALL, strict=False))
+    assert [len(images) for images in model.calls] == [len(group) for group in groups]
+    assert page.attachments[0].info.text == "\n".join(
+        f"第{n}次读的文字" for n in range(1, len(groups) + 1)
+    )
 
 
 def test_a_picture_the_llm_cant_read_fails_the_notice_and_the_ones_read_still_cost(

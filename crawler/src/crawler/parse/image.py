@@ -5,7 +5,7 @@ import io
 from dataclasses import dataclass
 from itertools import pairwise
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 PIXEL_BUDGET = 1300 * 1300
 # Wider images are scaled down to at most this: the characters of a big scan or poster stay
@@ -26,6 +26,10 @@ class Picture:
 def picture(data: bytes) -> Picture:
     with Image.open(io.BytesIO(data)) as opened:
         image = opened.convert("RGB")
+        # A transparent pixel keeps a color of its own, often black like the text; on the page it
+        # shows the white behind it.
+        if opened.has_transparency_data:
+            image.paste("white", mask=ImageOps.invert(opened.convert("RGBA").getchannel("A")))
     if image.width > MAX_WIDTH:
         image = image.reduce(-(-image.width // MAX_WIDTH))
     width, height = image.size
