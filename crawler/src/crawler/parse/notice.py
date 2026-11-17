@@ -22,6 +22,7 @@ _BODIES = (
     "b-abody",
     "b-pagecontent",
     "abody",
+    "rich_media_content",
 )
 # Where some systems list the attachments, apart from the body.
 _ATTACHMENT_AREAS = ("Annex", "wrap-appendix", "cas-wrap-appendix")
@@ -142,7 +143,11 @@ def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[Atta
                         links.setdefault(target, name.strip()[:500] or _name(element, target))
             continue
         if element.tag == "img":
+            # Pages that load pictures as they scroll into view, 公众号的文章 among them, keep the
+            # address in data-src while src is empty or a placeholder.
             src = element.get("src")
+            if not src or src.startswith("data:"):
+                src = element.get("data-src")
             if src and element in in_body and not any(icon in src for icon in _ICONS):
                 target = urldefrag(urljoin(url, src)).url
                 links.setdefault(target, _name(element, target))

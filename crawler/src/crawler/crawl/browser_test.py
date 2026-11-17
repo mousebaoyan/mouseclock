@@ -342,3 +342,28 @@ def test_unresolved_challenges_fail(driver: FakeBrowser, status: int) -> None:
             assert driver.contexts[0].pages[0].closed
 
     run(main)
+
+
+def test_a_plain_round_opens_a_page_only_a_browser_gets_in_a_context_of_its_own(
+    driver: FakeBrowser,
+) -> None:
+    clock = FakeClock()
+
+    async def handle(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="plain")
+
+    async def main() -> None:
+        async with (
+            Fetcher(httpx.MockTransport(handle), clock.clock, clock.sleep) as fetcher,
+            Browser(fetcher) as browser,
+            browser.session(SOURCE.model_copy(update={"browser": False})) as session,
+        ):
+            article = await session.get("https://mp.weixin.qq.com/s/example")
+            notice = await session.get("https://a/notice")
+            assert article.body == "<html>保研通知</html>".encode()
+            assert notice.body == b"plain"
+            [context] = driver.contexts
+            assert context.closed
+            assert [page.url for page in context.pages] == ["https://mp.weixin.qq.com/s/example"]
+
+    run(main)
