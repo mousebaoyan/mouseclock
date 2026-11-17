@@ -53,12 +53,13 @@ export function ProgramStatus({ program, now }: { program: Instants; now: number
 
 // Lists of programs are cards, one to a program: one column on phones, up to three side by side.
 export function ProgramCards({ children }: { children: ReactNode }) {
-  return <ul className="stagger grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">{children}</ul>;
+  return <ul className="grid gap-3 sm:gap-4 md:grid-cols-2 xl:grid-cols-3">{children}</ul>;
 }
 
 // Who runs the program on top, beside how long is left and what kind it is, which is what a list
-// is read for; then its name, and at the foot when it takes applications. The whole card opens
-// the program; the other links on it sit above that.
+// is read for: the two tags side by side, or one above the other when who runs it needs the
+// room. Then its name, and at the foot when it takes applications. The whole card opens the
+// program; the other links on it sit above that.
 export function ProgramCard({
   program,
   now,
@@ -76,7 +77,7 @@ export function ProgramCard({
     <li className="group relative flex flex-col rounded-xl border bg-card px-4 py-3.5 shadow-card transition-colors hover:border-primary/40 has-[h3_a:focus-visible]:ring-3 has-[h3_a:focus-visible]:ring-ring/30 sm:px-5 sm:py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">{place}</div>
-        <div className="flex shrink-0 flex-col items-end gap-1.5">
+        <div className="flex flex-wrap justify-end gap-1.5">
           <ProgramStatus program={program} now={now} />
           <KindTag kind={program.kind} />
         </div>

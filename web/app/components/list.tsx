@@ -17,12 +17,7 @@ export function Group({ label, children }: { label: ReactNode; children: ReactNo
 // The items of a group, or of a list that has none.
 export function List({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <ul
-      className={cn(
-        "stagger divide-y overflow-hidden rounded-xl border bg-card shadow-card",
-        className,
-      )}
-    >
+    <ul className={cn("divide-y overflow-hidden rounded-xl border bg-card shadow-card", className)}>
       {children}
     </ul>
   );
