@@ -509,5 +509,28 @@ def test_when_the_second_model_fails_everything_waits_for_review_as_it_would() -
         lambda _asked, _payload: "不是 JSON", page, context({"id": 100}), [new]
     )
 
-    assert calls == ["ecnu-max same_program", f"{SECOND_MODEL} notice_extraction"]
+    # The extraction is asked twice, as a second try mostly passes.
+    assert calls == ["ecnu-max same_program"] + [f"{SECOND_MODEL} notice_extraction"] * 2
     assert checked == new
+
+
+def test_a_call_taking_applications_until_full_is_not_extracted_again_for_a_deadline() -> None:
+    page = NoticePage("", "即日起报名额满即止。", hyperlinks=(), attachments=[])
+    fields = ExtractedFields.model_validate(
+        {
+            "apply": {
+                "value": {"start": {"date": "2026-06-01"}, "rolling": True},
+                "evidence": [{"quote": "即日起报名额满即止。"}],
+                "confidence": 0.9,
+            }
+        }
+    )
+
+    _, calls = run_check(
+        lambda _asked, _payload: "不是 JSON",
+        page,
+        context(),
+        [program(program_id=None, role="call", fields=fields)],
+    )
+
+    assert calls == []

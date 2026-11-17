@@ -137,6 +137,12 @@ const sure = (quote: string, attachment?: number) => ({
   confidence: 0.95,
 });
 
+const doubtful = <T>(value: T, quote: string) => ({
+  value,
+  evidence: [{ quote }],
+  confidence: 0.3,
+});
+
 const APPLY = {
   value: {
     start: { date: "2026-06-01", time: "08:00" },
@@ -370,7 +376,6 @@ test("fields without their quotes, unsure ones and deadlines before the notice w
     { reason: "implausible", key: "apply:end", program_id: program.id },
     { reason: "low_confidence", key: "majors", program_id: program.id },
     { reason: "evidence_not_found", key: "quota", program_id: program.id },
-    { reason: "no_deadline", key: null, program_id: program.id },
   ]);
 });
 
@@ -419,8 +424,14 @@ test("fields a second model bore out go on the table, whether quoted from a pict
   expect(await reviewOf(snap)).toEqual([
     { reason: "implausible", key: "apply:end", program_id: program.id },
     { reason: "evidence_not_found", key: "contacts", program_id: program.id },
-    { reason: "no_deadline", key: null, program_id: program.id },
   ]);
+});
+
+test("a call taking applications until it is full isn't asked for a deadline", async () => {
+  const { cs, snapshot: snap } = await setUp("rolling.edu.cn");
+  const apply = { ...APPLY, value: { start: APPLY.value.start, rolling: true as const } };
+  await extract(snap, [{ college_id: cs, fields: { apply } }]);
+  expect(await reviewOf(snap)).toEqual([]);
 });
 
 test("a second model's word that a call has no deadline, or that a program is new, is taken", async () => {
@@ -730,6 +741,36 @@ async function pendingOf(snapshotId: number) {
 async function accept(id: number, decision: object = {}, as = editor) {
   return v1["review-items"][":id"].accept.$post({ param: { id: String(id) }, json: decision }, as);
 }
+
+test("what people decided about a duplicate's fields stays decided once it is merged", async () => {
+  const { cs, notice, snapshot: first } = await setUp("decided.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [original] = await programsOf(cs);
+  const second = await snapshot(notice, `${BODY}\n名额100人`);
+  await extract(second.snapshot_id, [
+    {
+      college_id: cs,
+      fields: {
+        apply: APPLY,
+        quota: doubtful("100人", "名额100人"),
+        benefits: doubtful(["报销路费"], "活动于7月6日至9日在本院举行"),
+      },
+    },
+  ]);
+  const [duplicate, quota, benefits] = await pendingOf(second.snapshot_id);
+  expect((await accept(quota.id)).status).toBe(204);
+  const rejected = await v1["review-items"][":id"].reject.$post(
+    { param: { id: String(benefits.id) } },
+    editor,
+  );
+  expect(rejected.status).toBe(204);
+
+  expect((await accept(duplicate.id, { program_id: original.id })).status).toBe(204);
+  expect(await pendingOf(second.snapshot_id)).toEqual([]);
+  const fields = await fieldsOf(original.id);
+  expect(fields.quota).toBe("100人");
+  expect(fields.benefits).toBeUndefined();
+});
 
 test("an accepted field goes on the table from its version, a rejected one doesn't", async () => {
   const { cs, snapshot: snap } = await setUp("r1.edu.cn");

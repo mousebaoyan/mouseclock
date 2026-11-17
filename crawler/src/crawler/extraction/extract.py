@@ -22,6 +22,7 @@ from crawler.extraction.numbered import (
 )
 from crawler.extraction.prompt import INSTRUCTIONS
 from crawler.extraction.schema import response_schema
+from crawler.parse.dates import find_dates
 from crawler.parse.indexing import Document, NoticeIndex, index_documents
 
 Kind = Literal["winter_camp", "summer_camp", "pre_recommendation", "september_round"]
@@ -144,10 +145,18 @@ def resolve_programs(
             evidence = [index.evidence(s) for s in dict.fromkeys(raw.evidence)]
             if not any("".join(raw.text.split()) in "".join(e.quote.split()) for e in evidence):
                 raise SelectionError("unresolved_text_not_in_evidence")
-            if raw.field != "dates":
+            # A time the program reads was a candidate the model could have picked: one of the
+            # other times, or for a start or end it picked already, isn't worth a person's look.
+            readable = any(m.value for m in find_dates(raw.text, context.published_on))
+            if raw.field == "dates":
+                if readable:
+                    continue
+            else:
                 field, edge = raw.field.split(".")
                 interval = resolved.fields.apply if field == "apply" else resolved.fields.event
                 if interval is not None and getattr(interval.value, edge) is not None:
+                    if readable:
+                        continue
                     raise SelectionError("unresolved_date_has_value")
             unresolved.append(UnresolvedDate(field=raw.field, text=raw.text, evidence=evidence))
         programs.append(

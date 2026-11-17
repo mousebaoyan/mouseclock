@@ -5,7 +5,13 @@ from datetime import date
 import httpx
 import pytest
 
-from crawler.crawl.contract import AttachmentInfo, ExtractionContext, ProgramCandidate, Usage
+from crawler.crawl.contract import (
+    AttachmentInfo,
+    ExtractionContext,
+    ProgramCandidate,
+    TimeToMinute,
+    Usage,
+)
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
 from crawler.extraction.chat import Chat
 from crawler.extraction.chat_test import completion
@@ -203,16 +209,46 @@ def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value()
 
 def test_raw_date_cannot_be_fabricated_or_replace_a_resolved_time() -> None:
     _, index = prepare(
-        "通知", NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[]), context()
+        "通知",
+        NoticePage(
+            "", "报名截止6月30日24点。名额满后顺延至下周二。", hyperlinks=(), attachments=[]
+        ),
+        context(),
     )
     for raw in [
-        {"field": "apply.end", "text": "6月30日24点", "evidence": ["S1"]},
+        {"field": "apply.end", "text": "下周二", "evidence": ["S2"]},
         {"field": "event.start", "text": "不存在的日期", "evidence": ["S1"]},
     ]:
         item = selection()
         item["unresolved_dates"] = [raw]
         with pytest.raises(SelectionError):
             resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
+
+
+def test_a_readable_time_left_unresolved_is_dropped_unless_it_is_a_missing_start_or_end() -> None:
+    _, index = prepare(
+        "通知",
+        NoticePage(
+            "", "报名截止6月30日24点。拟录取后7月10日前提交政审表。", hyperlinks=(), attachments=[]
+        ),
+        context(),
+    )
+    item = selection()
+    item["unresolved_dates"] = [
+        # The end it picked, and one of the other times: candidates it could have picked.
+        {"field": "apply.end", "text": "6月30日24点", "evidence": ["S1"]},
+        {"field": "dates", "text": "7月10日前", "evidence": ["S2"]},
+        # A start it gave nothing for is a person's to read.
+        {"field": "apply.start", "text": "6月30日24点", "evidence": ["S1"]},
+    ]
+    [program] = resolve_programs(
+        RoundSelection.model_validate({"programs": [item]}), index, context()
+    )
+    assert program.fields.apply is not None
+    assert program.fields.apply.value.end == TimeToMinute(date=date(2026, 6, 30), time="24:00")
+    assert [(d.field, d.text) for d in program.unresolved_dates or []] == [
+        ("apply.start", "6月30日24点")
+    ]
 
 
 def answer(text: str) -> httpx.Response:

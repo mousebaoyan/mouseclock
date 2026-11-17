@@ -659,6 +659,9 @@ export async function mergeProgram(
   docs: Docs,
   candidates: { college_id: number; cohort: number; kind: Kind }[],
   program: ExtractedProgram,
+  // What people decided about the fields, by key, where this version was held before: a merged
+  // duplicate's (design §12.2).
+  decided: ReadonlyMap<string, "accepted" | "rejected"> = new Map(),
 ) {
   const held: ReviewItem[] = [];
   let programId = program.program_id;
@@ -750,15 +753,20 @@ export async function mergeProgram(
   const accepted = [];
   for (const row of toStoredFields(program.fields)) {
     if (!takes(program.role, publishedOn, row, sources.get(row.key))) continue;
-    const reason = !evidenceFound(docs, row.evidence)
-      ? "evidence_not_found"
-      : !row.checked && fromPictures(docs, row.evidence)
-        ? "evidence_in_picture"
-        : !row.checked && row.confidence < CONFIDENT
-          ? "low_confidence"
-          : row.key.startsWith("apply:") && implausible
-            ? "implausible"
-            : null;
+    const decision = decided.get(row.key);
+    if (decision === "rejected") continue;
+    const reason =
+      decision === "accepted"
+        ? null
+        : !evidenceFound(docs, row.evidence)
+          ? "evidence_not_found"
+          : !row.checked && fromPictures(docs, row.evidence)
+            ? "evidence_in_picture"
+            : !row.checked && row.confidence < CONFIDENT
+              ? "low_confidence"
+              : row.key.startsWith("apply:") && implausible
+                ? "implausible"
+                : null;
     if (reason === null) accepted.push(row);
     else held.push(fieldItem(reason, snapshotId, programId, version.id, row));
   }
@@ -784,7 +792,14 @@ export async function mergeProgram(
       payload: { ...program, unresolved_dates: unresolved },
     });
   }
-  if (program.role === "call" && !program.unresolved_dates?.some((d) => d.field === "apply.end")) {
+  // A deadline held for review waits there already, and a rolling call has none to give.
+  const apply = program.fields.apply?.value;
+  if (
+    program.role === "call" &&
+    apply?.end === undefined &&
+    !apply?.rolling &&
+    !program.unresolved_dates?.some((d) => d.field === "apply.end")
+  ) {
     const { apply_deadline } = await trx
       .selectFrom("programs")
       .select("apply_deadline")

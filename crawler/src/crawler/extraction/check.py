@@ -260,11 +260,14 @@ class Check:
     async def _extract_again(
         self, title: str, page: NoticePage, context: ExtractionContext, usage: list[Usage]
     ) -> list[ExtractedProgram]:
-        try:
-            return await self.extract(title, page, context, usage)
-        except StepError as error:
-            logger.warning("Extracting again failed: %s", error)
-            return []
+        # The second model picks an unusable candidate now and then and gets it right when asked
+        # again (design §8.3).
+        for _ in range(2):
+            try:
+                return await self.extract(title, page, context, usage)
+            except StepError as error:
+                logger.warning("Extracting again failed: %s", error)
+        return []
 
 
 def _key(program: ExtractedProgram | ProgramCandidate) -> tuple[int, int, str]:
@@ -305,8 +308,9 @@ def _gives_none(program: ExtractedProgram) -> bool:
 
 
 def _no_deadline(program: ExtractedProgram, context: ExtractionContext) -> bool:
-    """A call the website would hold for review for giving no deadline."""
-    if program.role != "call" or not _gives_none(program):
+    """A call the website would hold for review for giving no deadline; a rolling one has none."""
+    apply = program.fields.apply
+    if program.role != "call" or not _gives_none(program) or (apply and apply.value.rolling):
         return False
     known = next((c for c in context.programs if c.id == program.program_id), None)
     return known is None or known.apply is None or known.apply.end is None
