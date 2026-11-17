@@ -32,6 +32,7 @@ from crawler.crawl.contract import (
     ProgramCandidate,
     Quota,
     Requirements,
+    TimeValue,
     Usage,
 )
 from crawler.crawl.rounds import NoticePage, StepError
@@ -124,13 +125,24 @@ class Check:
         programs: list[ExtractedProgram],
         usage: list[Usage],
     ) -> list[ExtractedProgram]:
-        """New programs the school may have already: both models say which one, or that none is."""
+        """New programs the school may have already, and ones extraction took for a program whose
+        deadline the notice gives otherwise: both models say which one, or that none is."""
         recognised: list[ExtractedProgram] = []
         for program in programs:
             alike = [c for c in context.programs if _key(c) == _key(program)]
-            if program.program_id is not None or not alike:
+            # A list's deadline is to confirm a place, not to apply (design §8.4).
+            apply = program.fields.apply if program.role != "result" else None
+            end = apply.value.end if apply else None
+            named = next((c for c in alike if c.id == program.program_id), None)
+            # Extraction's pick stands unless the deadline moves: a change of time, or another
+            # call taken for that one.
+            if not alike or (
+                program.program_id is not None and not (named and _another_deadline(named, end))
+            ):
                 recognised.append(program)
                 continue
+            # Unknown until both models say, so a failed check leaves it for review.
+            program = program.model_copy(update={"program_id": None})
             try:
                 first, second = [
                     await self._ask(chat, title, context.published_on, program, alike, usage)
@@ -140,9 +152,6 @@ class Check:
                 logger.warning("Recognising a program failed: %s", error)
                 recognised.append(program)
                 continue
-            # A list's deadline is to confirm a place, not to apply (design §8.4).
-            apply = program.fields.apply if program.role != "result" else None
-            end = apply.value.end if apply else None
             match = next((c for c in alike if c.id == first.same_as), None)
             if first.answer == second.answer == "different":
                 # Both models missing it isn't enough where it is likely the same: a list belongs
@@ -155,17 +164,24 @@ class Check:
                 first.answer == second.answer == "same"
                 and first.same_as == second.same_as
                 and match is not None
-                # Two deadlines are two calls.
-                and not (end and match.apply and match.apply.end and match.apply.end != end)
+                # Two deadlines are two calls, unless extraction took it for that one too.
+                and (match is named or not _another_deadline(match, end))
             ):
                 program = program.model_copy(update={"program_id": match.id})
             recognised.append(program)
         # A notice is one version of a program: two of its programs taken for the same one stay
-        # as extracted, for a person to tell apart.
+        # as extracted, and any still taken for the same one then go to a person to tell apart.
         chosen = Counter(p.program_id for p in recognised if p.program_id is not None)
-        return [
+        kept = [
             new if new.program_id is None or chosen[new.program_id] == 1 else old
             for old, new in zip(programs, recognised, strict=True)
+        ]
+        chosen = Counter(p.program_id for p in kept if p.program_id is not None)
+        return [
+            p
+            if p.program_id is None or chosen[p.program_id] == 1
+            else p.model_copy(update={"program_id": None})
+            for p in kept
         ]
 
     async def _ask(
@@ -253,6 +269,11 @@ class Check:
 
 def _key(program: ExtractedProgram | ProgramCandidate) -> tuple[int, int, str]:
     return program.college_id, program.cohort, program.kind
+
+
+def _another_deadline(candidate: ProgramCandidate, end: TimeValue | None) -> bool:
+    known = candidate.apply.end if candidate.apply else None
+    return bool(end and known and known != end)
 
 
 def _dump(value: BaseModel) -> dict[str, JsonValue]:

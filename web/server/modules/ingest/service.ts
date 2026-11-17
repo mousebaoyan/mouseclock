@@ -696,6 +696,35 @@ export async function mergeProgram(
     held.push({ reason: "unknown_program", snapshot_id: snapshotId, payload: program });
     return held;
   }
+  // A program made before its call was read, from a list or an update, is named after that notice;
+  // the call names it, unless a person has (design §8.4).
+  if (program.role === "call") {
+    await trx
+      .updateTable("programs")
+      .set({ name: program.name })
+      .where("id", "=", programId)
+      .where((eb) =>
+        eb.not(
+          eb.or([
+            eb.exists(
+              eb
+                .selectFrom("program_versions")
+                .select("id")
+                .where("program_id", "=", programId)
+                .where("role", "=", "call"),
+            ),
+            eb.exists(
+              eb
+                .selectFrom("edits")
+                .select("id")
+                .where("program_id", "=", programId)
+                .where("field", "=", "name"),
+            ),
+          ]),
+        ),
+      )
+      .execute();
+  }
   const { number } = await trx
     .selectFrom("program_versions")
     .select(sql<number>`coalesce(max(number), 0) + 1`.as("number"))
