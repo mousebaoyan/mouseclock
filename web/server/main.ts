@@ -8,6 +8,7 @@ import { compressResponses } from "./platform/compress.ts";
 import type { AppEnv } from "./platform/http.ts";
 import { log } from "./platform/log.ts";
 import { migrate } from "./platform/migrate.ts";
+import { atPublicOrigin } from "./platform/public-origin.ts";
 import { every } from "./platform/schedule.ts";
 
 await migrate();
@@ -39,6 +40,8 @@ export default await createHonoServer<AppEnv>({
   configure(server) {
     server.use(compressResponses);
     server.route("/", app);
+    // Only the pages, which React Router serves after these routes.
+    server.use(atPublicOrigin);
   },
   getLoadContext(c) {
     const context = new RouterContextProvider();
