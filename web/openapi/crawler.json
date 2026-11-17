@@ -626,7 +626,7 @@
             "items": {
               "$ref": "#/components/schemas/Usage"
             },
-            "maxItems": 100
+            "maxItems": 5000
           }
         },
         "required": [
@@ -688,6 +688,18 @@
               "$ref": "#/components/schemas/UnresolvedDate"
             },
             "maxItems": 30
+          },
+          "checked": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "no_deadline",
+                "new"
+              ]
+            },
+            "maxItems": 2,
+            "description": "另一个模型也这样判断（总体设计 §8.3）：no_deadline 是报名通知确实没写截止，new 是学校没有这个项目，同学院、同届、同类型的那几个都不是"
           }
         },
         "required": [
@@ -721,6 +733,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -750,6 +769,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -777,6 +803,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -809,6 +842,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -844,6 +884,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -878,6 +925,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -912,6 +966,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -946,6 +1007,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -980,6 +1048,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -1009,6 +1084,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -1043,6 +1125,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [
@@ -1077,6 +1166,13 @@
                 "type": "number",
                 "minimum": 0,
                 "maximum": 1
+              },
+              "checked": {
+                "type": "boolean",
+                "enum": [
+                  true
+                ],
+                "description": "另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
               }
             },
             "required": [

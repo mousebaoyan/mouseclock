@@ -29,6 +29,7 @@ SOURCE = WorkSource(id=7, url="http://a/list.htm", browser=False, config=None, b
 ITEMS = [ListedItem(url=f"http://a/{n}.htm", title=f"通知 {n}") for n in range(1, 5)]
 CONTEXT = ExtractionContext(published_on=None, colleges=[], programs=[])
 USAGE = [Usage(model="m", input_tokens=10, output_tokens=1)]
+CHECK_USAGE = [Usage(model="second", input_tokens=20, output_tokens=2)]
 
 
 def pending(notice_id: int, step: str) -> dict[str, Any]:
@@ -141,6 +142,17 @@ async def extract(
     return [program]
 
 
+async def check(
+    _title: str,
+    _page: NoticePage,
+    _context: ExtractionContext,
+    programs: list[ExtractedProgram],
+    usage: list[Usage],
+) -> list[ExtractedProgram]:
+    usage += CHECK_USAGE
+    return [program.model_copy(update={"checked": ["new"]}) for program in programs]
+
+
 def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     # 1 and 2 are new; 3 is a program still open, whose page hasn't changed; 4 has gone.
     site = FakeWebsite(
@@ -169,7 +181,7 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
             usage.append(Usage(model="deepseek-flash", input_tokens=6000, output_tokens=1000))
         return {"http://a/1.htm": with_files, "http://a/3.htm": page("夏令营")}.get(url)
 
-    site.run(Steps(list_items, screen, read, extract))
+    site.run(Steps(list_items, screen, read, extract, check))
 
     assert [call for call, _ in site.calls] == [
         "POST /sources/7/listing",
@@ -195,6 +207,9 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     # The one behind a captcha is listed, and there is no file to send.
     assert snapshot["attachments"][1]["url"] == "http://a/表.doc"
     assert site.called("PUT /snapshots/10/attachments/0") == [b"%PDF"]
+    # The website gets the programs as the second model's check left them.
+    [extraction] = site.called("POST /snapshots/10/extraction")
+    assert extraction["programs"][0]["checked"] == ["new"]
     [run] = site.called("POST /runs")
     assert run == {
         "source_id": 7,
@@ -266,7 +281,8 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
             return httpx.Response(200, json=body)
         return response
 
-    # Reading the picture went before the extraction, and its usage goes with it.
+    # Reading the picture went before the extraction and the check after, and their usage goes
+    # with it.
     picture = Attachment(
         AttachmentInfo(
             name="日程.png",
@@ -293,7 +309,10 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
             Website("http://site", "token", httpx.MockTransport(website)) as client,
         ):
             await crawl_source(
-                SOURCE, Browser(fetcher), client, Steps(list_items, screen, read, Extract(llm))
+                SOURCE,
+                Browser(fetcher),
+                client,
+                Steps(list_items, screen, read, Extract(llm), check),
             )
 
     asyncio.run(run())
@@ -305,6 +324,7 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
     assert posted["usage"] == [
         {"model": "deepseek-flash", "input_tokens": 6000, "output_tokens": 1000},
         {"model": "deepseek-flash", "input_tokens": 200, "output_tokens": 50},
+        {"model": "second", "input_tokens": 20, "output_tokens": 2},
     ]
 
 
@@ -324,7 +344,7 @@ def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
             raise FetchError("unreachable", "http://a/files/application.pdf")
         return page("冬令营")
 
-    site.run(Steps(list_items, screen, read, extract))
+    site.run(Steps(list_items, screen, read, extract, check))
 
     assert len(site.called("POST /snapshots/40/extraction")) == 1
     [run] = site.called("POST /runs")
@@ -352,7 +372,7 @@ def test_an_extraction_the_website_refuses_fails_only_its_notice() -> None:
     ) -> NoticePage:
         return page("冬令营")
 
-    site.run(Steps(list_items, screen, read, extract))
+    site.run(Steps(list_items, screen, read, extract, check))
 
     assert len(site.called("POST /snapshots/20/extraction")) == 1
     [run] = site.called("POST /runs")
@@ -360,7 +380,8 @@ def test_an_extraction_the_website_refuses_fails_only_its_notice() -> None:
         {"url": "http://a/1.htm", "failure": "error", "detail": "网站拒收: 招收类型有重复"}
     ]
     assert run["usage"] == [
-        {"purpose": "extraction", "model": "m", "input_tokens": 10, "output_tokens": 1}
+        {"purpose": "extraction", "model": "m", "input_tokens": 10, "output_tokens": 1},
+        {"purpose": "extraction", "model": "second", "input_tokens": 20, "output_tokens": 2},
     ]
 
 
@@ -379,7 +400,7 @@ def test_notices_screening_failed_for_are_reported_and_the_round_goes_on() -> No
     ) -> NoticePage | None:
         return page("冬令营")
 
-    site.run(Steps(list_items, failing, read, extract))
+    site.run(Steps(list_items, failing, read, extract, check))
 
     assert [call for call, _ in site.calls] == [
         "POST /sources/7/listing",
@@ -409,7 +430,7 @@ def test_a_list_that_cant_be_read_ends_the_round_with_the_reason() -> None:
 
     for list_step, failure in [(unreachable, "unreachable"), (empty, "no_items")]:
         site = FakeWebsite([], extracted=frozenset())
-        site.run(Steps(list_step, unused, unused, unused))
+        site.run(Steps(list_step, unused, unused, unused, unused))
 
         assert [call for call, _ in site.calls] == ["POST /runs"]
         [run] = site.called("POST /runs")

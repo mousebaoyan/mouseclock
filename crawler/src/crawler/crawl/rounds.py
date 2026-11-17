@@ -78,6 +78,11 @@ class Steps:
     extract: Callable[
         [str, NoticePage, ExtractionContext, list[Usage]], Awaitable[list[ExtractedProgram]]
     ]
+    # The programs with what a second model bore out marked, or recognised (design §8.3).
+    check: Callable[
+        [str, NoticePage, ExtractionContext, list[ExtractedProgram], list[Usage]],
+        Awaitable[list[ExtractedProgram]],
+    ]
 
 
 def _failure(error: FetchError | StepError | RefusedError) -> tuple[Failure, str | None]:
@@ -206,5 +211,6 @@ async def _fetch_notice(
     if result.extraction is None:
         return None
     programs = await steps.extract(notice.title, page, result.extraction, usage)
+    programs = await steps.check(notice.title, page, result.extraction, programs, usage)
     await website.extraction(result.snapshot_id, Extraction(programs=programs, usage=usage))
     return len(programs)

@@ -109,6 +109,7 @@ async function extract(
     role?: "call" | "update" | "result";
     fields: ExtractedFields;
     unresolved_dates?: UnresolvedDate[];
+    checked?: ("no_deadline" | "new")[];
   }[],
 ) {
   const res = await api.snapshots[":id"].extraction.$post(
@@ -395,6 +396,39 @@ test("fields quoted from a picture wait for review, as the LLM may have misread 
     { reason: "evidence_in_picture", key: "quota", program_id: program.id },
     { reason: "evidence_in_picture", key: "contacts", program_id: program.id },
   ]);
+});
+
+test("fields a second model bore out go on the table, whether quoted from a picture or unsure", async () => {
+  const { cs, snapshot: snap } = await setUp("p2.edu.cn");
+  await extract(snap, [
+    {
+      college_id: cs,
+      fields: {
+        quota: { value: "100 人", ...sure("拟招收100人", 1), checked: true },
+        majors: { value: ["软件工程"], evidence: APPLY.evidence, confidence: 0.3, checked: true },
+        // Bearing a value out answers neither a quote that isn't in the notice nor a deadline
+        // before it.
+        contacts: { value: ["cs@y.edu.cn"], ...sure("咨询邮箱：cs@y.edu.cn", 1), checked: true },
+        apply: { ...APPLY, value: { end: { date: "2026-05-01" } }, checked: true },
+      },
+    },
+  ]);
+  const [program] = await programsOf(cs);
+  expect(Object.keys(await fieldsOf(program.id)).sort()).toEqual(["majors", "quota"]);
+  expect(await reviewOf(snap)).toEqual([
+    { reason: "implausible", key: "apply:end", program_id: program.id },
+    { reason: "evidence_not_found", key: "contacts", program_id: program.id },
+    { reason: "no_deadline", key: null, program_id: program.id },
+  ]);
+});
+
+test("a second model's word that a call has no deadline, or that a program is new, is taken", async () => {
+  const { cs, notice, snapshot: snap } = await setUp("g2.edu.cn");
+  await extract(snap, [{ college_id: cs, fields: {}, checked: ["no_deadline"] }]);
+  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n第二批`);
+  await extract(second, [{ college_id: cs, fields: { apply: APPLY }, checked: ["new"] }]);
+  expect(await programsOf(cs)).toHaveLength(2);
+  expect([...(await reviewOf(snap)), ...(await reviewOf(second))]).toEqual([]);
 });
 
 test("a later notice changes the parts it states, adds dates by label, and keeps a person's edits", async () => {

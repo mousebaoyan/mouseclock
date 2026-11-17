@@ -81,6 +81,14 @@ export const ExtractedProgram = z
     role: Role.openapi({ description: "call：报名；update：补充；result：名单" }),
     fields: ExtractedFields,
     unresolved_dates: z.array(UnresolvedDate).max(30).optional(),
+    checked: z
+      .array(z.enum(["no_deadline", "new"]))
+      .max(2)
+      .optional()
+      .openapi({
+        description:
+          "另一个模型也这样判断（总体设计 §8.3）：no_deadline 是报名通知确实没写截止，new 是学校没有这个项目，同学院、同届、同类型的那几个都不是",
+      }),
   })
   .openapi("ExtractedProgram");
 
@@ -358,7 +366,8 @@ export const ingestRoutes = router
                       const ids = programs.flatMap((p) => p.program_id ?? []);
                       return new Set(ids).size === ids.length;
                     }, "同一个项目只能出现一次"),
-                  usage: z.array(Usage).max(100),
+                  // Each picture read, read again and each check is a call of its own.
+                  usage: z.array(Usage).max(5000),
                 })
                 .openapi("Extraction", { description: "通知涉及的项目；一个都没有就是无关" }),
             },

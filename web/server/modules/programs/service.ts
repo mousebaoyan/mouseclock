@@ -340,7 +340,13 @@ export async function tableVersion() {
 // the field and the part: `apply:end`, `event:mode`, and `dates:` with the label of each other
 // date. Each part then carries the evidence of the version it came from, and a later notice that
 // states only some parts, such as a new deadline, replaces those and keeps the rest (design §8.4).
-export type StoredField = { key: string; value: Json; evidence: Evidence[]; confidence: number };
+export type StoredField = {
+  key: string;
+  value: Json;
+  evidence: Evidence[];
+  confidence: number;
+  checked?: true;
+};
 
 export function toStoredFields({ apply, event, dates, ...rest }: ExtractedFields): StoredField[] {
   const byLabel = dates && {
@@ -357,7 +363,9 @@ export function toStoredFields({ apply, event, dates, ...rest }: ExtractedFields
 
 function partsOf(
   field: string,
-  entry: { value: Record<string, Json>; evidence: Evidence[]; confidence: number } | undefined,
+  entry:
+    | { value: Record<string, Json>; evidence: Evidence[]; confidence: number; checked?: true }
+    | undefined,
 ): StoredField[] {
   if (!entry) return [];
   const { value, ...support } = entry;

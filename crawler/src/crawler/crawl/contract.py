@@ -232,6 +232,12 @@ class ApplyUrl(BaseModel):
     value: Annotated[str, Field(max_length=2000)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Degrees(BaseModel):
@@ -241,6 +247,12 @@ class Degrees(BaseModel):
     value: Annotated[list[Literal["master", "direct_phd"]], Field(min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Majors(BaseModel):
@@ -250,6 +262,12 @@ class Majors(BaseModel):
     value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Requirements(BaseModel):
@@ -259,6 +277,12 @@ class Requirements(BaseModel):
     value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Materials(BaseModel):
@@ -268,6 +292,12 @@ class Materials(BaseModel):
     value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Assessment(BaseModel):
@@ -277,6 +307,12 @@ class Assessment(BaseModel):
     value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Quota(BaseModel):
@@ -286,6 +322,12 @@ class Quota(BaseModel):
     value: Annotated[str, Field(max_length=500, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Benefits(BaseModel):
@@ -295,6 +337,12 @@ class Benefits(BaseModel):
     value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Contacts(BaseModel):
@@ -304,6 +352,12 @@ class Contacts(BaseModel):
     value: Annotated[list[ValueItem], Field(max_length=100, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class EventValue(BaseModel):
@@ -370,6 +424,12 @@ class Apply(BaseModel):
     value: ApplyValue
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Event(BaseModel):
@@ -379,6 +439,12 @@ class Event(BaseModel):
     value: EventValue
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class Dates(BaseModel):
@@ -388,6 +454,12 @@ class Dates(BaseModel):
     value: Annotated[list[DateItem], Field(max_length=30, min_length=1)]
     evidence: Annotated[list[Evidence], Field(max_length=20, min_length=1)]
     confidence: Annotated[float, Field(ge=0.0, le=1.0)]
+    checked: Annotated[
+        Literal[True] | None,
+        Field(
+            description="另一个模型核对过（总体设计 §8.3）：证据出自图片的，图片另读一遍后值还在；置信度低的，另一个模型独立抽出同样的值"
+        ),
+    ] = None
 
 
 class ExtractedFields(BaseModel):
@@ -434,6 +506,13 @@ class ExtractedProgram(BaseModel):
     ]
     fields: ExtractedFields
     unresolved_dates: Annotated[list[UnresolvedDate] | None, Field(max_length=30)] = None
+    checked: Annotated[
+        list[Literal["no_deadline", "new"]] | None,
+        Field(
+            description="另一个模型也这样判断（总体设计 §8.3）：no_deadline 是报名通知确实没写截止，new 是学校没有这个项目，同学院、同届、同类型的那几个都不是",
+            max_length=2,
+        ),
+    ] = None
 
 
 class ExtractionContext(BaseModel):
@@ -447,7 +526,7 @@ class Extraction(BaseModel):
         extra="forbid",
     )
     programs: Annotated[list[ExtractedProgram], Field(max_length=50)]
-    usage: Annotated[list[Usage], Field(max_length=100)]
+    usage: Annotated[list[Usage], Field(max_length=5000)]
 
 
 class SnapshotResult(BaseModel):
