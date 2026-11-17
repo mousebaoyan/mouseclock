@@ -140,7 +140,9 @@ class Check:
                 logger.warning("Recognising a program failed: %s", error)
                 recognised.append(program)
                 continue
-            end = program.fields.apply.value.end if program.fields.apply else None
+            # A list's deadline is to confirm a place, not to apply (design §8.4).
+            apply = program.fields.apply if program.role != "result" else None
+            end = apply.value.end if apply else None
             match = next((c for c in alike if c.id == first.same_as), None)
             if first.answer == second.answer == "different":
                 # Both models missing it isn't enough where it is likely the same: a list belongs

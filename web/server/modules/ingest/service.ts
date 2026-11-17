@@ -783,7 +783,7 @@ export async function mergeProgram(
 
 // A program's fields, each with the day the notice it has its value from came out; null for one a
 // person set.
-async function fieldSources(trx: Transaction<DB>, programId: number) {
+export async function fieldSources(trx: Transaction<DB>, programId: number) {
   const rows = await trx
     .selectFrom("program_fields as f")
     .leftJoin("program_versions as v", "v.id", "f.version_id")
@@ -795,22 +795,28 @@ async function fieldSources(trx: Transaction<DB>, programId: number) {
   return new Map(rows.map(({ key, ...source }) => [key, source]));
 }
 
-// Whether a version's field is one to put on the table or hold for review (design §8.4). A list's
-// times aren't when to apply, such as its deadline to confirm a place. A notice that came out
-// before the one the field has its value from is out of date, whatever order they are read in.
-// And a day without its time, where the field has a time of that day, says nothing new: taking it
-// would move a 12:00 deadline to the end of the day.
+type Source = { value: Json; published_on: string | null };
+
+// A notice that came out before the one a field has its value from is out of date for it,
+// whatever order they are read in (design §8.4).
+export function outdated(publishedOn: string | null, source: Source) {
+  return publishedOn !== null && source.published_on !== null && publishedOn < source.published_on;
+}
+
+// Whether a version's field is one to put on the table or hold for review (design §8.4). A list
+// tells what follows the selection, such as the deadline to confirm a place: it only adds what the
+// program lacks, and never when or where to apply. A day without its time, where the field has a
+// time of that day, says nothing new: taking it would move a 12:00 deadline to the end of the day.
 function takes(
   role: Role,
   publishedOn: string | null,
   { key, value }: StoredField,
-  source: { value: Json; published_on: string | null } | undefined,
+  source: Source | undefined,
 ) {
-  if (role === "result" && key.startsWith("apply:")) return false;
+  // The apply parts, and apply_url.
+  if (role === "result") return !source && !key.startsWith("apply");
   if (!source) return true;
-  if (publishedOn !== null && source.published_on !== null && publishedOn < source.published_on) {
-    return false;
-  }
+  if (outdated(publishedOn, source)) return false;
   return !(
     isObject(value) &&
     isObject(source.value) &&

@@ -410,7 +410,9 @@ export async function createProgram(
 }
 
 // Puts what a version says on its program, unless a person set the field: those come back as
-// conflicts for the review page (design §8.4). Returns the keys whose value changed.
+// conflicts for the review page (design §8.4). A value the field has already is from this version
+// now, the latest to state it, so an earlier notice read after doesn't change it. Returns the
+// keys whose value changed.
 export async function applyStored(
   trx: Transaction<DB>,
   programId: number,
@@ -422,9 +424,9 @@ export async function applyStored(
   const conflicts: StoredField[] = [];
   for (const row of rows) {
     const now = current.get(row.key);
-    if (now && isDeepStrictEqual(now.value, row.value)) continue;
+    const same = now !== undefined && isDeepStrictEqual(now.value, row.value);
     if (now?.edit_id) {
-      conflicts.push(row);
+      if (!same) conflicts.push(row);
       continue;
     }
     const values = {
@@ -436,7 +438,7 @@ export async function applyStored(
       updated_at: new Date(),
     };
     await upsertField(trx, programId, row.key, values);
-    changed.push(row.key);
+    if (!same) changed.push(row.key);
   }
   await afterChange(trx, programId, changed);
   return { changed, conflicts };

@@ -379,6 +379,8 @@ def test_two_programs_of_a_notice_taken_for_one_stay_as_extracted() -> None:
     [
         # A list belongs to some call, so both models missing which is no reason to take it as new.
         ("result", None, "different", None, None),
+        # A list's deadline is to confirm a place, not the call's.
+        ("result", "2026-07-01", "same", 101, None),
         # A call with the deadline of one the school has is likely that one.
         ("call", "2026-06-10", "different", None, None),
         ("call", "2026-06-20", "different", None, ["new"]),
