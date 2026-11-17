@@ -4,7 +4,7 @@ import type { DB, Edits, Json } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
-import { holdEditing, revokeEditing } from "../accounts/service.ts";
+import { holdEditing, restoreEditing, revokeEditing } from "../accounts/service.ts";
 import {
   currentFields,
   lockProgram,
@@ -277,6 +277,19 @@ export async function revokeEdits(actor: Actor, userId: number) {
       detail: { via: actor.via, reverted },
     });
     return { reverted: reverted.length, kept: edits.length - reverted.length };
+  });
+}
+
+export async function restoreEdits(actor: Actor, userId: number) {
+  await db.transaction().execute(async (trx) => {
+    await restoreEditing(trx, userId);
+    await recordAudit(trx, {
+      user_id: actor.user_id,
+      action: "restore_edits",
+      target_type: "user",
+      target_id: userId,
+      detail: { via: actor.via },
+    });
   });
 }
 

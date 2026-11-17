@@ -92,3 +92,12 @@ export const RevokeResult = z
     kept: Int.openapi({ description: "之后又被别人改过或已经撤销的，没有撤" }),
   })
   .openapi("RevokeResult");
+
+export const EditRevokedUser = z
+  .object({
+    id: Int,
+    display_name: z.string(),
+    avatar_url: z.string().nullable(),
+    revoked_at: UnixSeconds.openapi({ description: "收回的时间" }),
+  })
+  .openapi("EditRevokedUser");

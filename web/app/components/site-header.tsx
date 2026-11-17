@@ -29,6 +29,7 @@ function pagesFor(me: Me | null) {
       ? [
           { to: "/admin/colleges", label: "院校管理" },
           { to: "/admin/sources", label: "来源管理" },
+          { to: "/admin/users", label: "修改权限" },
         ]
       : []),
     ...(me?.can.owner ? [{ to: "/admin/settings", label: "系统设置" }] : []),

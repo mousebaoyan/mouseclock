@@ -11,5 +11,6 @@ export default [
   route("logout", "routes/logout.ts"),
   route("admin/colleges", "routes/admin-colleges.tsx"),
   route("admin/sources", "routes/admin-sources.tsx"),
+  route("admin/users", "routes/admin-users.tsx"),
   route("admin/settings", "routes/admin-settings.tsx"),
 ] satisfies RouteConfig;

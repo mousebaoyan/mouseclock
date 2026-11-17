@@ -320,6 +320,46 @@ test("an admin reverts all someone's edits but the ones changed since, and stops
   expect(audit.detail).toMatchObject({ reverted: [expect.any(Number), expect.any(Number)] });
 });
 
+test("an admin gives back someone's editing, whose reverted edits stay reverted", async () => {
+  const { id } = await program({ quota: field("20 人") });
+  await editIds(await edit(id, { quota: "30 人" }));
+  const [target] = await db
+    .selectFrom("users")
+    .select("id")
+    .where("display_name", "=", "仓鼠")
+    .execute();
+  const param = { id: String(target.id) };
+  const users = api.admin.users;
+  const restore = users[":id"]["restore-edits"];
+  const early = await restore.$post({ param }, admin);
+  expect(early.status).toBe(409);
+  expect(await early.json()).toMatchObject({ error: { code: "not_revoked" } });
+  await users[":id"]["revoke-edits"].$post({ param }, admin);
+
+  expect((await users.$get({}, editor)).status).toBe(403);
+  const listed = await users.$get({}, admin);
+  if (listed.status !== 200) throw new Error("Listing failed");
+  expect(await listed.json()).toEqual([
+    {
+      id: target.id,
+      display_name: "仓鼠",
+      avatar_url: null,
+      revoked_at: now.getTime() / 1000,
+    },
+  ]);
+  expect((await restore.$post({ param }, editor)).status).toBe(403);
+  expect((await restore.$post({ param }, admin)).status).toBe(204);
+  expect(await (await users.$get({}, admin)).json()).toEqual([]);
+  expect((await detail(id)).fields.quota).toMatchObject({ value: "20 人" });
+  expect((await edit(id, { quota: "50 人" })).status).toBe(200);
+  const audit = await db
+    .selectFrom("audit_log")
+    .select(["target_type", "target_id"])
+    .where("action", "=", "restore_edits")
+    .execute();
+  expect(audit).toEqual([{ target_type: "user", target_id: target.id }]);
+});
+
 test("edits are listed for a program and across the site, the latest first", async () => {
   const { id } = await program({ quota: field("20 人") });
   const [first] = await editIds(await edit(id, { quota: "30 人" }));

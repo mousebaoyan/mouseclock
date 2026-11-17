@@ -74,8 +74,9 @@
 | | `GET`、`POST /admin/sources`，`GET`、`PATCH /admin/sources/{id}` | 管理员查询、接入、配置来源，暂停或恢复抓取 |
 | | `POST /admin/source-probes`，`GET /admin/source-probes/{id}` | 管理员发起试抓（网址、要不要浏览器、可选的配置），查看结果：抓到的条目和生成的配置，或者失败的原因；`finished_at` 为空是还在等抓取节点。发起记进操作日志；采用结果就是用它的配置保存来源（[总体设计 §7.2](design.md#72-怎么抓)） |
 | | `POST /admin/users/{id}/revoke-edits` | 撤销某人的全部修改，收回这个人在鼠钟的修改权限 |
+| | `GET /admin/users`，`POST /admin/users/{id}/restore-edits` | 管理员查看收回了修改权限的人，恢复某人的修改权限：收回时撤销的修改不跟着回来；没被收回的返回 `409 not_revoked`。恢复记进操作日志 |
 | | `GET`、`POST /admin/crawler-tokens`，`POST /admin/crawler-tokens/{id}/revoke` | 站长查询、生成、作废抓取节点令牌：生成时返回的令牌只出现这一次，作废马上生效；生成和作废记进操作日志 |
-| | `/admin/tags`、`/admin/users`、`/admin/settings` | 标签预设、修改权限、系统设置 |
+| | `/admin/tags`、`/admin/settings` | 标签预设、系统设置 |
 
 ## 4. MCP
 
