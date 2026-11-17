@@ -532,6 +532,88 @@ test("a later notice changes the parts it states, adds dates by label, and keeps
   ]);
 });
 
+// Another notice of the source, published on the day, with its first snapshot.
+async function noticeOn(sameSource: number, publishedOn: string, text: string) {
+  const { source_id } = await db
+    .selectFrom("notices")
+    .select("source_id")
+    .where("id", "=", sameSource)
+    .executeTakeFirstOrThrow();
+  const notice = await db
+    .insertInto("notices")
+    .values({
+      source_id,
+      url: `https://x.edu.cn/${publishedOn}.htm`,
+      title: "通知",
+      published_on: publishedOn,
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  return (await snapshot(notice.id, text)).snapshot_id;
+}
+
+test("notices count by when they came out, and a list's deadline isn't when to apply", async () => {
+  const { cs, notice, snapshot: first } = await setUp("order.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [{ id: programId }] = await programsOf(cs);
+  // Read after the one of 2026-05-19, but out before it.
+  const earlier = await noticeOn(notice, "2026-05-10", "报名截止6月10日。名额80人。");
+  await extract(earlier, [
+    {
+      program_id: programId,
+      college_id: cs,
+      fields: {
+        apply: { value: { end: { date: "2026-06-10" } }, ...sure("报名截止6月10日") },
+        quota: { value: "80人", ...sure("名额80人") },
+      },
+    },
+  ]);
+  // The same day as the deadline there is, without its time.
+  const vaguer = await noticeOn(notice, "2026-05-25", "报名截止6月14日。");
+  await extract(vaguer, [
+    {
+      program_id: programId,
+      college_id: cs,
+      role: "update",
+      fields: { apply: { value: { end: { date: "2026-06-14" } }, ...sure("报名截止6月14日") } },
+    },
+  ]);
+  const list = await noticeOn(
+    notice,
+    "2026-06-20",
+    "入营名单。报名自即日起。请于7月1日12:00前确认参加。活动于7月6日至9日举行。",
+  );
+  await extract(list, [
+    {
+      program_id: programId,
+      college_id: cs,
+      role: "result",
+      fields: {
+        apply: {
+          value: { end: { date: "2026-07-01", time: "12:00" } },
+          ...sure("请于7月1日12:00前确认参加"),
+        },
+        event: {
+          value: { start: { date: "2026-07-06" }, end: { date: "2026-07-09" } },
+          ...sure("活动于7月6日至9日举行"),
+        },
+      },
+      unresolved_dates: [
+        { field: "apply.start", text: "即日起", evidence: sure("报名自即日起").evidence },
+      ],
+    },
+  ]);
+
+  expect(await fieldsOf(programId)).toEqual({
+    "apply:start": APPLY.value.start,
+    "apply:end": APPLY.value.end,
+    "event:start": { date: "2026-07-06" },
+    "event:end": { date: "2026-07-09" },
+    quota: "80人",
+  });
+  for (const snap of [earlier, vaguer, list]) expect(await reviewOf(snap)).toEqual([]);
+});
+
 test("programs that can't be placed wait for review, and an irrelevant notice is just done", async () => {
   const elsewhere = await setUp("d.edu.cn");
   await extract(elsewhere.snapshot, [{ college_id: elsewhere.cs, fields: { apply: APPLY } }]);

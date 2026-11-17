@@ -7,7 +7,7 @@ import { countdown, formatApply, formatTime, STATUS_LABELS, statusOf } from "../
 
 // A program's application dates and status, the same wherever programs are listed.
 
-type Instants = { apply_start: number | null; apply_deadline: number | null };
+type Instants = { apply_start: number | null; apply_deadline: number | null; closes_at: number };
 
 // Within this long of the deadline the status turns red: reminders go out three days before
 // (design §11).

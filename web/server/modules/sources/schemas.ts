@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { Int, IntParam, named, PageParams, UnixSeconds, Url } from "../../platform/http.ts";
-import { ApplyValue, IsoDate, Kind } from "../programs/schemas.ts";
+import { ApplyValue, ClosesAt, IsoDate, Kind } from "../programs/schemas.ts";
 
 export const PageQuery = PageParams.extend({ q: z.string().trim().max(200).default("") });
 export const CollegeQuery = PageQuery.extend({ school_id: IntParam.positive().optional() });
@@ -156,6 +156,7 @@ export const PublicProgram = z.object({
   apply: z.union([ApplyValue, z.null()]),
   apply_start: UnixSeconds.nullable(),
   apply_deadline: UnixSeconds.nullable(),
+  closes_at: ClosesAt,
 });
 export const PublicProgramCohort = z.object({
   cohort: Int,

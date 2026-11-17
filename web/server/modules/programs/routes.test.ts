@@ -141,9 +141,15 @@ test("members get the whole cohort with the table's fields, by deadline", async 
     apply: { start: { date: "2026-05-10" }, end: { date: "2026-06-01", time: "17:00" } },
     apply_start: Date.parse("2026-05-09T16:00:00Z") / 1000,
     apply_deadline: Date.parse("2026-06-01T09:00:00Z") / 1000,
+    closes_at: Date.parse("2026-06-01T09:00:00Z") / 1000,
     notice: { url: `https://college.example/notices/${open}-0`, published_on: "2026-05-01" },
   });
-  expect(programs[2]).toMatchObject({ apply: { rolling: true }, apply_deadline: null });
+  // No deadline: over when the cohort's recommendation is, at the end of October.
+  expect(programs[2]).toMatchObject({
+    apply: { rolling: true },
+    apply_deadline: null,
+    closes_at: Date.parse("2026-10-31T16:00:00Z") / 1000,
+  });
 });
 
 test("guests and frozen accounts see the five open programs closing soonest", async () => {
@@ -350,6 +356,7 @@ test("a program's page puts each field back together, every part with its eviden
     name: "夏令营",
     apply_start: Date.parse("2026-05-09T16:00:00Z") / 1000,
     apply_deadline: Date.parse("2026-06-05T16:00:00Z") / 1000,
+    closes_at: Date.parse("2026-06-05T16:00:00Z") / 1000,
     verified: { by: "鼠鼠", at: now.getTime() / 1000 },
     notice: { ...first.notice, published_on: "2026-05-01", removed: false },
     fields: {

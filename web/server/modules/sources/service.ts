@@ -7,7 +7,8 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../review/service.ts";
 import type { Kind } from "../programs/schemas.ts";
-import { applyOf, logoOf } from "../programs/service.ts";
+import { applyOf, eventEndOf, logoOf } from "../programs/service.ts";
+import { closesAt } from "../programs/time.ts";
 import {
   type SchoolInput,
   type SchoolPatch,
@@ -272,6 +273,7 @@ export async function getPublicCollege(id: number) {
       .select(["id", "cohort", "name", "apply_start", "apply_deadline"])
       .select(sql<Kind>`programs.kind`.as("kind"))
       .select(applyOf("programs.id").as("apply"))
+      .select(eventEndOf("programs.id").as("event_end"))
       .where("college_id", "=", id)
       .where("deleted_at", "is", null)
       .orderBy("cohort", "desc")
@@ -280,12 +282,13 @@ export async function getPublicCollege(id: number) {
       .execute(),
   ]);
   const grouped = new Map<number, z.infer<typeof PublicProgramCohort>["programs"]>();
-  for (const { cohort, apply_start, apply_deadline, ...program } of programs) {
+  for (const { cohort, apply_start, apply_deadline, event_end, ...program } of programs) {
     const current = grouped.get(cohort) ?? [];
     current.push({
       ...program,
       apply_start: apply_start ? unix(apply_start) : null,
       apply_deadline: apply_deadline ? unix(apply_deadline) : null,
+      closes_at: unix(closesAt(apply_deadline, event_end, cohort)),
     });
     grouped.set(cohort, current);
   }

@@ -128,7 +128,7 @@ async def crawl_source(
 
         listing = await website.listing(source.id, Listing(items=items))
         new = [notice for notice in listing.pending if notice.step == "screen"]
-        to_fetch = [notice for notice in listing.pending if notice.step == "fetch"]
+        screened_in: set[int] = set()
         failures: list[NoticeFailure] = []
         # What the calls that failed, or whose answers weren't needed, cost.
         unreported: list[RunUsage] = []
@@ -148,8 +148,10 @@ async def crawl_source(
             else:
                 await website.screening(source.id, Screening(results=results, usage=usage))
                 screened_in = {result.notice_id for result in results if result.screened_in}
-                to_fetch += [notice for notice in new if notice.id in screened_in]
 
+        # In the website's order, the earliest published first: a program's notices are read in
+        # the order they came out, and its later ones find it among the candidates.
+        to_fetch = [n for n in listing.pending if n.step == "fetch" or n.id in screened_in]
         useful = 0
         for notice in to_fetch:
             # Reading pictures counts as extraction.

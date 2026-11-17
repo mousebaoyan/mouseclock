@@ -15,6 +15,7 @@ type Program = {
   name: string;
   apply_start: number | null;
   apply_deadline: number | null;
+  closes_at: number;
   notice: { published_on: string | null };
 };
 
