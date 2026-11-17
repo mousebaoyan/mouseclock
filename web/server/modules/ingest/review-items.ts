@@ -431,12 +431,41 @@ async function mergeDuplicate(
     .where("reason", "=", "unparsed_date")
     .where("status", "=", "pending")
     .execute();
-  await deleteProgram(trx, duplicateId);
+  await dropProgram(trx, reviewer, duplicateId);
+}
+
+// What still waits on a deleted program has nothing left to decide; an item being accepted is
+// set afterwards as it is.
+async function dropProgram(trx: Transaction<DB>, reviewer: Reviewer, id: number) {
+  await deleteProgram(trx, id);
   await trx
     .updateTable("review_items")
     .set({ status: "rejected", resolved_by: reviewer.user_id, resolved_at: new Date() })
-    .where("program_id", "=", duplicateId)
+    .where("program_id", "=", id)
     .where("status", "=", "pending")
-    .where("id", "!=", item.id)
     .execute();
+}
+
+// An admin deletes a program that shouldn't be there, such as one made from a notice that isn't
+// about admissions; its versions, snapshots and records stay (data-model.md).
+export async function removeProgram(admin: Reviewer, id: number, reason: string) {
+  await db.transaction().execute(async (trx) => {
+    // Items before their program, as when they are decided.
+    await trx
+      .selectFrom("review_items")
+      .select("id")
+      .where("program_id", "=", id)
+      .where("status", "=", "pending")
+      .forUpdate()
+      .execute();
+    await lockProgram(trx, id);
+    await dropProgram(trx, admin, id);
+    await recordAudit(trx, {
+      user_id: admin.user_id,
+      action: "delete",
+      target_type: "program",
+      target_id: id,
+      detail: { via: admin.via, reason },
+    });
+  });
 }

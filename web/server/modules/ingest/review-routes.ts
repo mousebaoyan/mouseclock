@@ -5,11 +5,18 @@ import {
   errorResponse,
   IdParam,
   Int,
+  named,
   PageParams,
   UnixSeconds,
 } from "../../platform/http.ts";
 import { Cohort, Evidence, Kind, StoredValue } from "../programs/schemas.ts";
-import { acceptReviewItem, listReviewItems, REASONS, rejectReviewItem } from "./review-items.ts";
+import {
+  acceptReviewItem,
+  listReviewItems,
+  REASONS,
+  rejectReviewItem,
+  removeProgram,
+} from "./review-items.ts";
 import { ExtractedProgram, ExtractionContext } from "./routes.ts";
 
 // The review page's half that is about extractions (design §12.2, development.md §1); recent
@@ -81,6 +88,10 @@ const Decision = z
       "编号、学院、届对不上的：选这所学校的一个项目，或者选好它的学院和届（类型不写就照抽出来的）新建，两样只写一样；可能重复的：是重复就写原来的项目，不是就不写；其他的不写",
   });
 
+const Removal = z
+  .strictObject({ reason: z.string(named("理由")).trim().min(1).max(500) })
+  .openapi("ProgramRemoval");
+
 const errors = {
   400: errorResponse("请求格式有误"),
   401: errorResponse("没有登录"),
@@ -148,6 +159,31 @@ export const reviewItemsRoutes = createRouter()
     async (c) => {
       const { id } = authorize(c, "edit");
       await rejectReviewItem({ user_id: id, via: "web" }, c.req.valid("param").id);
+      return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "delete",
+      path: "/programs/{id}",
+      summary: "删除项目",
+      description:
+        "比如不该收的通知建的项目。软删除，版本、快照和记录都留着；它待审的条目一起关掉，理由记进操作日志。",
+      request: { params: IdParam, body: { required: true, content: json(Removal) } },
+      responses: {
+        204: { description: "已删除" },
+        ...errors,
+        403: errorResponse("只有管理员能删除"),
+        404: errorResponse("项目不存在"),
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "admin");
+      await removeProgram(
+        { user_id: id, via: "web" },
+        c.req.valid("param").id,
+        c.req.valid("json").reason,
+      );
       return c.body(null, 204);
     },
   );

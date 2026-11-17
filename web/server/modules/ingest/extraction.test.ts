@@ -15,6 +15,7 @@ const api = v1.crawler;
 let crawler = { headers: {} };
 let member = { headers: { cookie: "", origin: env.PUBLIC_URL } };
 let editor = member;
+let admin = member;
 
 async function session(profile: FakeUser) {
   const token = await login(profile, "fake", { ip: null, userAgent: "test" });
@@ -23,7 +24,7 @@ async function session(profile: FakeUser) {
 
 beforeAll(async () => {
   crawler = { headers: { authorization: `Bearer ${await createCrawlerToken("test")}` } };
-  [member, editor] = await Promise.all([session(fakeUsers[0]), session(fakeUsers[1])]);
+  [member, editor, admin] = await Promise.all(fakeUsers.slice(0, 3).map(session));
 });
 
 const BODY = [
@@ -754,6 +755,32 @@ test("a duplicate is merged into the original and deleted", async () => {
   expect((await pendingOf(second)).map((item) => [item.reason, item.program_id])).toEqual([
     ["low_confidence", original.id],
   ]);
+});
+
+test("an admin deletes a program with a reason, and what waits on it is closed", async () => {
+  const { cs, snapshot: snap } = await setUp("r6.edu.cn");
+  const unsure = { value: ["软件工程"], evidence: APPLY.evidence, confidence: 0.3 };
+  await extract(snap, [{ college_id: cs, fields: { majors: unsure } }]);
+  const [program] = await programsOf(cs);
+  const param = { id: String(program.id) };
+  const remove = (as: typeof admin, reason = "学校评定本校学生推免资格的办法") =>
+    v1.programs[":id"].$delete({ param, json: { reason } }, as);
+  expect((await remove(editor)).status).toBe(403);
+  expect((await remove(admin, " ")).status).toBe(400);
+  expect((await remove(admin)).status).toBe(204);
+  expect((await v1.programs[":id"].$get({ param }, member)).status).toBe(404);
+  expect(await pendingOf(snap)).toEqual([]);
+  const audit = await db
+    .selectFrom("audit_log")
+    .select(["action", "detail"])
+    .where("target_type", "=", "program")
+    .where("target_id", "=", program.id)
+    .executeTakeFirstOrThrow();
+  expect(audit).toMatchObject({
+    action: "delete",
+    detail: { reason: "学校评定本校学生推免资格的办法" },
+  });
+  expect((await remove(admin)).status).toBe(404);
 });
 
 test("only L3 and up see and decide the items", async () => {
