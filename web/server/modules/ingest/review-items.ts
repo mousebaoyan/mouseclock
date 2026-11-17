@@ -415,7 +415,16 @@ async function mergeDuplicate(
     .where("program_versions.program_id", "=", duplicateId)
     .orderBy("program_versions.number")
     .execute();
+  // What people decided about the duplicate's versions stays decided on the original.
+  const decisions = await trx
+    .selectFrom("review_items")
+    .select(["snapshot_id", "key", "reason", sql<"accepted" | "rejected">`status`.as("status")])
+    .where("program_id", "=", duplicateId)
+    .where("reason", "in", [...FIELD_REASONS, "no_deadline"])
+    .where("status", "!=", "pending")
+    .execute();
   for (const version of versions) {
+    const decided = decisions.filter((d) => d.snapshot_id === version.snapshot_id);
     // One notice gave both, and a notice is one version of a program, not two.
     if (await hasVersion(trx, targetId, version.snapshot_id)) {
       throw new AppError(
@@ -432,9 +441,33 @@ async function mergeDuplicate(
         version.published_on,
         await docsOf(trx, version.snapshot_id),
         [],
-        { ...duplicate, program_id: targetId, role: version.role, fields: version.fields },
+        {
+          ...duplicate,
+          program_id: targetId,
+          role: version.role,
+          fields: version.fields,
+          checked: decided.some((d) => d.reason === "no_deadline" && d.status === "accepted")
+            ? ["no_deadline"]
+            : undefined,
+        },
+        new Map(decided.flatMap((d) => (d.key === null ? [] : [[d.key, d.status] as const]))),
       ),
     );
+    // The decisions go with the version, so merging the original in turn finds them too.
+    const merged = await trx
+      .selectFrom("program_versions")
+      .select("id")
+      .where("program_id", "=", targetId)
+      .where("snapshot_id", "=", version.snapshot_id)
+      .executeTakeFirstOrThrow();
+    await trx
+      .updateTable("review_items")
+      .set({ program_id: targetId, version_id: merged.id })
+      .where("program_id", "=", duplicateId)
+      .where("snapshot_id", "=", version.snapshot_id)
+      .where("reason", "in", [...FIELD_REASONS, "no_deadline"])
+      .where("status", "!=", "pending")
+      .execute();
   }
   await trx
     .updateTable("review_items")
