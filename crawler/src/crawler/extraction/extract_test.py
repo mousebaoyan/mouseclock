@@ -5,13 +5,15 @@ from datetime import date
 import httpx
 import pytest
 
-from crawler.crawl.contract import AttachmentInfo, ExtractionContext, Usage
+from crawler.crawl.contract import AttachmentInfo, ExtractionContext, ProgramCandidate, Usage
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
 from crawler.extraction.chat import Chat
 from crawler.extraction.chat_test import completion
 from crawler.extraction.extract import (
     Extract,
+    Kind,
     RoundSelection,
+    cohort_of,
     prepare,
     resolve_programs,
 )
@@ -102,16 +104,61 @@ def test_unknown_ids_are_rejected(key: str, value: int) -> None:
         resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, context())
 
 
-def test_an_existing_project_of_another_cohort_is_taken_as_a_new_one() -> None:
+def test_the_cohort_comes_from_when_the_notice_came_out_not_from_the_model() -> None:
+    # A 「2026 年夏令营」 out in June 2026 is the cohort 2027's.
     item = selection()
-    item["cohort"] = 2028
+    item["cohort"] = 2026
     _, index = prepare(
         "通知", NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[]), context()
     )
     [program] = resolve_programs(
         RoundSelection.model_validate({"programs": [item]}), index, context()
     )
-    assert (program.program_id, program.cohort) == (None, 2028)
+    assert (program.program_id, program.cohort) == (100, 2027)
+
+
+@pytest.mark.parametrize(
+    ("published_on", "kind", "cohort"),
+    [
+        (date(2026, 6, 1), "summer_camp", 2027),
+        (date(2026, 10, 20), "september_round", 2027),
+        (date(2026, 11, 20), "winter_camp", 2028),
+        (date(2027, 1, 5), "winter_camp", 2028),
+    ],
+)
+def test_winter_camps_from_the_autumn_on_are_the_cohort_after_next(
+    published_on: date, kind: Kind, cohort: int
+) -> None:
+    assert cohort_of(published_on, kind) == cohort
+
+
+def test_the_model_is_offered_only_the_programs_of_the_notices_cohort() -> None:
+    # Last year's program of the same series.
+    last_year = {**context().programs[0].model_dump(mode="json"), "id": 99, "cohort": 2026}
+    both = context().model_copy(
+        update={"programs": [*context().programs, ProgramCandidate.model_validate(last_year)]}
+    )
+    page = NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[])
+    request, index = prepare("通知", page, both)
+    messages = json.loads(json.dumps(request["messages"]))
+    shared = json.loads(messages[1]["content"])
+    assert [p["id"] for p in shared["programs"]] == [100]
+    item = selection()
+    item["program_id"] = 99
+    with pytest.raises(SelectionError, match="unknown_program"):
+        resolve_programs(RoundSelection.model_validate({"programs": [item]}), index, both)
+
+
+def test_an_existing_program_of_another_kind_is_taken_as_a_new_one() -> None:
+    item = selection()
+    item["kind"] = "pre_recommendation"
+    _, index = prepare(
+        "通知", NoticePage("", "报名截止6月30日24点。", hyperlinks=(), attachments=[]), context()
+    )
+    [program] = resolve_programs(
+        RoundSelection.model_validate({"programs": [item]}), index, context()
+    )
+    assert (program.program_id, program.kind) == (None, "pre_recommendation")
 
 
 def test_the_same_existing_project_twice_is_rejected() -> None:

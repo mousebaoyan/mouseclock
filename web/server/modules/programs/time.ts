@@ -33,3 +33,9 @@ export function deadlineOf(value: TimeValue) {
   const [year, month, day] = numbers(value.date, "-");
   return beijing(year, month, value.mark ? day : day + 1);
 }
+
+// When applying is over, for the status (design §9.1): at the deadline; without one, when the
+// event ends; without either, when the cohort's recommendation ends, in October the year before.
+export function closesAt(deadline: Date | null, event: TimeValue | null, cohort: number) {
+  return deadline ?? (event ? deadlineOf(event) : beijing(cohort - 1, 11, 1));
+}

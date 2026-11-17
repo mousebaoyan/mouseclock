@@ -33,6 +33,8 @@ function program(
     name: `项目${id}`,
     apply_start: values.start ?? null,
     apply_deadline: values.deadline === undefined ? 2000 : values.deadline,
+    // Without a deadline, the cohort's recommendation is not over yet.
+    closes_at: (values.deadline === undefined ? 2000 : values.deadline) ?? 5000,
     notice: { published_on: values.published ?? null },
   };
 }

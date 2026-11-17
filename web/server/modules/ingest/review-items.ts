@@ -10,8 +10,10 @@ import { recordAudit } from "../review/service.ts";
 import {
   docsOf,
   extractionContext,
+  fieldSources,
   holdForReview,
   mergeProgram,
+  outdated,
   type ExtractedProgram,
   type ReviewReason,
 } from "./service.ts";
@@ -266,6 +268,16 @@ async function acceptField(trx: Transaction<DB>, item: Item) {
   await lockProgram(trx, programId);
   const now = (await currentFields(trx, programId)).get(key);
   if (now?.version_id === versionId) return;
+  // A notice out later than this one gave the field since, and isn't undone (design §12.2).
+  const source = (await fieldSources(trx, programId)).get(key);
+  const { published_on } = await trx
+    .selectFrom("program_versions as v")
+    .innerJoin("snapshots as s", "s.id", "v.snapshot_id")
+    .innerJoin("notices as n", "n.id", "s.notice_id")
+    .select("n.published_on")
+    .where("v.id", "=", versionId)
+    .executeTakeFirstOrThrow();
+  if (source && outdated(published_on, source)) return;
   const { payload } = await trx
     .selectFrom("review_items")
     .select(sql<FieldPayload>`payload`.as("payload"))

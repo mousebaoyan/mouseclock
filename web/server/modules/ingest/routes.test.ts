@@ -237,6 +237,23 @@ test("listing again finds nothing new and hands back what is unfinished", async 
   expect(await list(source.id, items)).toEqual({ new_count: 0, pending: [] });
 });
 
+test("a listing hands back the earliest published first, though a page shows the latest first", async () => {
+  const source = await newSource("order.edu.cn");
+  const items = [
+    { url: "https://order.edu.cn/3.htm", title: "复试名单", published_on: "2026-09-20" },
+    { url: "https://order.edu.cn/x.htm", title: "通知" },
+    { url: "https://order.edu.cn/2.htm", title: "延期通知", published_on: "2026-06-10" },
+    { url: "https://order.edu.cn/1.htm", title: "夏令营通知", published_on: "2026-05-19" },
+  ];
+  const { pending } = await list(source.id, items);
+  expect(pending.map((notice) => notice.url)).toEqual([
+    "https://order.edu.cn/1.htm",
+    "https://order.edu.cn/2.htm",
+    "https://order.edu.cn/3.htm",
+    "https://order.edu.cn/x.htm",
+  ]);
+});
+
 test("the same words make no new snapshot, changed attachment text or its reading does", async () => {
   const source = await newSource("c.edu.cn");
   const { pending } = await list(source.id, [{ url: "https://c.edu.cn/1.htm", title: "推免通知" }]);

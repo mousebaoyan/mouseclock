@@ -186,11 +186,12 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     assert [call for call, _ in site.calls] == [
         "POST /sources/7/listing",
         "POST /sources/7/screening",
-        "POST /notices/3/snapshot",
-        "POST /notices/4/removed",
+        # In the website's order: what was screened in goes among the rest, not after them.
         "POST /notices/1/snapshot",
         "PUT /snapshots/10/attachments/0",
         "POST /snapshots/10/extraction",
+        "POST /notices/3/snapshot",
+        "POST /notices/4/removed",
         "POST /runs",
     ]
     [screening] = site.called("POST /sources/7/screening")

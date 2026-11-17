@@ -16,7 +16,7 @@ import type {
   Role,
   TimeValue,
 } from "./schemas.ts";
-import { deadlineOf, startOf } from "./time.ts";
+import { closesAt, deadlineOf, startOf } from "./time.ts";
 
 // The apply field put back together from its parts, null when the notice gave none or people
 // cleared it. `program` is the column holding the program's id, such as "programs.id".
@@ -26,6 +26,18 @@ export function applyOf(program: string) {
     from program_fields as field
     where field.program_id = ${sql.ref(program)} and field.key like 'apply:%'
       and field.value <> 'null'
+  )`;
+}
+
+// The event's last stated time, its end or else its start ("event:end" sorts first), null without
+// either; `program` as for applyOf.
+export function eventEndOf(program: string) {
+  return sql<TimeValue | null>`(
+    select field.value from program_fields as field
+    where field.program_id = ${sql.ref(program)} and field.key in ('event:end', 'event:start')
+      and field.value <> 'null'
+    order by field.key
+    limit 1
   )`;
 }
 
@@ -69,6 +81,7 @@ export async function listPrograms(cohort: number, preview: boolean) {
       "p.name",
       "p.apply_start",
       "p.apply_deadline",
+      eventEndOf("p.id").as("event_end"),
       sql<Kind>`p.kind`.as("kind"),
       applyOf("p.id").as("apply"),
       "s.name as school_name",
@@ -109,6 +122,7 @@ export async function listPrograms(cohort: number, preview: boolean) {
       apply: row.apply,
       apply_start: row.apply_start ? unix(row.apply_start) : null,
       apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
+      closes_at: unix(closesAt(row.apply_deadline, row.event_end, cohort)),
       notice: { url: row.notice_url, published_on: row.notice_published_on },
     })),
   };
@@ -170,6 +184,7 @@ export async function getProgram(id: number) {
       "p.name",
       "p.apply_start",
       "p.apply_deadline",
+      eventEndOf("p.id").as("event_end"),
       "p.verified_at",
       sql<Kind>`p.kind`.as("kind"),
       fieldsOf("p.id").as("fields"),
@@ -198,6 +213,7 @@ export async function getProgram(id: number) {
     name: row.name,
     apply_start: row.apply_start ? unix(row.apply_start) : null,
     apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
+    closes_at: unix(closesAt(row.apply_deadline, row.event_end, row.cohort)),
     verified:
       row.verified_at && row.verified_by
         ? { by: row.verified_by, at: unix(row.verified_at) }
@@ -394,7 +410,9 @@ export async function createProgram(
 }
 
 // Puts what a version says on its program, unless a person set the field: those come back as
-// conflicts for the review page (design §8.4). Returns the keys whose value changed.
+// conflicts for the review page (design §8.4). A value the field has already is from this version
+// now, the latest to state it, so an earlier notice read after doesn't change it. Returns the
+// keys whose value changed.
 export async function applyStored(
   trx: Transaction<DB>,
   programId: number,
@@ -406,9 +424,9 @@ export async function applyStored(
   const conflicts: StoredField[] = [];
   for (const row of rows) {
     const now = current.get(row.key);
-    if (now && isDeepStrictEqual(now.value, row.value)) continue;
+    const same = now !== undefined && isDeepStrictEqual(now.value, row.value);
     if (now?.edit_id) {
-      conflicts.push(row);
+      if (!same) conflicts.push(row);
       continue;
     }
     const values = {
@@ -420,7 +438,7 @@ export async function applyStored(
       updated_at: new Date(),
     };
     await upsertField(trx, programId, row.key, values);
-    changed.push(row.key);
+    if (!same) changed.push(row.key);
   }
   await afterChange(trx, programId, changed);
   return { changed, conflicts };

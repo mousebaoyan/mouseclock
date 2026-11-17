@@ -63,8 +63,9 @@ export function formatApply(apply: ApplyValue | null, thisYear: number) {
   return window ? `${window}（额满即止）` : "额满即止";
 }
 
-// Design §9.1, from the instants the API gives in Unix seconds. With neither, the notice gave
-// no times, and the page says so rather than guess.
+// Design §9.1, from the instants the API gives in Unix seconds: closed once applying is over, at
+// the deadline or, without one, when the event or the cohort's recommendation ends. With no start
+// or deadline the notice gave no times, and until then the page says so rather than guess.
 export type Status = "upcoming" | "open" | "closed";
 export const STATUS_LABELS: Record<Status, string> = {
   upcoming: "未开始",
@@ -73,10 +74,10 @@ export const STATUS_LABELS: Record<Status, string> = {
 };
 
 export function statusOf(
-  program: { apply_start: number | null; apply_deadline: number | null },
+  program: { apply_start: number | null; apply_deadline: number | null; closes_at: number },
   now: number,
 ): Status | null {
-  if (program.apply_deadline !== null && program.apply_deadline <= now) return "closed";
+  if (program.closes_at <= now) return "closed";
   if (program.apply_start !== null && program.apply_start > now) return "upcoming";
   return program.apply_start === null && program.apply_deadline === null ? null : "open";
 }

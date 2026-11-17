@@ -532,6 +532,112 @@ test("a later notice changes the parts it states, adds dates by label, and keeps
   ]);
 });
 
+// Another notice of the source, published on the day, with its first snapshot.
+async function noticeOn(sameSource: number, publishedOn: string, text: string) {
+  const { source_id } = await db
+    .selectFrom("notices")
+    .select("source_id")
+    .where("id", "=", sameSource)
+    .executeTakeFirstOrThrow();
+  const notice = await db
+    .insertInto("notices")
+    .values({
+      source_id,
+      url: `https://x.edu.cn/${publishedOn}.htm`,
+      title: "通知",
+      published_on: publishedOn,
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  return (await snapshot(notice.id, text)).snapshot_id;
+}
+
+test("notices count by when they came out, and a list only adds what the program lacks", async () => {
+  const { cs, notice, snapshot: first } = await setUp("order.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [{ id: programId }] = await programsOf(cs);
+  // Read after the one of 2026-05-19, but out before it.
+  const earlier = await noticeOn(notice, "2026-05-10", "报名截止6月10日。名额80人。");
+  await extract(earlier, [
+    {
+      program_id: programId,
+      college_id: cs,
+      fields: {
+        apply: { value: { end: { date: "2026-06-10" } }, ...sure("报名截止6月10日") },
+        quota: { value: "80人", ...sure("名额80人") },
+      },
+    },
+  ]);
+  // Stated again by a later notice, the value is from that one: an older notice read after it
+  // doesn't change it.
+  const again = await noticeOn(notice, "2026-06-01", "名额80人。");
+  const older = await noticeOn(notice, "2026-05-15", "名额60人。");
+  for (const [snap, quota] of [
+    [again, "80人"],
+    [older, "60人"],
+  ] as const) {
+    await extract(snap, [
+      {
+        program_id: programId,
+        college_id: cs,
+        role: "update",
+        fields: { quota: { value: quota, ...sure(`名额${quota}`) } },
+      },
+    ]);
+  }
+  // The same day as the deadline there is, without its time.
+  const vaguer = await noticeOn(notice, "2026-05-25", "报名截止6月14日。");
+  await extract(vaguer, [
+    {
+      program_id: programId,
+      college_id: cs,
+      role: "update",
+      fields: { apply: { value: { end: { date: "2026-06-14" } }, ...sure("报名截止6月14日") } },
+    },
+  ]);
+  const list = await noticeOn(
+    notice,
+    "2026-06-20",
+    "入营名单。报名自即日起。请于7月1日12:00前确认参加。活动于7月6日至9日举行。名额50人。确认网址https://x.edu.cn/confirm",
+  );
+  await extract(list, [
+    {
+      program_id: programId,
+      college_id: cs,
+      role: "result",
+      fields: {
+        apply: {
+          value: { end: { date: "2026-07-01", time: "12:00" } },
+          ...sure("请于7月1日12:00前确认参加"),
+        },
+        event: {
+          value: { start: { date: "2026-07-06" }, end: { date: "2026-07-09" } },
+          ...sure("活动于7月6日至9日举行"),
+        },
+        quota: { value: "50人", ...sure("名额50人") },
+        apply_url: {
+          value: "https://x.edu.cn/confirm",
+          ...sure("确认网址https://x.edu.cn/confirm"),
+        },
+      },
+      unresolved_dates: [
+        { field: "apply.start", text: "即日起", evidence: sure("报名自即日起").evidence },
+      ],
+    },
+  ]);
+
+  expect(await fieldsOf(programId)).toEqual({
+    "apply:start": APPLY.value.start,
+    "apply:end": APPLY.value.end,
+    "event:start": { date: "2026-07-06" },
+    "event:end": { date: "2026-07-09" },
+    quota: "80人",
+  });
+  for (const snap of [earlier, again, older, vaguer, list]) {
+    expect(await reviewOf(snap)).toEqual([]);
+  }
+});
+
 test("programs that can't be placed wait for review, and an irrelevant notice is just done", async () => {
   const elsewhere = await setUp("d.edu.cn");
   await extract(elsewhere.snapshot, [{ college_id: elsewhere.cs, fields: { apply: APPLY } }]);
@@ -789,6 +895,30 @@ test("a duplicate is merged into the original and deleted", async () => {
   expect((await pendingOf(second)).map((item) => [item.reason, item.program_id])).toEqual([
     ["low_confidence", original.id],
   ]);
+});
+
+test("a field accepted from a notice older than the one the program has it from changes nothing", async () => {
+  const { cs, notice, snapshot: snap } = await setUp("r7.edu.cn");
+  await extract(snap, [
+    {
+      college_id: cs,
+      fields: { quota: { value: "100 人", evidence: APPLY.evidence, confidence: 0.3 } },
+    },
+  ]);
+  const [program] = await programsOf(cs);
+  const [unsure] = await pendingOf(snap);
+  const later = await noticeOn(notice, "2026-06-01", "名额80人。");
+  await extract(later, [
+    {
+      program_id: program.id,
+      college_id: cs,
+      role: "update",
+      fields: { quota: { value: "80人", ...sure("名额80人") } },
+    },
+  ]);
+
+  expect((await accept(unsure.id)).status).toBe(204);
+  expect(await fieldsOf(program.id)).toEqual({ quota: "80人" });
 });
 
 test("an admin deletes a program with a reason, and what waits on it is closed", async () => {

@@ -1,5 +1,5 @@
 import { sql, type Kysely, type Transaction } from "kysely";
-import type { DB, Json } from "../../../db/types.ts";
+import type { DB, Json, JsonObject } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
@@ -229,6 +229,9 @@ export async function recordListing(sourceId: number, items: ListedItem[]) {
           ]),
         ]),
       )
+      // The earliest published first, as a program's notices came out (design §8.4); a listing
+      // page has the latest first.
+      .orderBy("n.published_on")
       .orderBy("n.id")
       .execute();
     return {
@@ -714,8 +717,10 @@ export async function mergeProgram(
   const end = program.fields.apply?.value.end;
   const implausible =
     end !== undefined && publishedOn !== null && deadlineOf(end) <= startOf({ date: publishedOn });
+  const sources = await fieldSources(trx, programId);
   const accepted = [];
   for (const row of toStoredFields(program.fields)) {
+    if (!takes(program.role, publishedOn, row, sources.get(row.key))) continue;
     const reason = !evidenceFound(docs, row.evidence)
       ? "evidence_not_found"
       : !row.checked && fromPictures(docs, row.evidence)
@@ -738,13 +743,16 @@ export async function mergeProgram(
     .where("id", "=", version.id)
     .execute();
 
-  if (program.unresolved_dates?.length) {
+  const unresolved = program.unresolved_dates?.filter(
+    (date) => program.role !== "result" || !date.field.startsWith("apply."),
+  );
+  if (unresolved?.length) {
     held.push({
       reason: "unparsed_date",
       snapshot_id: snapshotId,
       program_id: programId,
       version_id: version.id,
-      payload: program,
+      payload: { ...program, unresolved_dates: unresolved },
     });
   }
   if (program.role === "call" && !program.unresolved_dates?.some((d) => d.field === "apply.end")) {
@@ -771,6 +779,57 @@ export async function mergeProgram(
     }
   }
   return held;
+}
+
+// A program's fields, each with the day the notice it has its value from came out; null for one a
+// person set.
+export async function fieldSources(trx: Transaction<DB>, programId: number) {
+  const rows = await trx
+    .selectFrom("program_fields as f")
+    .leftJoin("program_versions as v", "v.id", "f.version_id")
+    .leftJoin("snapshots as s", "s.id", "v.snapshot_id")
+    .leftJoin("notices as n", "n.id", "s.notice_id")
+    .select(["f.key", sql<Json>`f.value`.as("value"), "n.published_on"])
+    .where("f.program_id", "=", programId)
+    .execute();
+  return new Map(rows.map(({ key, ...source }) => [key, source]));
+}
+
+type Source = { value: Json; published_on: string | null };
+
+// A notice that came out before the one a field has its value from is out of date for it,
+// whatever order they are read in (design §8.4).
+export function outdated(publishedOn: string | null, source: Source) {
+  return publishedOn !== null && source.published_on !== null && publishedOn < source.published_on;
+}
+
+// Whether a version's field is one to put on the table or hold for review (design §8.4). A list
+// tells what follows the selection, such as the deadline to confirm a place: it only adds what the
+// program lacks, and never when or where to apply. A day without its time, where the field has a
+// time of that day, says nothing new: taking it would move a 12:00 deadline to the end of the day.
+function takes(
+  role: Role,
+  publishedOn: string | null,
+  { key, value }: StoredField,
+  source: Source | undefined,
+) {
+  // The apply parts, and apply_url.
+  if (role === "result") return !source && !key.startsWith("apply");
+  if (!source) return true;
+  if (outdated(publishedOn, source)) return false;
+  return !(
+    isObject(value) &&
+    isObject(source.value) &&
+    value.date !== undefined &&
+    value.date === source.value.date &&
+    value.time === undefined &&
+    value.mark === undefined &&
+    source.value.time !== undefined
+  );
+}
+
+function isObject(value: Json): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function fieldItem(

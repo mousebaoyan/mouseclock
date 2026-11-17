@@ -12,6 +12,11 @@ export const KINDS = [
   "september_round",
 ] as const;
 export const Kind = z.enum(KINDS);
+
+export const ClosesAt = UnixSeconds.openapi({
+  description:
+    "报名结束的时刻，状态按它算（总体设计 §9.1）：写了截止的是截止，没写的是活动结束，都没写的是这一届推免结束，即前一年的 10 月底",
+});
 export type Kind = z.infer<typeof Kind>;
 
 export const ROLES = ["call", "update", "result"] as const;
@@ -186,6 +191,7 @@ export const TableProgram = z
     apply: z.union([ApplyValue, z.null()]),
     apply_start: UnixSeconds.nullable(),
     apply_deadline: UnixSeconds.nullable(),
+    closes_at: ClosesAt,
     notice: z
       .object({ url: z.string(), published_on: IsoDate.nullable() })
       .openapi({ description: "原文：最近一个报名版本的通知，没有就用最近一个版本的" }),
@@ -288,6 +294,7 @@ export const ProgramDetail = z
     name: z.string(),
     apply_start: UnixSeconds.nullable(),
     apply_deadline: UnixSeconds.nullable(),
+    closes_at: ClosesAt,
     verified: z.union([
       z.object({ by: z.string(), at: UnixSeconds }).openapi("Verified"),
       z.null(),
