@@ -1,5 +1,5 @@
 import type { InferResponseType } from "hono/client";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
 import { data, Link, useFetcher } from "react-router";
 import { cn } from "~/cn";
 import { FormMessage } from "~/components/form";
@@ -24,7 +24,7 @@ type Item = Items["items"][number];
 type Reason = Items["reason"];
 type Extracted = NonNullable<Item["extracted"]>;
 type Edits = InferResponseType<Api["edits"]["$get"], 200>;
-type Fetcher = ReturnType<typeof useFetcher<typeof action>>;
+type Decide = (event: SubmitEvent<HTMLFormElement>) => void;
 
 // What each kind of item asks of a reviewer (design §8.3, §8.4), in the order the API lists them.
 const REASONS: Record<Reason, { label: string; color: TagColor; guide: string }> = {
@@ -237,20 +237,41 @@ function Queue({ items, thisYear }: { items: Items; thisYear: number }) {
   );
 }
 
+// How long a decision waits before it is sent, for a slip to be taken back (design §12.2).
+const UNDO_SECONDS = 5;
+
 // One item: which program and notice it is about, what to decide and the buttons that decide it.
 // Each sends on its own, so the rest of the list stays as it is while it does.
 function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear: number }) {
   const fetcher = useFetcher<typeof action>();
-  const busy = fetcher.state !== "idle";
+  const { submit } = fetcher;
+  // The button clicked and the form it sends, until it is sent or taken back. Leaving the page
+  // first drops it, and the item still waits.
+  const [decision, setDecision] = useState<{
+    form: FormData;
+    choice: string;
+    sent: boolean;
+  } | null>(null);
+  useEffect(() => {
+    if (!decision || decision.sent) return undefined;
+    const timer = setTimeout(() => {
+      void submit(decision.form, { method: "post" });
+      setDecision({ ...decision, sent: true });
+    }, UNDO_SECONDS * 1000);
+    return () => clearTimeout(timer);
+  }, [decision, submit]);
+  const decide: Decide = (event) => {
+    event.preventDefault();
+    setDecision({
+      form: new FormData(event.currentTarget, event.submitter),
+      choice: event.submitter?.textContent ?? "",
+      sent: false,
+    });
+  };
+  // A decision sent and answered with an error leaves the question as it was, the error under it.
+  const pending = decision !== null && !(decision.sent && fetcher.state === "idle");
   return (
-    <article
-      aria-busy={busy}
-      inert={busy}
-      className={cn(
-        "rounded-xl border bg-card shadow-card transition-opacity",
-        busy && "opacity-50",
-      )}
-    >
+    <article aria-busy={pending} className="rounded-xl border bg-card shadow-card">
       <header className="space-y-0.5 border-b px-4 py-3 sm:px-5">
         {item.program && (
           <Link
@@ -276,13 +297,28 @@ function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear
           </a>
         </p>
       </header>
-      <div className="space-y-4 px-4 py-4 sm:px-5">
+      {pending && (
+        <output className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
+          <span className="text-[13px]">
+            {decision.sent
+              ? `正在提交「${decision.choice}」`
+              : `已选「${decision.choice}」，${UNDO_SECONDS} 秒后提交`}
+          </span>
+          {!decision.sent && (
+            <Button variant="outline" size="sm" onClick={() => setDecision(null)}>
+              撤回
+            </Button>
+          )}
+        </output>
+      )}
+      {/* Hidden rather than gone, so taking a decision back keeps what was picked. */}
+      <div hidden={pending} className="space-y-4 px-4 py-4 sm:px-5">
         {item.field ? (
           <FieldCheck
             item={item}
             field={item.field}
             conflict={reason === "conflicts_edit"}
-            fetcher={fetcher}
+            decide={decide}
             thisYear={thisYear}
           />
         ) : (
@@ -291,7 +327,7 @@ function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear
               item={item}
               extracted={item.extracted}
               reason={reason}
-              fetcher={fetcher}
+              decide={decide}
               thisYear={thisYear}
             />
           )
@@ -306,13 +342,13 @@ function FieldCheck({
   item,
   field,
   conflict,
-  fetcher,
+  decide,
   thisYear,
 }: {
   item: Item;
   field: NonNullable<Item["field"]>;
   conflict: boolean;
-  fetcher: Fetcher;
+  decide: Decide;
   thisYear: number;
 }) {
   const { current } = field;
@@ -350,7 +386,7 @@ function FieldCheck({
         )}
       </div>
       <Evidence evidence={field.evidence} snapshotId={item.notice.snapshot_id} />
-      <fetcher.Form method="post" className="flex flex-wrap gap-2">
+      <form method="post" onSubmit={decide} className="flex flex-wrap gap-2">
         <input type="hidden" name="id" value={item.id} />
         <Button name="intent" value="accept">
           {conflict ? "改用新通知的值" : "正确，写入总表"}
@@ -358,7 +394,7 @@ function FieldCheck({
         <Button variant="outline" name="intent" value="reject">
           {conflict ? "保留现在的值" : "有误，不写入"}
         </Button>
-      </fetcher.Form>
+      </form>
     </>
   );
 }
@@ -446,13 +482,13 @@ function ProgramCheck({
   item,
   extracted,
   reason,
-  fetcher,
+  decide,
   thisYear,
 }: {
   item: Item;
   extracted: Extracted;
   reason: Reason;
-  fetcher: Fetcher;
+  decide: Decide;
   thisYear: number;
 }) {
   const id = <input type="hidden" name="id" value={item.id} />;
@@ -461,7 +497,7 @@ function ProgramCheck({
     return (
       <>
         <p className="text-[15px] font-medium">这条报名通知确实没有写报名截止吗？</p>
-        <fetcher.Form method="post" className="flex flex-wrap gap-2">
+        <form method="post" onSubmit={decide} className="flex flex-wrap gap-2">
           {id}
           <Button name="intent" value="accept">
             确实没写
@@ -478,7 +514,7 @@ function ProgramCheck({
           <Button variant="ghost" name="intent" value="reject">
             已补充，关闭
           </Button>
-        </fetcher.Form>
+        </form>
       </>
     );
   }
@@ -498,7 +534,7 @@ function ProgramCheck({
           </div>
         ))}
         <p className="text-[15px] font-medium">需要把时间补到项目里吗？</p>
-        <fetcher.Form method="post" className="flex flex-wrap gap-2">
+        <form method="post" onSubmit={decide} className="flex flex-wrap gap-2">
           {id}
           <Button name="intent" value="reject">
             不需要补充
@@ -515,25 +551,25 @@ function ProgramCheck({
           <Button variant="ghost" name="intent" value="accept">
             已补充，关闭
           </Button>
-        </fetcher.Form>
+        </form>
       </>
     );
   }
   if (reason === "possible_duplicate") {
-    return <Duplicate item={item} extracted={extracted} fetcher={fetcher} thisYear={thisYear} />;
+    return <Duplicate item={item} extracted={extracted} decide={decide} thisYear={thisYear} />;
   }
-  return <Placing item={item} extracted={extracted} fetcher={fetcher} thisYear={thisYear} />;
+  return <Placing item={item} extracted={extracted} decide={decide} thisYear={thisYear} />;
 }
 
 function Duplicate({
   item,
   extracted,
-  fetcher,
+  decide,
   thisYear,
 }: {
   item: Item;
   extracted: Extracted;
-  fetcher: Fetcher;
+  decide: Decide;
   thisYear: number;
 }) {
   const { program } = extracted;
@@ -577,7 +613,7 @@ function Duplicate({
           ))}
         </fieldset>
       )}
-      <fetcher.Form method="post" className="flex flex-wrap gap-2">
+      <form method="post" onSubmit={decide} className="flex flex-wrap gap-2">
         <input type="hidden" name="id" value={item.id} />
         <input type="hidden" name="intent" value="accept" />
         {similar.length > 0 && (
@@ -586,7 +622,7 @@ function Duplicate({
           </Button>
         )}
         <Button variant="outline">不是，保留为新项目</Button>
-      </fetcher.Form>
+      </form>
     </>
   );
 }
@@ -596,12 +632,12 @@ function Duplicate({
 function Placing({
   item,
   extracted,
-  fetcher,
+  decide,
   thisYear,
 }: {
   item: Item;
   extracted: Extracted;
-  fetcher: Fetcher;
+  decide: Decide;
   thisYear: number;
 }) {
   const { program, colleges, programs } = extracted;
@@ -610,7 +646,7 @@ function Placing({
   return (
     <>
       <Summary title="通知里的项目" extracted={extracted} thisYear={thisYear} />
-      <fetcher.Form method="post" className="space-y-4">
+      <form method="post" onSubmit={decide} className="space-y-4">
         <input type="hidden" name="id" value={item.id} />
         <fieldset className="space-y-2">
           <legend className="mb-2 text-[15px] font-medium">这条通知应归入哪个项目？</legend>
@@ -668,13 +704,13 @@ function Placing({
         </fieldset>
         <div className="flex flex-wrap gap-2">
           <Button name="intent" value="accept">
-            确定
+            {mode === "existing" ? "归入所选项目" : "新建项目"}
           </Button>
           <Button variant="outline" name="intent" value="reject" formNoValidate>
             不收这条通知
           </Button>
         </div>
-      </fetcher.Form>
+      </form>
     </>
   );
 }
