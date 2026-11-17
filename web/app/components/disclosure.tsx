@@ -9,6 +9,7 @@ import {
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "react-router";
 import { cn } from "~/cn";
 import { Search, X } from "~/components/icons";
 
@@ -243,9 +244,11 @@ export function Dropdown({
   );
 }
 
-// The phones' panel of pages, sliding in from the side. A native modal dialog: in the top layer,
-// which the header's backdrop-filter can't trap as it would a fixed box, with Esc and the focus
-// looked after by the browser. Callers key it by the location, so following a link closes it.
+// The phones' panel of pages, sliding in from the side and back out. A native modal dialog: in
+// the top layer, which the header's backdrop-filter can't trap as it would a fixed box, with the
+// focus looked after by the browser. Esc, a phone's back gesture and the close buttons slide it
+// out first, and the dialog closes once it is out of sight; so does going to another page, such as
+// by a link in it, which then shows beneath as it goes.
 export function Drawer({
   label,
   trigger,
@@ -257,8 +260,16 @@ export function Drawer({
   triggerClassName: string;
   children: ReactNode;
 }) {
-  const [open, setOpen] = useState(false);
+  const [state, setState] = useState<"shut" | "open" | "leaving">("shut");
+  const open = state !== "shut";
+  const leaving = state === "leaving";
   const dialog = useRef<HTMLDialogElement>(null);
+  const { key } = useLocation();
+  const [at, setAt] = useState(key);
+  if (key !== at) {
+    setAt(key);
+    if (state === "open") setState("leaving");
+  }
   useEffect(() => {
     if (!open) return undefined;
     dialog.current?.showModal();
@@ -275,7 +286,7 @@ export function Drawer({
         type="button"
         aria-label={label}
         aria-expanded={open}
-        onClick={() => setOpen(true)}
+        onClick={() => setState("open")}
         className={triggerClassName}
       >
         {trigger}
@@ -284,17 +295,29 @@ export function Drawer({
         <dialog
           ref={dialog}
           aria-label={label}
-          onClose={() => setOpen(false)}
+          onCancel={(e) => {
+            e.preventDefault();
+            setState("leaving");
+          }}
+          onClose={() => setState("shut")}
           className="fixed inset-0 m-0 size-full max-h-none max-w-none bg-transparent p-0 text-foreground backdrop:bg-transparent"
         >
           {/* The panel before the backdrop, so the focus starts on its close button. */}
-          <div className="slide-in absolute inset-y-0 right-0 z-1 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl">
+          <div
+            onAnimationEnd={(e) => {
+              if (leaving && e.target === e.currentTarget) dialog.current?.close();
+            }}
+            className={cn(
+              "absolute inset-y-0 right-0 z-1 flex w-72 max-w-[85vw] flex-col bg-card shadow-xl",
+              leaving ? "slide-out" : "slide-in",
+            )}
+          >
             <div className="flex h-14 shrink-0 items-center justify-between border-b px-4">
               <p className="font-semibold">{label}</p>
               <button
                 type="button"
                 aria-label="关闭"
-                onClick={() => dialog.current?.close()}
+                onClick={() => setState("leaving")}
                 className="btn btn-ghost btn-icon-sm"
               >
                 <X className="size-5" />
@@ -306,8 +329,8 @@ export function Drawer({
             type="button"
             aria-label="关闭"
             tabIndex={-1}
-            onClick={() => dialog.current?.close()}
-            className="fade-in absolute inset-0 bg-black/30"
+            onClick={() => setState("leaving")}
+            className={cn("absolute inset-0 bg-black/30", leaving ? "fade-out" : "fade-in")}
           />
         </dialog>
       )}

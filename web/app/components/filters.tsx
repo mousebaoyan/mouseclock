@@ -156,7 +156,6 @@ export function FilterBar({
                     to={clear}
                     replace
                     preventScrollReset
-                    viewTransition
                     className={buttonVariants({ variant: "ghost", size: "xs" })}
                   >
                     清除筛选

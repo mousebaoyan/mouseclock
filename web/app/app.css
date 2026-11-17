@@ -138,11 +138,6 @@
       animation-delay: 0s !important;
       transition-duration: 1ms !important;
     }
-    ::view-transition-group(*),
-    ::view-transition-old(*),
-    ::view-transition-new(*) {
-      animation: none !important;
-    }
   }
   /* Tailwind 4 resets buttons to the default cursor. Everything that can be clicked shows the
      hand. */
@@ -260,51 +255,21 @@
 /* Motion, short and light, as mousehole's: only opacity and transform move, so none of it costs
    layout, and prefers-reduced-motion turns it all off. */
 
-/* A page opened from another fades in, and its cards and rows rise one after another
-   (components/page-transition.tsx). The page itself only fades: a transform on it would carry
-   along the fixed panels inside. */
+/* A page opened from another fades in (components/page-transition.tsx). Only the page: a list
+   that changes under its filters or pages snaps to the new one, as a fade would show the old and
+   the new text over each other. No transform, which would carry along the fixed panels inside. */
 .page-in {
   animation: fade-in 220ms ease-out;
-}
-.page-in .stagger > * {
-  animation: rise-in 320ms cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
-}
-.page-in .stagger > :nth-child(2) {
-  animation-delay: 30ms;
-}
-.page-in .stagger > :nth-child(3) {
-  animation-delay: 60ms;
-}
-.page-in .stagger > :nth-child(4) {
-  animation-delay: 90ms;
-}
-.page-in .stagger > :nth-child(5) {
-  animation-delay: 120ms;
-}
-.page-in .stagger > :nth-child(n + 6) {
-  animation-delay: 150ms;
 }
 @keyframes fade-in {
   from {
     opacity: 0;
   }
 }
-@keyframes rise-in {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-}
 
-/* A filter, a tab or a page of a list picked: the list cross-fades to the new one rather than
-   snap (the links' viewTransition), where the browser has view transitions. */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation-duration: 180ms;
-}
-
-/* A dropdown or menu grows from the edge by its button (components/disclosure.tsx); the phones'
-   drawer slides in over a fading backdrop. */
+/* A dropdown or menu grows from the edge by its button (components/disclosure.tsx). The phones'
+   drawer slides in over a darkening backdrop, easing in gently rather than leaping the first
+   frames, and slides back out as it closes. */
 .pop-in {
   animation: pop-in 140ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
@@ -314,15 +279,31 @@
     transform: scale(0.97);
   }
 }
-.fade-in {
-  animation: fade-in 200ms ease-out;
-}
 .slide-in {
-  animation: slide-in 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: slide-in 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+.slide-out {
+  animation: slide-out 200ms cubic-bezier(0.4, 0, 1, 1) forwards;
 }
 @keyframes slide-in {
   from {
     transform: translateX(100%);
+  }
+}
+@keyframes slide-out {
+  to {
+    transform: translateX(100%);
+  }
+}
+.fade-in {
+  animation: fade-in 300ms ease-out;
+}
+.fade-out {
+  animation: fade-out 200ms ease-in forwards;
+}
+@keyframes fade-out {
+  to {
+    opacity: 0;
   }
 }
 

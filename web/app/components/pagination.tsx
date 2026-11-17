@@ -60,7 +60,6 @@ export function Pagination({
             <Link
               key={n}
               to={href({ page: n })}
-              viewTransition
               className={cn(step, "text-foreground hover:bg-accent")}
             >
               {n}
@@ -94,7 +93,7 @@ function PageStep({
   const className =
     "inline-flex size-8 items-center justify-center rounded-md text-foreground hover:bg-accent pointer-coarse:size-10";
   return to ? (
-    <Link to={to} aria-label={label} viewTransition className={className}>
+    <Link to={to} aria-label={label} className={className}>
       {children}
     </Link>
   ) : (

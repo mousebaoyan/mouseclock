@@ -63,10 +63,11 @@ function useLeftAt(failed: boolean) {
 }
 
 // Wide screens: the site's name on the left, the pages in the middle and the account on the
-// right. Phones keep the name and the account, and open the pages from a menu button. The menus
-// are keyed by where the page is, so following a link closes them.
+// right. Phones keep the name and the account, and open the pages from a menu button. The
+// dropdowns are keyed by where the page is, so following a link closes them; the drawer closes
+// itself.
 export function SiteHeader({ me }: { me: Me | null }) {
-  const { pathname, search, key } = useLocation();
+  const { pathname, search } = useLocation();
   const error = useRouteError();
   const loginNext = isRouteErrorResponse(error) && error.status === 404 ? "/" : pathname + search;
   const pages = pagesFor(me);
@@ -131,7 +132,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
               登录
             </a>
           )}
-          <MobileNav key={key} pages={pages} leftAt={leftAt} />
+          <MobileNav pages={pages} leftAt={leftAt} />
         </div>
       </div>
     </header>
