@@ -4,6 +4,7 @@ import { editRevoked, type Viewer } from "../../platform/access.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { env } from "../../platform/env.ts";
+import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
 import { fetchProfile, type Profile } from "./mousehole.ts";
 
@@ -151,6 +152,37 @@ export async function revokeEditing(trx: Transaction<DB>, userId: number) {
     .returning("id")
     .executeTakeFirst();
   if (!row) throw new AppError(404, "not_found", "用户不存在");
+}
+
+// An admin gives it back. Edits reverted when it was taken stay reverted. No key changes, so the
+// row is locked as an update of it would: FOR UPDATE would also hold off the audit log's reference
+// to the person, and two admins whose editing was taken back, giving it back to each other at
+// once, would deadlock.
+export async function restoreEditing(trx: Transaction<DB>, userId: number) {
+  const user = await trx
+    .selectFrom("users")
+    .select("edit_revoked_at")
+    .where("id", "=", userId)
+    .forNoKeyUpdate()
+    .executeTakeFirst();
+  if (!user) throw new AppError(404, "not_found", "用户不存在");
+  if (!user.edit_revoked_at) throw new AppError(409, "not_revoked", "该用户的修改权限没有被收回");
+  await trx.updateTable("users").set({ edit_revoked_at: null }).where("id", "=", userId).execute();
+}
+
+// Those whose editing an admin has taken back, the latest first.
+export async function listEditRevoked() {
+  const rows = await db
+    .selectFrom("users")
+    .select(["id", "display_name", "avatar_url", "edit_revoked_at"])
+    .where("edit_revoked_at", "is not", null)
+    .orderBy("edit_revoked_at", "desc")
+    .$narrowType<{ edit_revoked_at: Date }>()
+    .execute();
+  return rows.map(({ edit_revoked_at, ...user }) => ({
+    ...user,
+    revoked_at: unix(edit_revoked_at),
+  }));
 }
 
 // Taken in an edit's transaction and held until it commits. An admin taking back this person's

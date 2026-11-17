@@ -2,16 +2,19 @@ import { createRoute, z } from "@hono/zod-openapi";
 import { authorize, createRouter, errorResponse, IdParam } from "../../platform/http.ts";
 import {
   Edit,
+  EditRevokedUser,
   ProgramEdit,
   ProgramEdits,
   RecentEdits,
   RecentEditsQuery,
   RevokeResult,
 } from "./schemas.ts";
+import { listEditRevoked } from "../accounts/service.ts";
 import {
   editProgram,
   listProgramEdits,
   listRecentEdits,
+  restoreEdits,
   revertEdit,
   revokeEdits,
 } from "./service.ts";
@@ -129,5 +132,42 @@ export const reviewRoutes = createRouter()
     async (c) => {
       const { id } = authorize(c, "admin");
       return c.json(await revokeEdits({ user_id: id, via: "web" }, c.req.valid("param").id), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/admin/users",
+      summary: "收回了修改权限的用户",
+      responses: {
+        200: { description: "最近收回的在前", content: json(z.array(EditRevokedUser)) },
+        ...readErrors,
+        403: errorResponse("只有管理员能查看"),
+      },
+    }),
+    async (c) => {
+      authorize(c, "admin");
+      return c.json(await listEditRevoked(), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "post",
+      path: "/admin/users/{id}/restore-edits",
+      summary: "恢复修改权限",
+      description: "收回时撤销的修改不会恢复。",
+      request: { params: IdParam },
+      responses: {
+        204: { description: "已恢复" },
+        ...readErrors,
+        403: errorResponse("只有管理员能操作"),
+        404: errorResponse("用户不存在"),
+        409: errorResponse("修改权限没有被收回"),
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "admin");
+      await restoreEdits({ user_id: id, via: "web" }, c.req.valid("param").id);
+      return c.body(null, 204);
     },
   );
