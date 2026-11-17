@@ -145,9 +145,14 @@ def resolve_programs(
             evidence = [index.evidence(s) for s in dict.fromkeys(raw.evidence)]
             if not any("".join(raw.text.split()) in "".join(e.quote.split()) for e in evidence):
                 raise SelectionError("unresolved_text_not_in_evidence")
-            # A time the program reads was a candidate the model could have picked: one of the
-            # other times, or for a start or end it picked already, isn't worth a person's look.
-            readable = any(m.value for m in find_dates(raw.text, context.published_on))
+            # A time the program reads, all of it, was a candidate the model could have picked: one
+            # of the other times, or for a start or end it picked already, isn't worth a person's
+            # look. Words around a date can move it (6月30日后的第三个工作日).
+            text = "".join(raw.text.split())
+            readable = any(
+                m.value and "".join(m.text.split()) == text
+                for m in find_dates(raw.text, context.published_on)
+            )
             if raw.field == "dates":
                 if readable:
                     continue

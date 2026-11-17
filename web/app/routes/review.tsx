@@ -394,6 +394,16 @@ function FieldCheck({
         <Button variant="outline" name="intent" value="reject">
           {conflict ? "保留现在的值" : "有误，不写入"}
         </Button>
+        {/* A wrong time turned down leaves the program without it: the notice may give the right one. */}
+        {!conflict && field.key.startsWith("apply:") && item.program && (
+          <Link
+            to={`/programs/${item.program.id}?edit=apply`}
+            target="_blank"
+            className={buttonVariants({ variant: "ghost" })}
+          >
+            有误，去项目页改
+          </Link>
+        )}
       </form>
     </>
   );

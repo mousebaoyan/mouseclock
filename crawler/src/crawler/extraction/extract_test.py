@@ -229,7 +229,10 @@ def test_a_readable_time_left_unresolved_is_dropped_unless_it_is_a_missing_start
     _, index = prepare(
         "通知",
         NoticePage(
-            "", "报名截止6月30日24点。拟录取后7月10日前提交政审表。", hyperlinks=(), attachments=[]
+            "",
+            "报名截止6月30日24点。拟录取后7月10日前提交政审表。材料在6月30日后的第三个工作日前寄到。",
+            hyperlinks=(),
+            attachments=[],
         ),
         context(),
     )
@@ -238,8 +241,9 @@ def test_a_readable_time_left_unresolved_is_dropped_unless_it_is_a_missing_start
         # The end it picked, and one of the other times: candidates it could have picked.
         {"field": "apply.end", "text": "6月30日24点", "evidence": ["S1"]},
         {"field": "dates", "text": "7月10日前", "evidence": ["S2"]},
-        # A start it gave nothing for is a person's to read.
+        # A start it gave nothing for is a person's to read, and so is a date that words move.
         {"field": "apply.start", "text": "6月30日24点", "evidence": ["S1"]},
+        {"field": "dates", "text": "6月30日后的第三个工作日", "evidence": ["S3"]},
     ]
     [program] = resolve_programs(
         RoundSelection.model_validate({"programs": [item]}), index, context()
@@ -247,7 +251,8 @@ def test_a_readable_time_left_unresolved_is_dropped_unless_it_is_a_missing_start
     assert program.fields.apply is not None
     assert program.fields.apply.value.end == TimeToMinute(date=date(2026, 6, 30), time="24:00")
     assert [(d.field, d.text) for d in program.unresolved_dates or []] == [
-        ("apply.start", "6月30日24点")
+        ("apply.start", "6月30日24点"),
+        ("dates", "6月30日后的第三个工作日"),
     ]
 
 

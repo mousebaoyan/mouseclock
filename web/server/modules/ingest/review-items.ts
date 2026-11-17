@@ -420,6 +420,7 @@ async function mergeDuplicate(
     .selectFrom("review_items")
     .select(["snapshot_id", "key", "reason", sql<"accepted" | "rejected">`status`.as("status")])
     .where("program_id", "=", duplicateId)
+    .where("reason", "in", [...FIELD_REASONS, "no_deadline"])
     .where("status", "!=", "pending")
     .execute();
   for (const version of versions) {
@@ -452,6 +453,21 @@ async function mergeDuplicate(
         new Map(decided.flatMap((d) => (d.key === null ? [] : [[d.key, d.status] as const]))),
       ),
     );
+    // The decisions go with the version, so merging the original in turn finds them too.
+    const merged = await trx
+      .selectFrom("program_versions")
+      .select("id")
+      .where("program_id", "=", targetId)
+      .where("snapshot_id", "=", version.snapshot_id)
+      .executeTakeFirstOrThrow();
+    await trx
+      .updateTable("review_items")
+      .set({ program_id: targetId, version_id: merged.id })
+      .where("program_id", "=", duplicateId)
+      .where("snapshot_id", "=", version.snapshot_id)
+      .where("reason", "in", [...FIELD_REASONS, "no_deadline"])
+      .where("status", "!=", "pending")
+      .execute();
   }
   await trx
     .updateTable("review_items")

@@ -742,7 +742,7 @@ async function accept(id: number, decision: object = {}, as = editor) {
   return v1["review-items"][":id"].accept.$post({ param: { id: String(id) }, json: decision }, as);
 }
 
-test("what people decided about a duplicate's fields stays decided once it is merged", async () => {
+test("what people decided about a duplicate's fields stays decided through merges", async () => {
   const { cs, notice, snapshot: first } = await setUp("decided.edu.cn");
   await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
   const [original] = await programsOf(cs);
@@ -757,6 +757,9 @@ test("what people decided about a duplicate's fields stays decided once it is me
       },
     },
   ]);
+  const third = await snapshot(notice, `${BODY}\n第三版`);
+  await extract(third.snapshot_id, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [, , last] = await programsOf(cs);
   const [duplicate, quota, benefits] = await pendingOf(second.snapshot_id);
   expect((await accept(quota.id)).status).toBe(204);
   const rejected = await v1["review-items"][":id"].reject.$post(
@@ -765,7 +768,11 @@ test("what people decided about a duplicate's fields stays decided once it is me
   );
   expect(rejected.status).toBe(204);
 
-  expect((await accept(duplicate.id, { program_id: original.id })).status).toBe(204);
+  // The second notice's program goes into the third's, and that one into the first's.
+  expect((await accept(duplicate.id, { program_id: last.id })).status).toBe(204);
+  const [again] = await pendingOf(third.snapshot_id);
+  expect(again.program_id).toBe(last.id);
+  expect((await accept(again.id, { program_id: original.id })).status).toBe(204);
   expect(await pendingOf(second.snapshot_id)).toEqual([]);
   const fields = await fieldsOf(original.id);
   expect(fields.quota).toBe("100人");
