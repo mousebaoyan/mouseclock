@@ -417,6 +417,43 @@ def test_the_models_are_not_taken_at_their_word_against_the_deadlines(
     assert (checked.program_id, checked.checked) == (program_id, marks)
 
 
+@pytest.mark.parametrize(
+    ("role", "deadline", "verdict", "program_id", "marks"),
+    [
+        # The deadline it has, or a list's deadline to confirm a place: nothing to ask.
+        ("update", "2026-06-10", None, 101, None),
+        ("result", "2026-06-20", None, 101, None),
+        # Another deadline is a change of time, or another call taken for that one.
+        ("update", "2026-06-20", "same", 101, None),
+        ("update", "2026-06-20", "different", None, ["new"]),
+        ("update", "2026-06-20", "unsure", None, None),
+    ],
+)
+def test_a_program_extraction_named_is_asked_about_when_the_notice_moves_its_deadline(
+    role: str, deadline: str, verdict: str | None, program_id: int | None, marks: list[str] | None
+) -> None:
+    page = NoticePage("", "夏令营报名时间调整。", hyperlinks=(), attachments=[])
+    apply = {
+        "value": {"end": {"date": deadline}},
+        "evidence": [{"quote": "夏令营报名时间调整。"}],
+        "confidence": 0.9,
+    }
+    answer = json.dumps(
+        {"answer": verdict, "same_as": 101 if verdict == "same" else None, "reason": "改了时间"}
+    )
+    known: dict[str, object] = {"id": 101, "apply": {"end": {"date": "2026-06-10"}}}
+
+    [checked], calls = run_check(
+        lambda _asked, _payload: answer,
+        page,
+        context(known),
+        [program(program_id=101, role=role, fields={"apply": apply})],
+    )
+
+    assert len(calls) == (2 if verdict else 0)
+    assert (checked.program_id, checked.checked) == (program_id, marks)
+
+
 def test_when_the_second_model_fails_everything_waits_for_review_as_it_would() -> None:
     page = NoticePage("", "招收硕士研究生。", hyperlinks=(), attachments=[])
     fields = ExtractedFields.model_validate(

@@ -106,6 +106,7 @@ async function extract(
     program_id?: number;
     college_id: number;
     cohort?: number;
+    name?: string;
     role?: "call" | "update" | "result";
     fields: ExtractedFields;
     unresolved_dates?: UnresolvedDate[];
@@ -636,6 +637,37 @@ test("notices count by when they came out, and a list only adds what the program
   for (const snap of [earlier, again, older, vaguer, list]) {
     expect(await reviewOf(snap)).toEqual([]);
   }
+});
+
+test("a program made from a list takes its call's name, unless a person has named it", async () => {
+  const { cs, se, notice, snapshot: list } = await setUp("named.edu.cn");
+  await extract(list, [
+    { college_id: cs, role: "result", name: "计算机学院入营名单", fields: {} },
+    { college_id: se, role: "result", name: "软件学院入营名单", fields: {} },
+  ]);
+  const [listed] = await programsOf(cs);
+  const [named] = await programsOf(se);
+  const edit = await v1.programs[":id"].$patch(
+    {
+      param: { id: String(named.id) },
+      json: { name: "软件学院夏令营", reason: "名单的标题", basis: "https://named.edu.cn/1.htm" },
+    },
+    editor,
+  );
+  expect(edit.status).toBe(200);
+  const call = await noticeOn(notice, "2026-05-01", "夏令营报名通知。");
+  await extract(call, [
+    { program_id: listed.id, college_id: cs, fields: {} },
+    { program_id: named.id, college_id: se, fields: {} },
+  ]);
+  // Once it has a call, another doesn't rename it.
+  const another = await noticeOn(notice, "2026-05-02", "夏令营补充通知。");
+  await extract(another, [
+    { program_id: listed.id, college_id: cs, name: "夏令营补充通知", fields: {} },
+  ]);
+
+  expect((await programsOf(cs)).map((p) => p.name)).toEqual(["2026 年夏令营"]);
+  expect((await programsOf(se)).map((p) => p.name)).toEqual(["软件学院夏令营"]);
 });
 
 test("programs that can't be placed wait for review, and an irrelevant notice is just done", async () => {
