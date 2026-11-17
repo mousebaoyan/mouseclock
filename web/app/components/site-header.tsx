@@ -1,3 +1,4 @@
+import { useEffect, useSyncExternalStore } from "react";
 import { isRouteErrorResponse, Link, NavLink, useLocation, useRouteError } from "react-router";
 import { cn } from "~/cn";
 import { Drawer, Dropdown, menuItem } from "~/components/disclosure";
@@ -35,6 +36,32 @@ function pagesFor(me: Me | null) {
   return { main, admin };
 }
 
+// What opens an editor, a question or a notice on a page, rather than where its list is.
+const OPENED = ["edit", "edit_school", "edit_college", "saved", "probe", "adopt", "revoke"];
+
+function unchanging() {
+  return () => {};
+}
+
+// Where each page was last left in this tab: a list's filters, sort and page live in its address
+// (filters.tsx), so the nav goes back to it as it was. An address the page failed on is no place
+// to go back to, so the page starts over. The tab's storage is the browser's, so the page as the
+// server renders it, and as it hydrates, links to the other lists as they start.
+function useLeftAt(failed: boolean) {
+  const { pathname, search } = useLocation();
+  const params = new URLSearchParams(search);
+  for (const name of OPENED) params.delete(name);
+  const here = failed || params.size === 0 ? "" : `?${params}`;
+  const hydrated = useSyncExternalStore(
+    unchanging,
+    () => true,
+    () => false,
+  );
+  useEffect(() => sessionStorage.setItem(`left:${pathname}`, here), [pathname, here]);
+  return (to: string) =>
+    to + (to === pathname ? here : hydrated ? (sessionStorage.getItem(`left:${to}`) ?? "") : "");
+}
+
 // Wide screens: the site's name on the left, the pages in the middle and the account on the
 // right. Phones keep the name and the account, and open the pages from a menu button. The menus
 // are keyed by where the page is, so following a link closes them.
@@ -43,12 +70,13 @@ export function SiteHeader({ me }: { me: Me | null }) {
   const error = useRouteError();
   const loginNext = isRouteErrorResponse(error) && error.status === 404 ? "/" : pathname + search;
   const pages = pagesFor(me);
+  const leftAt = useLeftAt(error != null);
   const inAdmin = pages.admin.some((page) => pathname.startsWith(page.to));
   return (
     <header className="sticky top-0 z-40 border-b bg-card/90 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
         <Link
-          to="/"
+          to={leftAt("/")}
           className="touch-target flex items-center gap-2 justify-self-start text-lg leading-none font-semibold tracking-tight"
         >
           <LogoMark className="size-6" />
@@ -56,7 +84,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
         </Link>
         <nav aria-label="主导航" className="flex h-full items-stretch max-md:hidden">
           {pages.main.map((page) => (
-            <NavLink key={page.to} to={page.to} end={page.to === "/"} className={navLink}>
+            <NavLink key={page.to} to={leftAt(page.to)} end={page.to === "/"} className={navLink}>
               {page.label}
             </NavLink>
           ))}
@@ -81,7 +109,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
                 {pages.admin.map((page) => (
                   <Link
                     key={page.to}
-                    to={page.to}
+                    to={leftAt(page.to)}
                     className={cn(menuItem, pathname.startsWith(page.to) && "text-primary")}
                   >
                     {page.label}
@@ -103,7 +131,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
               登录
             </a>
           )}
-          <MobileNav key={key} pages={pages} />
+          <MobileNav key={key} pages={pages} leftAt={leftAt} />
         </div>
       </div>
     </header>
@@ -159,7 +187,13 @@ function mobileLink({ isActive }: { isActive: boolean }) {
   );
 }
 
-function MobileNav({ pages }: { pages: ReturnType<typeof pagesFor> }) {
+function MobileNav({
+  pages,
+  leftAt,
+}: {
+  pages: ReturnType<typeof pagesFor>;
+  leftAt: (to: string) => string;
+}) {
   return (
     <Drawer
       label="导航"
@@ -168,7 +202,7 @@ function MobileNav({ pages }: { pages: ReturnType<typeof pagesFor> }) {
     >
       <nav aria-label="主导航" className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
         {pages.main.map((page) => (
-          <NavLink key={page.to} to={page.to} end={page.to === "/"} className={mobileLink}>
+          <NavLink key={page.to} to={leftAt(page.to)} end={page.to === "/"} className={mobileLink}>
             {page.label}
           </NavLink>
         ))}
@@ -176,7 +210,7 @@ function MobileNav({ pages }: { pages: ReturnType<typeof pagesFor> }) {
           <>
             <p className="px-3 pt-4 pb-1 text-xs text-muted-foreground">管理</p>
             {pages.admin.map((page) => (
-              <NavLink key={page.to} to={page.to} className={mobileLink}>
+              <NavLink key={page.to} to={leftAt(page.to)} className={mobileLink}>
                 {page.label}
               </NavLink>
             ))}
