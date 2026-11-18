@@ -1,6 +1,6 @@
 # 数据表
 
-> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期的表还没建，先列关键字段。
+> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期和三期的表还没建，先列关键字段，做的时候照周围的写法补全。
 
 ## 约定
 
@@ -56,26 +56,59 @@
 | `review_items` | `ingest` | 审核页上待人判断的：抽取时没上表的字段（证据找不到、证据在图片里、置信度低、明显不对、和人工改的值冲突），以及没法直接归并的项目（编号或学院对不上、届不对、可能重复、报名通知没有截止、原文时间无法识别）。`payload` 是抽取出来的原样，除未识别日期只记处理结果外，通过就照它上表：字段的带 `key`，`payload` 是 `program_fields` 那一行的 `value`、`evidence` 和 `confidence`；项目的是抽取给的整个项目（编号、学院、届、类型、名称、作用和字段）；`unparsed_date` 的项目还带 `unresolved_dates` 原文和证据，其他确定字段可已合并，关闭这一待审只记处理结果，不把原文换算或写入时间值 |
 | `audit_log` | `review` | 管理员和站长的其他操作，别的模块调 `review` 的服务函数记 |
 
-## 二期：订阅、关注和报名（还没建）
+## 二期和三期（还没建）
+
+按[总体设计 §17](design.md#二期和三期按功能分工)的功能分组，括号里是写这些表的模块。
+
+### 消息、邮件和订阅（`reminders`）
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `subscriptions` | `user_id`、`program_id`、`reminded_at` | 订阅；项目截止了就不占名额 |
-| `follows` | `user_id`、`college_id` | 关注学院 |
-| `applications` | `user_id`、`program_id`、`stage`、`note` | 我的报名，只有本人能看 |
-| `college_tags` | `name`、`sort` | 学院标签的预设 |
-| `college_tag_votes` | `college_id`、`tag_id`、`user_id` | 每人每个标签一票 |
-| `email_settings` | `user_id`、`kind`、`enabled` | 每类邮件的开关，没有记录就是开 |
-| `emails` | `user_id`、`kind`、`subject`、`body`、`status`、`attempts`、`send_after` | 待发和已发的邮件 |
-| `feedback` | `program_id`、`user_id`、`field`、`proposed_value`、`reason`、`basis`、`status`（待审、通过、驳回）、`reviewed_by`、`reviewed_at`、`review_note` | 反馈和修改申请；`proposed_value` 为空就是只说有问题。上线后 `edits` 加 `feedback_id`，`programs` 加争议的 `disputed_at`、`dispute_cleared_at` |
-| `inclusion_requests` | `school_id`、`college_id`、`college_name`、`url_hint`、`user_id`、`status`（排队中、接入中、已收录、暂时抓不了）、`reason` | 求收录；院校清单里没有的学院，`college_id` 为空，只填名字 |
-| `inclusion_votes` | `request_id`、`user_id` | 同求 |
+| `messages` | `user_id`、`kind`、`title`、`body`、`link`、`created_at`、`seen_at` | 站内消息（[总体设计 §11.1](design.md#111-站内消息)），`seen_at` 为空是还没看过 |
+| `email_rules` | `kind`、`rule` | 站长给每类消息定的邮件规则：`default_on`、`default_off`、`never`；没有记录的照总体设计 §11.1 的默认 |
+| `email_settings` | `user_id`、`kind`、`enabled` | 成员自己动过的邮件开关；没动过的没有记录，跟着站长的规则 |
+| `emails` | `user_id`、`message_id`、`subject`、`body`、`html`、`attempts`、`next_at`、`sent_at`、`dropped_at`、`created_at` | 待发和已发的邮件，一条消息一封，`message_id` 唯一，和消息在同一个事务里写（[总体设计 §11.2](design.md#112-邮件)）；一个人收过几封从这里数 |
+| `mail_accounts` | `host`、`port`、`username`、`password`、`sender`、`sort` | 发信邮箱，按 `sort` 的顺序用；`password` 用 `APP_SECRET` 加密 |
+| `subscriptions` | `user_id`、`program_id`、`reminded_for`、`created_at` | 订阅，`(user_id, program_id)` 唯一。`reminded_for` 是提醒过的那个截止换算出的时刻：截止变了、和它不同了才再提醒（[总体设计 §11.3](design.md#113-订阅和截止提醒)） |
 
-## 三期：Agent（还没建）
+### 关注学院（`reminders`）
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `api_tokens` | `user_id`、`name`、`token_hash`、`scopes`、`last_used_at`、`revoked_at` | 个人令牌 |
+| `follows` | `user_id`、`college_id`、`created_at` | 关注学院，`(user_id, college_id)` 唯一。一轮里的新通知按 `notices.first_seen_at` 落在这一轮的起止之间来认，抓取节点不用改（[总体设计 §11.4](design.md#114-关注学院)） |
+
+### 我的报名（`programs`）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `applications` | `user_id`、`program_id`、`stage`、`note`、`updated_at` | `(user_id, program_id)` 唯一，只有本人能看。`stage` 是想报 `want`、已报名 `applied`、已交材料 `submitted`、入营 `admitted`、优营 `excellent`、未通过 `failed`、放弃 `gave_up` |
+
+### 学院标签（`programs`）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `college_tags` | `name`、`description`、`sort` | 管理员预设的标签和说明 |
+| `college_tag_votes` | `college_id`、`tag_id`、`user_id`、`created_at` | 每人每个标签一票，`(college_id, tag_id, user_id)` 唯一；3 人以上贴的才算学院的标签（[总体设计 §9.3](design.md#93-学院标签)） |
+
+### 反馈、修改申请和争议（`review`）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `feedback` | `program_id`、`user_id`、`kind`、`field`、`old_value`、`proposed_value`、`reason`、`basis`、`status`、`via`、`created_at`、`reviewed_by`、`reviewed_at`、`review_note` | 反馈和修改申请（[总体设计 §12.1](design.md#121-反馈)）。`kind` 是只说有问题 `problem` 还是修改申请 `edit`；`field` 是 `program_fields` 的键，或者 `name`、`cohort`、`kind`，为空是说整个项目；`old_value` 是提的时候（改过的就是最后一次改的时候）这一处的值，审核时和现在的比，不一样就标出来；修改申请的 `proposed_value` 为空是要清空。`status` 是 `pending`、`accepted`（通过、已改正）、`rejected`（驳回、没问题）、`withdrawn`（撤回）。`edits` 加 `feedback_id`，指向照它改的修改申请 |
+| `disputes` | `program_id`、`opened_at`、`resolved_by`、`resolved_at`、`result`、`note` | 每次争议一行，`resolved_at` 为空是还在争议中，`result` 是改正了 `corrected` 还是确认没错 `confirmed`；争议的人数从上一次的 `resolved_at` 以后数（[总体设计 §12.3](design.md#123-争议)） |
+
+### 求收录（`sources`）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `inclusion_requests` | `school_id`、`school_name`、`college_id`、`college_name`、`url_hint`、`note`、`user_id`、`status`、`reason`、`created_at`、`resolved_at` | 求收录（[总体设计 §10.1](design.md#101-求收录)）。清单里没有的学校或学院，`school_id`、`college_id` 为空，只填名字，管理员对上清单后补上。关注了还没收录、也没人提过的学院时，替关注的人建一条。`status` 是排队中 `queued`、接入中 `onboarding`、已收录 `included`、暂时抓不了 `unavailable`（`reason` 写原因） |
+| `inclusion_votes` | `request_id`、`user_id`、`created_at` | 同求，提的人自己也有一行。关注了这个学院的人不存在这里，数人数时和它合在一起，同一个人只算一次 |
+
+### Agent 接入（`accounts`）
+
+| 表 | 关键字段 | 说明 |
+| --- | --- | --- |
+| `api_tokens` | `user_id`、`name`、`token_hash`、`scopes`、`created_at`、`last_used_at`、`revoked_at` | 个人令牌（[总体设计 §13](design.md#13-agent-接入)），只存 SHA-256；`scopes` 是 `read`，或者 `read` 加 `personal` |
 
 ## 热点查询
 
