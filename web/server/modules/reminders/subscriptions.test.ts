@@ -285,6 +285,7 @@ test("a merge moves subscriptions to the one kept, one for those on both; deleti
     await programGone(trx, duplicate, kept);
   });
   await removeProgram({ user_id: person("管理鼠").id, via: "web" }, removed, "不是招生通知");
+  expect((await subscribe("鼠鼠", removed)).status).toBe(404);
 
   const subscribed = await db
     .selectFrom("subscriptions")

@@ -1,6 +1,6 @@
 # 数据表
 
-> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期和三期的表除了已经建好的消息和邮件，都还没建，先列关键字段，做的时候照周围的写法补全。
+> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期和三期的表除了已经建好的消息、邮件和订阅，都还没建，先列关键字段，做的时候照周围的写法补全。
 
 ## 约定
 
@@ -71,7 +71,7 @@
 | `email_settings` | `user_id`、`kind`、`enabled` | 成员自己动过的邮件开关；没动过的没有记录，跟着站长的规则 |
 | `emails` | `user_id`、`message_id`、`subject`、`body`、`html`、`attempts`、`next_at`、`sent_at`、`dropped_at`、`created_at` | 待发和已发的邮件，一条消息一封，`message_id` 唯一，和消息在同一个事务里写（[总体设计 §11.2](design.md#112-邮件)）；一个人收过几封从这里数 |
 | `mail_accounts` | `sort`、`host`、`port`、`username`、`password` | 发信邮箱，按 `sort` 的顺序用，`username` 也是发件地址；端口 465 一开始就走 TLS，其他的必须先用 STARTTLS 加密再登录，加密不了就不发。`password` 用 `APP_SECRET` 加密 |
-| `subscriptions` | `user_id`、`program_id`、`deadline`、`deadline_value`、`remind_at`、`created_at` | 订阅，`(user_id, program_id)` 唯一（[总体设计 §11.3](design.md#113-订阅和截止提醒)）。`deadline` 和 `deadline_value` 是成员上次知道的报名截止：换算出的时刻和原文的写法，为空是没有截止。每分钟和项目的 `apply_deadline` 比一次，时刻不同了发「截止变了」，写法用来写「原为」。`remind_at` 是提醒这个截止的时候，提醒过了或没有截止为空。合并项目时挪到留下的那个，原样带着这几列 |
+| `subscriptions` | `user_id`、`program_id`、`deadline`、`deadline_value`、`remind_at`、`created_at` | 订阅，`(user_id, program_id)` 唯一（[总体设计 §11.3](design.md#113-订阅和截止提醒)）。`deadline` 和 `deadline_value` 是成员上次知道的报名截止：换算出的时刻和原文的写法，为空是没有截止。每分钟和项目的 `apply_deadline` 比一次，时刻不同了发「截止变了」，写法用来写「原为」。`remind_at` 是提醒这个截止的时候，提醒过了、订阅时已截止或没有截止为空。合并项目时挪到留下的那个，原样带着这几列 |
 
 ### 关注学院（`reminders`）
 

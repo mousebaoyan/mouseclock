@@ -148,21 +148,25 @@ export async function refreshUsers() {
     .execute();
   for (const user of due) {
     const profile = await fetchProfile(user.mousehole_token);
+    // Only while the token asked about is still theirs: logging in meanwhile brought a new one.
     if (profile) {
       await db
         .updateTable("users")
         .set(fromProfile(profile, user.mousehole_token))
         .where("id", "=", user.id)
+        .where("mousehole_token", "=", user.mousehole_token)
         .execute();
     } else {
       // Banned, or the access taken back: logged out, and no messages until they log in again.
       await db.transaction().execute(async (trx) => {
-        await trx.deleteFrom("sessions").where("user_id", "=", user.id).execute();
-        await trx
+        const refused = await trx
           .updateTable("users")
           .set({ token_refused_at: new Date() })
           .where("id", "=", user.id)
-          .execute();
+          .where("mousehole_token", "=", user.mousehole_token)
+          .executeTakeFirst();
+        if (refused.numUpdatedRows === 0n) return;
+        await trx.deleteFrom("sessions").where("user_id", "=", user.id).execute();
       });
     }
   }

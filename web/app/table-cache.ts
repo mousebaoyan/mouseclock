@@ -8,7 +8,10 @@ type TableData = InferResponseType<Api["programs"]["$get"], 200>;
 // The programs one subscribes to, for 已订阅 on their cards; none for guests and frozen accounts.
 export async function subscribedTo(api: Api) {
   const res = await api.me.subscriptions.$get();
-  return res.status === 200 ? (await res.json()).programs.map((p) => p.id) : [];
+  if (res.status === 200) return (await res.json()).programs.map((p) => p.id);
+  const { error } = await res.json();
+  if (error.code === "login_required" || error.code === "member_frozen") return [];
+  throw data(error.message, { status: res.status });
 }
 
 // The browser keeps the whole cohort and filters, sorts and pages it itself (design §14). It asks

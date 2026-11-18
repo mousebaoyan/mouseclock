@@ -38,19 +38,17 @@ export async function sendMessages(trx: Transaction<DB>, kind: MessageKind, mess
   const mailable = new Set(users.filter(mayEmail).map((user) => user.id));
   const going = messages.filter((m) => members.has(m.user_id));
   if (going.length === 0) return;
-  const written = await trx
-    .insertInto("messages")
-    .values(
-      going.map((m) => ({ user_id: m.user_id, kind, title: m.title, body: m.body, link: m.link })),
-    )
-    .returning("id")
-    .execute();
-  // RETURNING gives the rows in the order of VALUES.
-  await queueEmails(
-    trx,
-    kind,
-    going.map((m, i) => ({ ...m, id: written[i].id })).filter((m) => mailable.has(m.user_id)),
-  );
+  // One at a time, so each email knows its message: RETURNING doesn't promise the order of VALUES.
+  const written = [];
+  for (const m of going) {
+    const { id } = await trx
+      .insertInto("messages")
+      .values({ user_id: m.user_id, kind, title: m.title, body: m.body, link: m.link })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    if (mailable.has(m.user_id)) written.push({ ...m, id });
+  }
+  await queueEmails(trx, kind, written);
 }
 
 // Newest first, with whether each was seen before.

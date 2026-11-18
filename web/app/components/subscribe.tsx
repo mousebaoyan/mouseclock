@@ -57,7 +57,8 @@ export function Subscribe({
       action={`/programs/${program.id}/subscription`}
       className="relative z-1"
     >
-      <button type="submit" aria-pressed={on} className={looks}>
+      {/* One at a time: the requests could otherwise land in another order than the clicks. */}
+      <button type="submit" aria-pressed={on} disabled={fetcher.state !== "idle"} className={looks}>
         {label}
       </button>
       {fetcher.state === "idle" && fetcher.data && (

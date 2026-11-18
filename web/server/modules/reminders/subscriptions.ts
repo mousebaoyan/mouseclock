@@ -15,7 +15,7 @@ import { sendMessages, type Message } from "./messages.ts";
 // How many programs a member subscribes to at once, closed ones too. The same for everyone now,
 // but it may come to depend on the member, so it is worked out here only and pages take it from
 // the API.
-export const SUBSCRIPTION_LIMIT = 10;
+const SUBSCRIPTION_LIMIT = 10;
 
 // The program's apply end as the notice wrote it, null without one.
 const deadlineValue = sql<TimeValue | null>`(${applyOf("p.id")} -> 'end')`;
@@ -25,11 +25,13 @@ export async function subscribe(userId: number, programId: number) {
   await db.transaction().execute(async (trx) => {
     // One at a time for a member, or two at once could both take the last place.
     await trx.selectFrom("users").select("id").where("id", "=", userId).forNoKeyUpdate().execute();
+    // Locked so it can't be deleted or merged meanwhile, after its subscriptions were dealt with.
     const program = await trx
       .selectFrom("programs as p")
       .select(["p.apply_deadline", deadlineValue.as("end")])
       .where("p.id", "=", programId)
       .where("p.deleted_at", "is", null)
+      .forShare()
       .executeTakeFirst();
     if (!program) throw new AppError(404, "not_found", "项目不存在");
     const mine = await trx
@@ -48,7 +50,11 @@ export async function subscribe(userId: number, programId: number) {
         program_id: programId,
         deadline: program.apply_deadline,
         deadline_value: program.end && JSON.stringify(program.end),
-        remind_at: program.end && remindAt(program.end),
+        // Closed already: nothing to remind of.
+        remind_at:
+          program.end && program.apply_deadline !== null && program.apply_deadline > now
+            ? remindAt(program.end)
+            : null,
       })
       .execute();
     // Past the time to remind of it and not closed yet: reminded now.
@@ -233,7 +239,9 @@ async function remind(
   let query = subscriptionsWithPrograms(trx)
     .select(sql<TimeValue>`s.deadline_value`.as("deadline"))
     .where("s.remind_at", "<=", now)
-    .where("s.deadline", ">", now);
+    .where("s.deadline", ">", now)
+    // As the program has it: one changed since tellChanges looked is told of next minute.
+    .whereRef("s.deadline", "=", "p.apply_deadline");
   if (only) {
     query = query.where("s.user_id", "=", only.user_id).where("s.program_id", "=", only.program_id);
   }
