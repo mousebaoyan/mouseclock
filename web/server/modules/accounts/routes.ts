@@ -164,6 +164,7 @@ const Me = z
     frozen: z.boolean(),
     muted: z.boolean(),
     muted_until: UnixSeconds.nullable().openapi({ description: "没禁言或永久禁言为 null" }),
+    unseen_messages: Int.openapi({ description: "没看过的消息条数，顶栏的铃铛用" }),
     can: z
       .object({ edit: z.boolean(), admin: z.boolean(), owner: z.boolean() })
       .openapi({ description: "按总体设计 §6.2 算好的权限，页面据此显示按钮" }),

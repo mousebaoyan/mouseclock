@@ -9,6 +9,11 @@ export default [
   route("review", "routes/review.tsx"),
   route("crawl", "routes/crawl.tsx"),
   route("edits", "routes/edits.tsx"),
+  route("messages", "routes/messages.tsx"),
+  route("me", "routes/me.tsx", [
+    index("routes/me-index.ts"),
+    route("email", "routes/me-email.tsx"),
+  ]),
   route("logout", "routes/logout.ts"),
   route("admin/colleges", "routes/admin-colleges.tsx"),
   route("admin/sources", "routes/admin-sources.tsx"),

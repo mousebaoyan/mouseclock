@@ -1,4 +1,4 @@
-import type { Transaction } from "kysely";
+import { sql, type Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
 import { editRevoked, type Viewer } from "../../platform/access.ts";
 import { db } from "../../platform/db.ts";
@@ -103,10 +103,16 @@ export async function endSession(sessionId: number) {
   await db.deleteFrom("sessions").where("id", "=", sessionId).execute();
 }
 
+// With how many of their messages they haven't seen, for the bell (design §11.1).
 export async function profileOf(userId: number) {
   return db
     .selectFrom("users")
     .select(["display_name", "avatar_url", "level", "role", "frozen", "muted_until"])
+    .select(
+      sql<number>`(SELECT count(*) FROM messages WHERE user_id = users.id AND seen_at IS NULL)`.as(
+        "unseen_messages",
+      ),
+    )
     .where("id", "=", userId)
     .executeTakeFirstOrThrow();
 }

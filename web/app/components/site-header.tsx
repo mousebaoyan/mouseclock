@@ -2,7 +2,7 @@ import { useEffect, useSyncExternalStore } from "react";
 import { isRouteErrorResponse, Link, NavLink, useLocation, useRouteError } from "react-router";
 import { cn } from "~/cn";
 import { Drawer, Dropdown, menuItem } from "~/components/disclosure";
-import { ChevronDown, LogOut, Menu as MenuIcon } from "~/components/icons";
+import { Bell, ChevronDown, LogOut, Menu as MenuIcon, User } from "~/components/icons";
 import { LogoMark } from "~/components/logo";
 import { buttonVariants } from "~/components/ui/button";
 import { UserAvatar } from "~/components/user-avatar";
@@ -13,6 +13,7 @@ type Me = {
   display_name: string;
   avatar_url: string | null;
   frozen: boolean;
+  unseen_messages: number;
   can: { edit: boolean; admin: boolean; owner: boolean };
 };
 
@@ -39,7 +40,9 @@ function pagesFor(me: Me | null) {
       : []),
     ...(me?.can.owner ? [{ to: "/admin/settings", label: "系统设置" }] : []),
   ];
-  return { main, admin };
+  // Reached from the account menu; on phones the drawer has it too (design §10.2).
+  const mine = me && !me.frozen ? [{ to: "/me", label: "我的" }] : [];
+  return { main, admin, mine };
 }
 
 // What opens an editor, a question or a notice on a page, rather than where its list is.
@@ -127,6 +130,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
           )}
         </nav>
         <div className="flex items-center gap-1 justify-self-end">
+          {me && !me.frozen && <Messages unseen={me.unseen_messages} />}
           {me ? (
             <Account key={pathname} me={me} />
           ) : (
@@ -153,6 +157,30 @@ function navLink({ isActive }: { isActive: boolean }) {
   );
 }
 
+// The bell with how many messages are unseen (design §11.1).
+function Messages({ unseen }: { unseen: number }) {
+  return (
+    <NavLink
+      to="/messages"
+      aria-label={unseen > 0 ? `消息，${unseen} 条未读` : "消息"}
+      className={({ isActive }) =>
+        buttonVariants({
+          variant: "ghost",
+          size: "icon",
+          className: cn("relative", isActive && "text-primary"),
+        })
+      }
+    >
+      <Bell className="size-5" />
+      {unseen > 0 && (
+        <span className="absolute top-1 right-0.5 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 font-medium text-white tabular-nums">
+          {unseen > 99 ? "99+" : unseen}
+        </span>
+      )}
+    </NavLink>
+  );
+}
+
 function Account({ me }: { me: Me }) {
   return (
     <Dropdown
@@ -175,6 +203,12 @@ function Account({ me }: { me: Me }) {
         </p>
       </div>
       <div className="mx-1 my-1 h-px bg-border" />
+      {!me.frozen && (
+        <Link to="/me" className={menuItem}>
+          <User className="text-muted-foreground" />
+          我的
+        </Link>
+      )}
       {/* A full load leaves nothing of the member's in the page, such as the table the
               browser keeps for filtering. */}
       <form method="post" action="/logout">
@@ -210,6 +244,11 @@ function MobileNav({
       <nav aria-label="主导航" className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">
         {pages.main.map((page) => (
           <NavLink key={page.to} to={leftAt(page.to)} end={page.to === "/"} className={mobileLink}>
+            {page.label}
+          </NavLink>
+        ))}
+        {pages.mine.map((page) => (
+          <NavLink key={page.to} to={page.to} className={mobileLink}>
             {page.label}
           </NavLink>
         ))}

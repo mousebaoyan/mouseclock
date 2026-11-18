@@ -30,8 +30,11 @@ export async function recordAudit(
       | "source_probe"
       | "user"
       | "review_item"
-      | "crawler_token";
-    target_id: number;
+      | "crawler_token"
+      | "email_rules"
+      | "mail_accounts";
+    // None for settings, which have no row of their own.
+    target_id: number | null;
     detail: Record<string, unknown>;
   },
 ) {

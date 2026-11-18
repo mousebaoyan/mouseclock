@@ -1,6 +1,6 @@
 # 数据表
 
-> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期和三期的表还没建，先列关键字段，做的时候照周围的写法补全。
+> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期和三期的表除了已经建好的消息和邮件，都还没建，先列关键字段，做的时候照周围的写法补全。
 
 ## 约定
 
@@ -54,13 +54,15 @@
 | --- | --- | --- |
 | `edits` | `review` | 每次人工修改，包括撤销（`reverts_id`）：改的是字段（`field` 是 `program_fields` 的 `key`，分部分的字段一部分一行），或者项目的名称、届、类型；改前改后的值、理由、依据（原文链接或截图）、谁、通过网页还是 Agent。改前的值为空是原来没有，改后的为空是清空。`old_version_id`、`old_edit_id` 是改前的来源，撤销时连来源一起放回去，也用来判断这次修改还在不在（[总体设计 §12.4](design.md#124-记录和撤销)）：来自哪个版本，或者是哪次修改设的；都为空是原来没有，名称、届、类型是建项目时的。撤销的理由和依据为空 |
 | `review_items` | `ingest` | 审核页上待人判断的：抽取时没上表的字段（证据找不到、证据在图片里、置信度低、明显不对、和人工改的值冲突），以及没法直接归并的项目（编号或学院对不上、届不对、可能重复、报名通知没有截止、原文时间无法识别）。`payload` 是抽取出来的原样，除未识别日期只记处理结果外，通过就照它上表：字段的带 `key`，`payload` 是 `program_fields` 那一行的 `value`、`evidence` 和 `confidence`；项目的是抽取给的整个项目（编号、学院、届、类型、名称、作用和字段）；`unparsed_date` 的项目还带 `unresolved_dates` 原文和证据，其他确定字段可已合并，关闭这一待审只记处理结果，不把原文换算或写入时间值 |
-| `audit_log` | `review` | 管理员和站长的其他操作，别的模块调 `review` 的服务函数记 |
+| `audit_log` | `review` | 管理员和站长的其他操作，别的模块调 `review` 的服务函数记；改的是设置的（邮件规则、发信邮箱），`target_id` 为空 |
 
-## 二期和三期（还没建）
+## 二期和三期
 
 按[总体设计 §17](design.md#二期和三期按功能分工)的功能分组，括号里是写这些表的模块。
 
 ### 消息、邮件和订阅（`reminders`）
+
+除了 `subscriptions`，这几张表已经建好。
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
@@ -68,7 +70,7 @@
 | `email_rules` | `kind`、`rule` | 站长给每类消息定的邮件规则：`default_on`、`default_off`、`never`；没有记录的照总体设计 §11.1 的默认 |
 | `email_settings` | `user_id`、`kind`、`enabled` | 成员自己动过的邮件开关；没动过的没有记录，跟着站长的规则 |
 | `emails` | `user_id`、`message_id`、`subject`、`body`、`html`、`attempts`、`next_at`、`sent_at`、`dropped_at`、`created_at` | 待发和已发的邮件，一条消息一封，`message_id` 唯一，和消息在同一个事务里写（[总体设计 §11.2](design.md#112-邮件)）；一个人收过几封从这里数 |
-| `mail_accounts` | `host`、`port`、`username`、`password`、`sender`、`sort` | 发信邮箱，按 `sort` 的顺序用；`password` 用 `APP_SECRET` 加密 |
+| `mail_accounts` | `sort`、`host`、`port`、`username`、`password` | 发信邮箱，按 `sort` 的顺序用，`username` 也是发件地址；端口 465 一开始就走 TLS，其他的必须先用 STARTTLS 加密再登录，加密不了就不发。`password` 用 `APP_SECRET` 加密 |
 | `subscriptions` | `user_id`、`program_id`、`reminded_for`、`created_at` | 订阅，`(user_id, program_id)` 唯一。`reminded_for` 是提醒过的那个截止换算出的时刻：截止变了、和它不同了才再提醒（[总体设计 §11.3](design.md#113-订阅和截止提醒)） |
 
 ### 关注学院（`reminders`）

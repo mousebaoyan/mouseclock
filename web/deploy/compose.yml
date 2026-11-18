@@ -1,6 +1,6 @@
 # The website on the server, next to 1Panel's PostgreSQL; see docs/design.md §16. It lives in
-# /opt/1panel/www/sites/mouseclock/, beside .env with DATABASE_URL, PUBLIC_URL, MOUSEHOLE_URL,
-# MOUSEHOLE_CLIENT_ID and MOUSEHOLE_CLIENT_SECRET.
+# /opt/1panel/www/sites/mouseclock/, beside .env with DATABASE_URL, PUBLIC_URL, APP_SECRET,
+# MOUSEHOLE_URL, MOUSEHOLE_CLIENT_ID and MOUSEHOLE_CLIENT_SECRET.
 services:
   mouseclock:
     image: ghcr.io/mousebaoyan/mouseclock-web:${MOUSECLOCK_VERSION:-latest}

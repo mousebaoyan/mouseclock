@@ -80,6 +80,7 @@
 | --- | --- | --- |
 | 网站 | 和鼠洞同一套：TypeScript 7、Node 26、React Router 8、Hono 和 `@hono/zod-openapi`、Kysely、Tailwind CSS 和 shadcn/ui；pnpm、oxlint、Prettier、Vitest、Playwright | 登录、邮件、界面风格和写法都能照搬。选型依据和框架的实测见[鼠洞的总体设计 §5.2](https://github.com/mousebaoyan/mousehole/blob/main/docs/design.md#52-选型依据) |
 | 数据库 | 服务器上 1Panel 的 PostgreSQL 18 | 和鼠洞共用实例，不加新服务 |
+| 发邮件 | nodemailer，只在 `reminders` 里用 | 和鼠洞一样，SMTP 的主流库 |
 | 抓取节点 | Python 3.14，uv 管依赖；Ruff 做 lint 和格式化，Pyright 的严格模式做类型检查，pytest 做测试 | 浏览器抓取、正文提取、PDF 和 Office 解析，Python 的库最全，代价是多一套工具链。Pyright 和 VS Code 的 Pylance 是同一个引擎，编辑器里看到的错误和 CI 一致 |
 | 抓取 | httpx（异步）请求网页，Playwright 驱动浏览器（Chromium 的无头精简版），lxml 按 CSS 或 XPath 取出列表 | 各自领域的主流库 |
 | 正文和附件 | 正文按建站系统的模板用 lxml 取；pypdf 读 PDF，python-docx 读 `.docx`，legacy-doc 读老的 `.doc`，openpyxl 读 `.xlsx`，xlrd 读 `.xls`；图片和扫描的 PDF 交给 LLM 读，扫描的 PDF 由 pypdf 取出每页的图片，Pillow 把长图切成小块 | 都关在 `parse` 模块里，换了不影响别处。正文和附件用真实的通知和附件比较后定，结果见第 5.2 节。不用 AGPL 许可的 PyMuPDF |
@@ -832,7 +833,7 @@ https://ddl.mousebaoyan.cn
 | Agent 接入 | 第 13 节，接口 §4、§5 | `accounts`、`agents` | 大 | 别的功能的个人操作都要有对应的 MCP 工具 |
 
 - **怎么认领**：见[参与贡献](../CONTRIBUTING.md#怎么找活)。
-- **消息、邮件和订阅先做**：它合并以前，别的功能先做不发消息的部分。
+- **消息、邮件和「我的」已经有了**：发消息调 `reminders/messages.ts` 的 `sendMessages`，在引起这条消息的事务里调，冻结的账号不收、要发邮件的一起排上；加一类消息，在 `reminders/kinds.ts` 加一项（名称、邮件默认发不发、为什么收到），并在第 11.1 节的表里加一行；加「我的」的标签，在 `web/app/me-tabs.ts` 加一项，路由加在 `app/routes.ts` 的 `me` 下面。订阅和截止提醒还在做。
 - **接头由后合并的接上**：两个功能要连起来的地方，后合并的那个负责接上，先做的不用替后来的预留什么。比如订阅先合并，提醒里注明「有争议」由后来的反馈加上；关注和求收录谁后合并，谁把关注算进同求；Agent 接入先合并的，后来的功能给自己的个人操作加上 MCP 工具，反过来就由 Agent 接入给已有的加。
 - **一期的代码也要接**：合并重复项目（`ingest/review-items.ts`）、删除项目（`programs/service.ts` 的 `deleteProgram`）、审核页和来源管理是一期做好的，表里写着「一期」的，在自己的 PR 里改那里。
 - **总表的缓存**：总表数据没变时返回 `304`，变没变看 `programs/service.ts` 的 `tableVersion`。总表带的东西（订阅人数、有争议、学院标签）由哪项加的，哪项就让它跟着变。
