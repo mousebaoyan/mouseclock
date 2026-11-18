@@ -67,15 +67,15 @@
 | `messages` | `user_id`、`kind`、`title`、`body`、`link`、`created_at`、`seen_at` | 站内消息（[总体设计 §11.1](design.md#111-站内消息)），`seen_at` 为空是还没看过 |
 | `email_rules` | `kind`、`rule` | 站长给每类消息定的邮件规则：`default_on`、`default_off`、`never`；没有记录的照总体设计 §11.1 的默认 |
 | `email_settings` | `user_id`、`kind`、`enabled` | 成员自己动过的邮件开关；没动过的没有记录，跟着站长的规则 |
-| `emails` | `user_id`、`message_id`、`subject`、`body`、`html`、`attempts`、`next_at`、`sent_at`、`dropped_at`、`created_at` | 待发和已发的邮件，一条消息一封（[总体设计 §11.2](design.md#112-邮件)）；一个人收过几封从这里数 |
+| `emails` | `user_id`、`message_id`、`subject`、`body`、`html`、`attempts`、`next_at`、`sent_at`、`dropped_at`、`created_at` | 待发和已发的邮件，一条消息一封，`message_id` 唯一，和消息在同一个事务里写（[总体设计 §11.2](design.md#112-邮件)）；一个人收过几封从这里数 |
 | `mail_accounts` | `host`、`port`、`username`、`password`、`sender`、`sort` | 发信邮箱，按 `sort` 的顺序用；`password` 用 `APP_SECRET` 加密 |
-| `subscriptions` | `user_id`、`program_id`、`reminded_for`、`created_at` | 订阅，`(user_id, program_id)` 唯一。`reminded_for` 是提醒过的那个截止：截止变了、和它不同了才再提醒（[总体设计 §11.3](design.md#113-订阅和截止提醒)） |
+| `subscriptions` | `user_id`、`program_id`、`reminded_for`、`created_at` | 订阅，`(user_id, program_id)` 唯一。`reminded_for` 是提醒过的那个截止换算出的时刻：截止变了、和它不同了才再提醒（[总体设计 §11.3](design.md#113-订阅和截止提醒)） |
 
 ### 关注学院（`reminders`）
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `follows` | `user_id`、`college_id`、`created_at` | 关注学院，`(user_id, college_id)` 唯一 |
+| `follows` | `user_id`、`college_id`、`created_at` | 关注学院，`(user_id, college_id)` 唯一。一轮里的新通知按 `notices.first_seen_at` 落在这一轮的起止之间来认，抓取节点不用改（[总体设计 §11.4](design.md#114-关注学院)） |
 
 ### 我的报名（`programs`）
 
@@ -94,14 +94,14 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `feedback` | `program_id`、`user_id`、`field`、`proposed_value`、`reason`、`basis`、`status`、`via`、`created_at`、`reviewed_by`、`reviewed_at`、`review_note` | 反馈和修改申请（[总体设计 §12.1](design.md#121-反馈)）。`field` 是 `program_fields` 的键，或者 `name`、`cohort`、`kind`，为空是说整个项目；`proposed_value` 为空就是只说有问题。`status` 是 `pending`、`accepted`（通过、已改正）、`rejected`（驳回、没问题）、`withdrawn`（撤回）。`edits` 加 `feedback_id`，指向照它改的修改申请 |
-| `disputes` | `program_id`、`opened_at`、`resolved_by`、`resolved_at`、`note` | 每次争议一行，`resolved_at` 为空是还在争议中；争议的人数从上一次的 `resolved_at` 以后数（[总体设计 §12.3](design.md#123-争议)） |
+| `feedback` | `program_id`、`user_id`、`kind`、`field`、`old_value`、`proposed_value`、`reason`、`basis`、`status`、`via`、`created_at`、`reviewed_by`、`reviewed_at`、`review_note` | 反馈和修改申请（[总体设计 §12.1](design.md#121-反馈)）。`kind` 是只说有问题 `problem` 还是修改申请 `edit`；`field` 是 `program_fields` 的键，或者 `name`、`cohort`、`kind`，为空是说整个项目；`old_value` 是提的时候（改过的就是最后一次改的时候）这一处的值，审核时和现在的比，不一样就标出来；修改申请的 `proposed_value` 为空是要清空。`status` 是 `pending`、`accepted`（通过、已改正）、`rejected`（驳回、没问题）、`withdrawn`（撤回）。`edits` 加 `feedback_id`，指向照它改的修改申请 |
+| `disputes` | `program_id`、`opened_at`、`resolved_by`、`resolved_at`、`result`、`note` | 每次争议一行，`resolved_at` 为空是还在争议中，`result` 是改正了 `corrected` 还是确认没错 `confirmed`；争议的人数从上一次的 `resolved_at` 以后数（[总体设计 §12.3](design.md#123-争议)） |
 
 ### 求收录（`sources`）
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `inclusion_requests` | `school_id`、`school_name`、`college_id`、`college_name`、`url_hint`、`note`、`user_id`、`status`、`reason`、`created_at`、`resolved_at` | 求收录（[总体设计 §10.1](design.md#101-求收录)）。清单里没有的学校或学院，`school_id`、`college_id` 为空，只填名字，管理员对上清单后补上。`status` 是排队中 `queued`、接入中 `onboarding`、已收录 `included`、暂时抓不了 `unavailable`（`reason` 写原因） |
+| `inclusion_requests` | `school_id`、`school_name`、`college_id`、`college_name`、`url_hint`、`note`、`user_id`、`status`、`reason`、`created_at`、`resolved_at` | 求收录（[总体设计 §10.1](design.md#101-求收录)）。清单里没有的学校或学院，`school_id`、`college_id` 为空，只填名字，管理员对上清单后补上。关注了还没收录、也没人提过的学院时，替关注的人建一条。`status` 是排队中 `queued`、接入中 `onboarding`、已收录 `included`、暂时抓不了 `unavailable`（`reason` 写原因） |
 | `inclusion_votes` | `request_id`、`user_id`、`created_at` | 同求，提的人自己也有一行。关注了这个学院的人不存在这里，数人数时和它合在一起，同一个人只算一次 |
 
 ### Agent 接入（`accounts`）

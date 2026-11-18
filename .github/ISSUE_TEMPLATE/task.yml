@@ -7,7 +7,7 @@ body:
     id: context
     attributes:
       label: 关联与状态
-      description: 做总体设计 §17 里的哪一项，相关的 Issue 和 PR；进展有变化时更新这里
+      description: 做总体设计 §17 里的哪一项，或者要解决的具体问题；相关的 Issue 和 PR。进展有变化时更新这里
     validations:
       required: true
   - type: textarea
@@ -35,6 +35,6 @@ body:
     id: acceptance
     attributes:
       label: 验收标准
-      description: 怎样才算做完；关闭 Issue 前逐条核对
+      description: 怎样才算做完：主要的用法、最要紧的异常情况，以及有接头时怎么单独演示；关闭 Issue 前逐条核对
     validations:
       required: true
