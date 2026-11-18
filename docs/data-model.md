@@ -16,7 +16,7 @@
 
 | 表 | 模块 | 说明 |
 | --- | --- | --- |
-| `users` | `accounts` | 鼠洞账号的副本（[总体设计 §6.1](design.md#61-登录)），登录时和每小时用 `mousehole_token` 刷新。`frozen` 按访客算；`muted` 为真、`muted_until` 为空是永久禁言；`qq` 只用来发邮件；`edit_revoked_at` 有值是管理员收回了在鼠钟的修改权限 |
+| `users` | `accounts` | 鼠洞账号的副本（[总体设计 §6.1](design.md#61-登录)），登录时和每小时用 `mousehole_token` 刷新。`frozen` 按访客算；`muted` 为真、`muted_until` 为空是永久禁言；`qq` 只用来发邮件；`edit_revoked_at` 有值是管理员收回了在鼠钟的修改权限；`token_refused_at` 有值是刷新时鼠洞不认令牌了（封禁或收回了授权），不再收消息和邮件，也不再刷新，重新登录后清空 |
 | `sessions` | `accounts` | 网页会话，只存令牌的 SHA-256 |
 
 ## 学校与来源
@@ -62,7 +62,7 @@
 
 ### 消息、邮件和订阅（`reminders`）
 
-除了 `subscriptions`，这几张表已经建好。
+这几张表已经建好。
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
@@ -71,7 +71,7 @@
 | `email_settings` | `user_id`、`kind`、`enabled` | 成员自己动过的邮件开关；没动过的没有记录，跟着站长的规则 |
 | `emails` | `user_id`、`message_id`、`subject`、`body`、`html`、`attempts`、`next_at`、`sent_at`、`dropped_at`、`created_at` | 待发和已发的邮件，一条消息一封，`message_id` 唯一，和消息在同一个事务里写（[总体设计 §11.2](design.md#112-邮件)）；一个人收过几封从这里数 |
 | `mail_accounts` | `sort`、`host`、`port`、`username`、`password` | 发信邮箱，按 `sort` 的顺序用，`username` 也是发件地址；端口 465 一开始就走 TLS，其他的必须先用 STARTTLS 加密再登录，加密不了就不发。`password` 用 `APP_SECRET` 加密 |
-| `subscriptions` | `user_id`、`program_id`、`reminded_for`、`created_at` | 订阅，`(user_id, program_id)` 唯一。`reminded_for` 是提醒过的那个截止换算出的时刻：截止变了、和它不同了才再提醒（[总体设计 §11.3](design.md#113-订阅和截止提醒)） |
+| `subscriptions` | `user_id`、`program_id`、`deadline`、`deadline_value`、`remind_at`、`created_at` | 订阅，`(user_id, program_id)` 唯一（[总体设计 §11.3](design.md#113-订阅和截止提醒)）。`deadline` 和 `deadline_value` 是成员上次知道的报名截止：换算出的时刻和原文的写法，为空是没有截止。每分钟和项目的 `apply_deadline` 比一次，时刻不同了发「截止变了」，写法用来写「原为」。`remind_at` 是提醒这个截止的时候，提醒过了或没有截止为空。合并项目时挪到留下的那个，原样带着这几列 |
 
 ### 关注学院（`reminders`）
 

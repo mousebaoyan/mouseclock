@@ -1,26 +1,6 @@
 import { useEffect, useState } from "react";
 import type { ApplyValue, TimeValue } from "../server/modules/programs/schemas.ts";
-
-// Times as the notice wrote them (design §8.2): pages never show the instants worked out for
-// sorting and reminders. The year is left out when it is `thisYear`, as people write dates.
-
-const PARTS = { early: "上旬", mid: "中旬", late: "下旬" };
-const MARKS = { before: "前", about: "前后" };
-
-function yearMonth(year: number, month: number, thisYear: number) {
-  return year === thisYear ? `${month}月` : `${year}年${month}月`;
-}
-
-export function formatTime(value: TimeValue, thisYear: number) {
-  if ("month" in value) {
-    const [year, month] = value.month.split("-").map(Number);
-    return yearMonth(year, month, thisYear) + (value.part ? PARTS[value.part] : "");
-  }
-  const [year, month, day] = value.date.split("-").map(Number);
-  const date = `${yearMonth(year, month, thisYear)}${day}日`;
-  if ("time" in value) return `${date} ${value.time}`;
-  return value.mark ? date + MARKS[value.mark] : date;
-}
+import { formatTime, MARKS, PARTS } from "../server/modules/programs/time.ts";
 
 // A time as editors type it, as precise as the notice and no more: 2026-06-30 17:00,
 // 2026-06-30, 2026-06-30 前, 2026-06-30 前后, 2026-06 上旬 (中旬, 下旬) or 2026-06.
@@ -80,11 +60,6 @@ export function statusOf(
   if (program.closes_at <= now) return "closed";
   if (program.apply_start !== null && program.apply_start > now) return "upcoming";
   return program.apply_start === null && program.apply_deadline === null ? null : "open";
-}
-
-// The year in Beijing, for formatTime.
-export function beijingYear(now: Date) {
-  return new Date(now.getTime() + 8 * 3600_000).getUTCFullYear();
 }
 
 // The day an instant falls on in Beijing, as the crawl dashboard counts days.

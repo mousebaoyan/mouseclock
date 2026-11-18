@@ -15,6 +15,7 @@ function program(
     school?: string;
     short?: string[];
     published?: string | null;
+    subscribers?: number;
   } = {},
 ) {
   return {
@@ -35,6 +36,7 @@ function program(
     apply_deadline: values.deadline === undefined ? 2000 : values.deadline,
     // Without a deadline, the cohort's recommendation is not over yet.
     closes_at: (values.deadline === undefined ? 2000 : values.deadline) ?? 5000,
+    subscribers: values.subscribers ?? 0,
     notice: { published_on: values.published ?? null },
   };
 }
@@ -134,6 +136,15 @@ test("sorting by publication puts the newest first and undated ones last", () =>
   ];
   expect(ids("sort=published", programs)).toEqual([3, 1, 2]);
   expect(ids("", programs)).toEqual([1, 2, 3]);
+});
+
+test("sorting by subscribers puts the most first, and those with as many by deadline", () => {
+  const programs = [
+    program(1, { subscribers: 2 }),
+    program(2, { subscribers: 5 }),
+    program(3, { subscribers: 2 }),
+  ];
+  expect(ids("sort=subscribers", programs)).toEqual([2, 1, 3]);
 });
 
 test("pages hold the chosen number of rows, and a page past the end shows the last", () => {

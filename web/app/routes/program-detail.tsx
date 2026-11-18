@@ -21,6 +21,7 @@ import {
   type EditField,
 } from "~/components/program-edit";
 import { ApplyDeadline, ApplyStart, Missing, ProgramStatus } from "~/components/program";
+import { Subscribe } from "~/components/subscribe";
 import { KindTag, RoleTag, Tag, TierTag } from "~/components/tags";
 import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
@@ -30,7 +31,9 @@ import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { DEGREES, fieldLabel, MODES } from "../fields.ts";
 import { editValues, FormError } from "../program-edit.server.ts";
 import type { loader as rootLoader } from "../root.tsx";
-import { beijingYear, formatApply, formatWindow, useNow } from "../time.ts";
+import { subscribedTo } from "../table-cache.ts";
+import { formatApply, formatWindow, useNow } from "../time.ts";
+import { beijingYear } from "../../server/modules/programs/time.ts";
 import type { Route } from "./+types/program-detail.ts";
 
 type ProgramApi = ReturnType<typeof createApi>["programs"][":id"];
@@ -57,12 +60,13 @@ export function meta({ loaderData }: Route.MetaArgs) {
 }
 
 export async function loader({ params, context }: Route.LoaderArgs) {
-  const api = context.get(apiContext).programs[":id"];
+  const api = context.get(apiContext);
   const param = { id: params.id };
-  const [res, versions, edits] = await Promise.all([
-    api.$get({ param }),
-    api.versions.$get({ param }),
-    api.edits.$get({ param }),
+  const [res, versions, edits, subscribed] = await Promise.all([
+    api.programs[":id"].$get({ param }),
+    api.programs[":id"].versions.$get({ param }),
+    api.programs[":id"].edits.$get({ param }),
+    subscribedTo(api),
   ]);
   // A merged program's page is the one it went into (design §12.2).
   if (res.status === 308) return redirect(`/programs/${(await res.json()).merged_into}`, 301);
@@ -70,6 +74,7 @@ export async function loader({ params, context }: Route.LoaderArgs) {
     program: await readApi<Program>(res),
     versions: (await readApi<{ versions: Version[] }>(versions)).versions,
     edits: (await readApi<{ edits: Edit[] }>(edits)).edits,
+    subscribed: subscribed.includes(Number(params.id)),
     thisYear: beijingYear(new Date()),
     now: Math.floor(Date.now() / 1000),
   };
@@ -156,6 +161,12 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
       }
       actions={
         <>
+          <Subscribe
+            program={program}
+            subscribed={loaderData.subscribed}
+            outlined
+            className="max-sm:order-last"
+          />
           {can?.edit && editing !== "program" && (
             <Link
               to="?edit=program"

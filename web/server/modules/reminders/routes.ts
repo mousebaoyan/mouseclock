@@ -3,12 +3,14 @@ import {
   authorize,
   createRouter,
   errorResponse,
+  IdParam,
   Int,
   named,
   Page,
   PageParams,
   UnixSeconds,
 } from "../../platform/http.ts";
+import { TableProgram } from "../programs/schemas.ts";
 import {
   emailRules,
   emailSettings,
@@ -19,6 +21,7 @@ import {
 import { EMAIL_RULES, KINDS, MESSAGE_KINDS } from "./kinds.ts";
 import { listMailAccounts, saveMailAccounts, testMailAccounts } from "./mailer.ts";
 import { listMessages, markSeen } from "./messages.ts";
+import { clearClosed, listSubscriptions, subscribe, unsubscribe } from "./subscriptions.ts";
 
 function json<T extends z.ZodType>(schema: T) {
   return { "application/json": { schema } };
@@ -146,6 +149,88 @@ export const remindersRoutes = createRouter()
       const { id } = authorize(c, "read");
       await saveEmailSettings(id, c.req.valid("json"));
       return c.json(await emailSettings(id), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "put",
+      path: "/programs/{id}/subscription",
+      summary: "订阅项目",
+      description:
+        "订阅过的照样返回 204。订阅时已过提醒的时候、还没截止的，马上来一条「快截止了」（总体设计 §11.3）。",
+      request: { params: IdParam },
+      responses: {
+        204: { description: "已订阅" },
+        400: errorResponse("编号的格式有误"),
+        ...signedIn,
+        404: errorResponse("项目不存在"),
+        409: errorResponse("订阅数已到上限"),
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "read");
+      await subscribe(id, c.req.valid("param").id);
+      return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "delete",
+      path: "/programs/{id}/subscription",
+      summary: "取消订阅",
+      request: { params: IdParam },
+      responses: {
+        204: { description: "已取消，没订阅过的也一样" },
+        400: errorResponse("编号的格式有误"),
+        ...signedIn,
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "read");
+      await unsubscribe(id, c.req.valid("param").id);
+      return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/me/subscriptions",
+      summary: "自己的订阅",
+      description: "订阅的项目，还没截止的按截止排在前，截止了的在后；以及最多能订几个。",
+      responses: {
+        200: {
+          description: "订阅",
+          content: json(
+            z
+              .object({
+                limit: Int.openapi({ description: "最多同时订阅几个，截止了的也算" }),
+                programs: z.array(TableProgram),
+              })
+              .openapi("Subscriptions"),
+          ),
+        },
+        ...signedIn,
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "read");
+      return c.json(await listSubscriptions(id), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "delete",
+      path: "/me/subscriptions/closed",
+      summary: "取消全部已截止的订阅",
+      responses: {
+        204: { description: "已取消" },
+        ...signedIn,
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "read");
+      await clearClosed(id);
+      return c.body(null, 204);
     },
   )
   .openapi(

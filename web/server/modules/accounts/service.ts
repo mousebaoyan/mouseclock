@@ -28,6 +28,7 @@ function fromProfile(profile: Profile, token: string) {
     muted_until: profile.restriction?.until ? new Date(profile.restriction.until * 1000) : null,
     qq: profile.qq,
     mousehole_token: token,
+    token_refused_at: null,
     synced_at: new Date(),
   };
 }
@@ -117,21 +118,31 @@ export async function profileOf(userId: number) {
     .executeTakeFirstOrThrow();
 }
 
-// Every person with a session, an hour after their last refresh (design §6.1). One at a time:
-// mousehole's server is busy enough.
+// Every person logged in, or who uses the site without opening it, an hour after their last
+// refresh (design §6.1): a subscription sends them messages, so a ban or leaving the group must
+// reach here. One at a time: mousehole's server is busy enough.
 export async function refreshUsers() {
   const due = await db
     .selectFrom("users")
     .select(["id", "mousehole_token"])
     .where("synced_at", "<", new Date(Date.now() - REFRESH_AFTER_MS))
+    .where("token_refused_at", "is", null)
     .where((eb) =>
-      eb.exists(
-        eb
-          .selectFrom("sessions")
-          .select("sessions.id")
-          .whereRef("sessions.user_id", "=", "users.id")
-          .where("sessions.expires_at", ">", new Date()),
-      ),
+      eb.or([
+        eb.exists(
+          eb
+            .selectFrom("sessions")
+            .select("sessions.id")
+            .whereRef("sessions.user_id", "=", "users.id")
+            .where("sessions.expires_at", ">", new Date()),
+        ),
+        eb.exists(
+          eb
+            .selectFrom("subscriptions")
+            .select("subscriptions.user_id")
+            .whereRef("subscriptions.user_id", "=", "users.id"),
+        ),
+      ]),
     )
     .orderBy("synced_at")
     .execute();
@@ -144,7 +155,15 @@ export async function refreshUsers() {
         .where("id", "=", user.id)
         .execute();
     } else {
-      await db.deleteFrom("sessions").where("user_id", "=", user.id).execute();
+      // Banned, or the access taken back: logged out, and no messages until they log in again.
+      await db.transaction().execute(async (trx) => {
+        await trx.deleteFrom("sessions").where("user_id", "=", user.id).execute();
+        await trx
+          .updateTable("users")
+          .set({ token_refused_at: new Date() })
+          .where("id", "=", user.id)
+          .execute();
+      });
     }
   }
 }

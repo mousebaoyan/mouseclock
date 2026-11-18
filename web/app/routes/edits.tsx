@@ -5,7 +5,7 @@ import { Pagination } from "~/components/pagination";
 import { DateTime } from "~/components/time";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { fieldLabel, formatValue } from "../fields.ts";
-import { beijingYear } from "../time.ts";
+import { beijingYear } from "../../server/modules/programs/time.ts";
 import type { Route } from "./+types/edits.ts";
 
 type Edits = InferResponseType<ReturnType<typeof createApi>["edits"]["$get"], 200>;

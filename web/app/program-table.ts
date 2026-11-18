@@ -1,7 +1,8 @@
 import type { Kind } from "../server/modules/programs/schemas.ts";
 import { anyOf, choices, tally } from "./facets.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
-import { beijingYear, currentCohort, statusOf, type Status } from "./time.ts";
+import { currentCohort, statusOf, type Status } from "./time.ts";
+import { beijingYear } from "../server/modules/programs/time.ts";
 
 // The table's filters, sorting and pages (design §10), read from the address so a link shares
 // them. The server works out the first page it renders, and the browser every one after from
@@ -16,8 +17,12 @@ type Program = {
   apply_start: number | null;
   apply_deadline: number | null;
   closes_at: number;
+  subscribers: number;
   notice: { published_on: string | null };
 };
+
+// Absent: by deadline, as the API gives them.
+const SORTS = ["published", "subscribers"] as const;
 
 // Absent: not closed yet, which is what people come for.
 export const STATUS_FILTERS = ["open", "upcoming", "closed", "all"] as const;
@@ -39,7 +44,7 @@ export function readFilters(params: URLSearchParams) {
     regions: params.getAll("region"),
     directions: params.getAll("direction"),
     status: STATUS_FILTERS.find((s) => s === status) ?? null,
-    sort: params.get("sort") === "published" ? ("published" as const) : ("deadline" as const),
+    sort: SORTS.find((s) => s === params.get("sort")) ?? "deadline",
     page: Number.isInteger(page) && page > 0 ? page : 1,
     perPage,
   };
@@ -92,11 +97,14 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
     direction: tallyOf("direction"),
   };
   const matched = rows.filter((row) => passes(row)).map((row) => row.program);
-  // Newest first; those listed without a date last.
+  // Newest first, those listed without a date last; or the most subscribed first. Ties stay by
+  // deadline.
   if (filters.sort === "published") {
     matched.sort((a, b) =>
       (b.notice.published_on ?? "").localeCompare(a.notice.published_on ?? ""),
     );
+  } else if (filters.sort === "subscribers") {
+    matched.sort((a, b) => b.subscribers - a.subscribers);
   }
   const pages = Math.max(1, Math.ceil(matched.length / filters.perPage));
   const page = Math.min(filters.page, pages);

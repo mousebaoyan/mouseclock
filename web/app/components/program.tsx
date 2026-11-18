@@ -1,9 +1,11 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { ExternalLink } from "./icons.tsx";
-import { KindTag, STATUS_COLORS, Tag } from "./tags.tsx";
+import { SchoolLogo } from "./school-logo.tsx";
+import { KindTag, STATUS_COLORS, Tag, TierTag } from "./tags.tsx";
 import type { ApplyValue, Kind } from "../../server/modules/programs/schemas.ts";
-import { countdown, formatApply, formatTime, STATUS_LABELS, statusOf } from "../time.ts";
+import { formatTime } from "../../server/modules/programs/time.ts";
+import { countdown, formatApply, STATUS_LABELS, statusOf } from "../time.ts";
 
 // A program's application dates and status, the same wherever programs are listed.
 
@@ -65,12 +67,14 @@ export function ProgramCard({
   now,
   thisYear,
   place,
+  subscribe,
   notice,
 }: {
   program: Instants & { id: number; kind: Kind; name: string; apply: ApplyValue | null };
   now: number;
   thisYear: number;
   place: ReactNode;
+  subscribe?: ReactNode;
   notice?: string;
 }) {
   return (
@@ -99,6 +103,7 @@ export function ProgramCard({
             </>
           )}
         </p>
+        {subscribe}
         {notice && (
           <a
             href={notice}
@@ -113,5 +118,45 @@ export function ProgramCard({
         )}
       </div>
     </li>
+  );
+}
+
+// Who runs the program, on its card: the school's emblem, the school and college as one name
+// that opens the college, and its tier and region beneath; with `published`, the date the notice
+// was published as well.
+export function ProgramPlace({
+  program,
+  published,
+  thisYear,
+}: {
+  program: {
+    school: { name: string; tier: string | null; logo: string | null };
+    college: { id: number; name: string; region: string };
+    notice: { published_on: string | null };
+  };
+  published?: boolean;
+  thisYear: number;
+}) {
+  return (
+    <div className="flex items-center gap-3">
+      <SchoolLogo school={program.school} size="md" />
+      <div className="min-w-0">
+        <Link
+          to={`/colleges/${program.college.id}`}
+          className="relative z-1 block font-medium break-keep wrap-anywhere hover:text-primary"
+        >
+          {program.school.name} {program.college.name}
+        </Link>
+        <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
+          <TierTag tier={program.school.tier} />
+          <span>{program.college.region}</span>
+          {published && program.notice.published_on && (
+            <span className="tabular-nums">
+              发布于 {formatTime({ date: program.notice.published_on }, thisYear)}
+            </span>
+          )}
+        </p>
+      </div>
+    </div>
   );
 }

@@ -37,6 +37,8 @@ function icon(node: IconNode) {
 export type LucideIcon = ReturnType<typeof icon>;
 
 export const Bell = icon(lucide.Bell);
+export const BellPlus = icon(lucide.BellPlus);
+export const BellRing = icon(lucide.BellRing);
 export const Check = icon(lucide.Check);
 export const ChevronDown = icon(lucide.ChevronDown);
 export const ChevronLeft = icon(lucide.ChevronLeft);

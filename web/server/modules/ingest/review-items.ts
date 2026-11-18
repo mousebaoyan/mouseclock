@@ -7,6 +7,7 @@ import { unix } from "../../platform/http.ts";
 import type { Evidence, ExtractedFields, Kind, Role, StoredValue } from "../programs/schemas.ts";
 import { currentFields, deleteProgram, lockProgram, setFields } from "../programs/service.ts";
 import { recordAudit } from "../../platform/audit.ts";
+import { programGone } from "../reminders/subscriptions.ts";
 import {
   docsOf,
   extractionContext,
@@ -481,7 +482,7 @@ async function mergeDuplicate(
 }
 
 // What still waits on a deleted program has nothing left to decide; an item being accepted is
-// set afterwards as it is.
+// set afterwards as it is. Its subscriptions go, or go with it to the one kept.
 async function dropProgram(
   trx: Transaction<DB>,
   reviewer: Reviewer,
@@ -489,6 +490,7 @@ async function dropProgram(
   keptId: number | null,
 ) {
   await deleteProgram(trx, id, keptId);
+  await programGone(trx, id, keptId);
   await trx
     .updateTable("review_items")
     .set({ status: "rejected", resolved_by: reviewer.user_id, resolved_at: new Date() })
