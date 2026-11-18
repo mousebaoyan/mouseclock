@@ -113,6 +113,16 @@ function refused(error: unknown) {
   );
 }
 
+// The kind of failure, without the server's reply, which may quote the address (development.md §4).
+function failureOf(error: unknown) {
+  if (!(error instanceof Error)) return { code: "unknown" };
+  return {
+    code: "code" in error ? String(error.code) : error.name,
+    command: "command" in error ? String(error.command) : undefined,
+    status: "responseCode" in error ? Number(error.responseCode) : undefined,
+  };
+}
+
 // "refused" when every mailbox turned the address down, so sending again won't help; while one
 // resting hasn't tried yet, it is only "failed". "resting" when no mailbox could try.
 export async function deliver(mail: Mail) {
@@ -128,7 +138,7 @@ export async function deliver(mail: Mail) {
       resting.delete(account.username);
       return "sent";
     } catch (error) {
-      log("warn", "Sending mail failed", { account: account.username, error });
+      log("warn", "Sending mail failed", { account: account.username, ...failureOf(error) });
       // A refused address says nothing against the mailbox, which goes on sending to others.
       if (refused(error)) {
         refusals += 1;
