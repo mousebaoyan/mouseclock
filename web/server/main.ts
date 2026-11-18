@@ -5,6 +5,7 @@ import { apiContext, createApi } from "../app/api.server.ts";
 import { app } from "./app.ts";
 import { clearExpiredSessions, refreshUsers } from "./modules/accounts/service.ts";
 import { sendEmails } from "./modules/reminders/email.ts";
+import { sendDeadlineMessages } from "./modules/reminders/subscriptions.ts";
 import { compressResponses } from "./platform/compress.ts";
 import type { AppEnv } from "./platform/http.ts";
 import { log } from "./platform/log.ts";
@@ -15,6 +16,7 @@ import { every } from "./platform/schedule.ts";
 await migrate();
 every(10 * 60_000, "Refreshing users from mousehole", refreshUsers);
 every(24 * 3600_000, "Clearing expired sessions", clearExpiredSessions);
+every(60_000, "Sending deadline messages", sendDeadlineMessages);
 every(60_000, "Sending emails", sendEmails);
 
 // Built files carry a hash of their content in their names, so a browser keeps them without asking

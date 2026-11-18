@@ -1,25 +1,13 @@
 import { expect, test } from "vitest";
 import {
-  beijingYear,
   countdown,
   currentCohort,
   formatApply,
-  formatTime,
   formatWindow,
   parseTime,
   statusOf,
   timeText,
 } from "./time.ts";
-
-test("times read as the notice wrote them, with the year only when it isn't this one", () => {
-  expect(formatTime({ date: "2026-06-30", time: "23:59" }, 2026)).toBe("6月30日 23:59");
-  expect(formatTime({ date: "2026-09-19", time: "24:00" }, 2026)).toBe("9月19日 24:00");
-  expect(formatTime({ date: "2026-06-22", mark: "before" }, 2026)).toBe("6月22日前");
-  expect(formatTime({ date: "2026-07-03", mark: "about" }, 2026)).toBe("7月3日前后");
-  expect(formatTime({ month: "2026-07", part: "early" }, 2026)).toBe("7月上旬");
-  expect(formatTime({ month: "2027-07" }, 2026)).toBe("2027年7月");
-  expect(formatTime({ date: "2027-01-10" }, 2026)).toBe("2027年1月10日");
-});
 
 test("editors type a time as precise as the notice, which reads back as they typed it", () => {
   for (const [text, value] of [
@@ -60,11 +48,6 @@ test("status follows the application's start and when applying is over", () => {
   expect(statusOf(undated, 300)).toBe("closed");
   expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 150)).toBeNull();
   expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 300)).toBe("closed");
-});
-
-test("the year turns at midnight in Beijing", () => {
-  expect(beijingYear(new Date("2026-12-31T15:59:59Z"))).toBe(2026);
-  expect(beijingYear(new Date("2026-12-31T16:00:00Z"))).toBe(2027);
 });
 
 test("the application says when it rolls, and when it says nothing", () => {

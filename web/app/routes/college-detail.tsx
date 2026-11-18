@@ -6,7 +6,8 @@ import { buttonVariants } from "~/components/ui/button";
 import { ProgramCard, ProgramCards } from "~/components/program";
 import { COLLEGE_KINDS, Tag, TierTag } from "~/components/tags";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { beijingYear, useNow } from "../time.ts";
+import { useNow } from "../time.ts";
+import { beijingYear } from "../../server/modules/programs/time.ts";
 import type { Route } from "./+types/college-detail.ts";
 
 type CollegeDetail = InferResponseType<

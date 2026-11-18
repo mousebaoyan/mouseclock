@@ -49,7 +49,7 @@
 | 消息 | `GET /messages` | 自己的消息，最新的在前，分页；每条带 `seen`，这一次新来的为 `false`（[总体设计 §11.1](design.md#111-站内消息)） |
 | | `POST /messages/seen` | `{ up_to }`：把这一条和更早的标成看过了；消息页打开后，用页上最新的那条调，之后才到的不受影响 |
 | 订阅和关注 | `PUT`、`DELETE /programs/{id}/subscription` | 订阅、取消；到了上限返回 `409 subscription_limit`；订阅时已过提醒时候、还没截止的，马上来一条「快截止了」（[总体设计 §11.3](design.md#113-订阅和截止提醒)） |
-| | `GET /me/subscriptions` | 自己订阅的项目，订了几个、最多能订几个；「我的 · 订阅」和总表卡片上的「已订阅」用 |
+| | `GET /me/subscriptions` | 自己订阅的项目，字段同总表，还没截止的按截止排在前，截止了的在后；以及最多能订几个（`limit`）。「我的 · 订阅」和总表卡片上的「已订阅」用 |
 | | `DELETE /me/subscriptions/closed` | 取消全部已截止的订阅 |
 | | `PUT`、`DELETE /colleges/{id}/follow` | 关注、取消（[总体设计 §11.4](design.md#114-关注学院)）；关注还没收录的学院，算替它求收录 |
 | | `GET /me/follows` | 自己关注的学院，每个带这一届的项目数、最近一条通知的日期，没收录的带求收录的进度；院校清单上的「已关注」也用它 |

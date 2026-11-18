@@ -56,7 +56,7 @@ const PREVIEW_SIZE = 5;
 
 // The notice a program links to as its original, on the table and its page: the latest call's,
 // or the latest version's if no call was found. Every program is made with its first version.
-function originalNotice(eb: ExpressionBuilder<DB & { p: DB["programs"] }, "p">) {
+export function originalNotice(eb: ExpressionBuilder<DB & { p: DB["programs"] }, "p">) {
   return eb
     .selectFrom("program_versions as v")
     .innerJoin("snapshots as sn", "sn.id", "v.snapshot_id")
@@ -69,21 +69,28 @@ function originalNotice(eb: ExpressionBuilder<DB & { p: DB["programs"] }, "p">) 
     .as("notice");
 }
 
-// One cohort's programs for the table (design §10), by deadline.
-export async function listPrograms(cohort: number, preview: boolean) {
-  let query = db
+// How many members subscribe to a program (design §11.3); `program` as for applyOf.
+function subscribersOf(program: string) {
+  return sql<number>`(select count(*)::int from subscriptions where program_id = ${sql.ref(program)})`;
+}
+
+// The programs as the table lists them (design §10).
+function tableQuery() {
+  return db
     .selectFrom("programs as p")
     .innerJoin("colleges as c", "c.id", "p.college_id")
     .innerJoin("schools as s", "s.id", "c.school_id")
     .innerJoinLateral(originalNotice, (join) => join.onTrue())
     .select([
       "p.id",
+      "p.cohort",
       "p.name",
       "p.apply_start",
       "p.apply_deadline",
       eventEndOf("p.id").as("event_end"),
       sql<Kind>`p.kind`.as("kind"),
       applyOf("p.id").as("apply"),
+      subscribersOf("p.id").as("subscribers"),
       "s.name as school_name",
       "s.short_names as school_short_names",
       "s.tier as school_tier",
@@ -95,37 +102,49 @@ export async function listPrograms(cohort: number, preview: boolean) {
       "notice.url as notice_url",
       "notice.published_on as notice_published_on",
     ])
+    .where("p.deleted_at", "is", null);
+}
+
+function tableProgram(row: Awaited<ReturnType<ReturnType<typeof tableQuery>["execute"]>>[number]) {
+  return {
+    id: row.id,
+    school: {
+      name: row.school_name,
+      short_names: row.school_short_names,
+      tier: row.school_tier,
+      logo: row.school_logo,
+    },
+    college: {
+      id: row.college_id,
+      name: row.college_name,
+      region: row.college_region,
+      directions: row.college_directions,
+    },
+    kind: row.kind,
+    name: row.name,
+    apply: row.apply,
+    apply_start: row.apply_start ? unix(row.apply_start) : null,
+    apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
+    closes_at: unix(closesAt(row.apply_deadline, row.event_end, row.cohort)),
+    subscribers: row.subscribers,
+    notice: { url: row.notice_url, published_on: row.notice_published_on },
+  };
+}
+
+// One cohort's programs for the table, by deadline.
+export async function listPrograms(cohort: number, preview: boolean) {
+  let query = tableQuery()
     .where("p.cohort", "=", cohort)
-    .where("p.deleted_at", "is", null)
     .orderBy("p.apply_deadline", (order) => order.asc().nullsLast())
     .orderBy("p.id");
   if (preview) query = query.where("p.apply_deadline", ">", new Date()).limit(PREVIEW_SIZE);
-  const rows = await query.execute();
-  return {
-    preview,
-    programs: rows.map((row) => ({
-      id: row.id,
-      school: {
-        name: row.school_name,
-        short_names: row.school_short_names,
-        tier: row.school_tier,
-        logo: row.school_logo,
-      },
-      college: {
-        id: row.college_id,
-        name: row.college_name,
-        region: row.college_region,
-        directions: row.college_directions,
-      },
-      kind: row.kind,
-      name: row.name,
-      apply: row.apply,
-      apply_start: row.apply_start ? unix(row.apply_start) : null,
-      apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
-      closes_at: unix(closesAt(row.apply_deadline, row.event_end, cohort)),
-      notice: { url: row.notice_url, published_on: row.notice_published_on },
-    })),
-  };
+  return { preview, programs: (await query.execute()).map(tableProgram) };
+}
+
+// These programs as the table lists them, for one's own lists such as one's subscriptions.
+export async function programCards(ids: number[]) {
+  if (ids.length === 0) return [];
+  return (await tableQuery().where("p.id", "in", ids).execute()).map(tableProgram);
 }
 
 // A program's fields put back together (design §8.2), the parts of a field under it. Each part
@@ -206,6 +225,7 @@ export async function getProgram(id: number) {
       "c.id as college_id",
       "c.name as college_name",
       "c.region as college_region",
+      subscribersOf("p.id").as("subscribers"),
       "u.display_name as verified_by",
       "notice.title as notice_title",
       "notice.url as notice_url",
@@ -226,6 +246,7 @@ export async function getProgram(id: number) {
     apply_start: row.apply_start ? unix(row.apply_start) : null,
     apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
     closes_at: unix(closesAt(row.apply_deadline, row.event_end, row.cohort)),
+    subscribers: row.subscribers,
     verified:
       row.verified_at && row.verified_by
         ? { by: row.verified_by, at: unix(row.verified_at) }
@@ -349,16 +370,20 @@ export async function getAttachmentFile(snapshotId: number, position: number) {
   return { name: row.name, content_type: row.content_type, data: row.data };
 }
 
-// What the table's data is as of. It changes only with a new version, an edit or revert, or what
-// admins do (reviews, deleting programs, editing schools and colleges), and each of those adds a
-// row to one of these tables, which only grow. Counted rather than the highest id: transactions
-// can commit in another order than they took their ids.
+// What the table's data is as of. It changes only with a new version, an edit or revert, what
+// admins do (reviews, deleting programs, editing schools and colleges), each of which adds a row to
+// a table that only grows, or a subscription. Counted rather than the highest id: transactions can
+// commit in another order than they took their ids. Subscriptions come and go, so the latest one
+// made counts too: subscribing makes a later one, unsubscribing lowers the count, and a merge, which
+// moves them, is a review.
 export async function tableVersion() {
   const { rows } = await sql<{ version: string }>`
     select concat(
       (select count(*) from program_versions), '-',
       (select count(*) from edits), '-',
-      (select count(*) from audit_log)
+      (select count(*) from audit_log), '-',
+      (select count(*) from subscriptions), '-',
+      (select floor(extract(epoch from max(created_at)) * 1000)::bigint from subscriptions)
     ) as version
   `.execute(db);
   return rows[0].version;

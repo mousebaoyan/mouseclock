@@ -15,9 +15,12 @@ export type Message = {
   body: string;
   // Where it takes the member: a path on this site, such as /programs/12.
   link: `/${string}`;
+  // Pages elsewhere the email adds, such as the notice and where to apply.
+  links?: { label: string; url: string }[];
 };
 
-// Frozen accounts get none. Those who take this kind by email get one too.
+// Frozen accounts get none, nor those mousehole no longer lets in. Those who take this kind by
+// email get one too.
 export async function sendMessages(trx: Transaction<DB>, kind: MessageKind, messages: Message[]) {
   if (messages.length === 0) return;
   const users = await trx
@@ -29,21 +32,23 @@ export async function sendMessages(trx: Transaction<DB>, kind: MessageKind, mess
       messages.map((m) => m.user_id),
     )
     .where("frozen", "=", false)
+    .where("token_refused_at", "is", null)
     .execute();
   const members = new Set(users.map((user) => user.id));
   const mailable = new Set(users.filter(mayEmail).map((user) => user.id));
   const going = messages.filter((m) => members.has(m.user_id));
   if (going.length === 0) return;
-  const written = await trx
-    .insertInto("messages")
-    .values(going.map((m) => ({ ...m, kind })))
-    .returning(["id", "user_id", "title", "body", "link"])
-    .execute();
-  await queueEmails(
-    trx,
-    kind,
-    written.filter((m) => mailable.has(m.user_id)),
-  );
+  // One at a time, so each email knows its message: RETURNING doesn't promise the order of VALUES.
+  const written = [];
+  for (const m of going) {
+    const { id } = await trx
+      .insertInto("messages")
+      .values({ user_id: m.user_id, kind, title: m.title, body: m.body, link: m.link })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    if (mailable.has(m.user_id)) written.push({ ...m, id });
+  }
+  await queueEmails(trx, kind, written);
 }
 
 // Newest first, with whether each was seen before.

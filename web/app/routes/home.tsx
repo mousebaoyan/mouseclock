@@ -1,21 +1,21 @@
-import { hc, type InferResponseType } from "hono/client";
-import { data, Link, useLocation, useRouteLoaderData } from "react-router";
+import type { InferResponseType } from "hono/client";
+import { useLocation, useRouteLoaderData } from "react-router";
 import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/components/filters";
 import { Empty, Page } from "~/components/page";
-import { SchoolLogo } from "~/components/school-logo";
 import { Pagination } from "~/components/pagination";
-import { ProgramCard, ProgramCards } from "~/components/program";
-import { PROGRAM_KINDS, TierTag } from "~/components/tags";
+import { ProgramCard, ProgramCards, ProgramPlace } from "~/components/program";
+import { Subscribe } from "~/components/subscribe";
+import { PROGRAM_KINDS } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
 import { Segmented } from "~/components/ui/segmented";
 import { MultiSelect, Select } from "~/components/ui/select";
-import type { ApiType } from "../../server/app.ts";
 import { SITE_DESCRIPTION, SITE_NAME } from "../../server/platform/site.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { cohortOf, tablePage } from "../program-table.ts";
+import { keptTable, subscribedTo } from "../table-cache.ts";
 import type { loader as rootLoader } from "../root.tsx";
-import { currentCohort, formatTime, STATUS_LABELS, useNow } from "../time.ts";
+import { currentCohort, STATUS_LABELS, useNow } from "../time.ts";
 import type { Route } from "./+types/home.ts";
 
 type TableData = InferResponseType<ReturnType<typeof createApi>["programs"]["$get"], 200>;
@@ -29,35 +29,28 @@ export function meta() {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const params = new URL(request.url).searchParams;
   const date = new Date();
-  const table = await readApi<TableData>(
-    await context.get(apiContext).programs.$get({ query: { cohort: cohortOf(params, date) } }),
-  );
-  return tablePage(table, params, date);
+  const api = context.get(apiContext);
+  const [table, subscribed] = await Promise.all([
+    api.programs.$get({ query: { cohort: cohortOf(params, date) } }).then(readApi<TableData>),
+    subscribedTo(api),
+  ]);
+  return { ...tablePage(table, params, date), subscribed };
 }
 
-// After that the browser keeps the whole cohort, and filters, sorts and pages it itself. It asks
-// again for another cohort or after a while; the server answers 304 while nothing changed.
-let kept: { cohort: string; at: number; table: TableData } | null = null;
-const KEEP_MS = 5 * 60_000;
-
+// After that the browser keeps the whole cohort (table-cache.ts).
 export async function clientLoader({ request }: Route.ClientLoaderArgs) {
   const params = new URL(request.url).searchParams;
   const date = new Date();
-  const cohort = cohortOf(params, date);
-  if (kept?.cohort !== cohort || date.getTime() - kept.at > KEEP_MS) {
-    const res = await hc<ApiType>("/api/v1").programs.$get({ query: { cohort } });
-    if (res.status !== 200) throw data((await res.json()).error.message, { status: res.status });
-    kept = { cohort, at: date.getTime(), table: await res.json() };
-  }
-  return tablePage(kept.table, params, date);
+  const { table, subscribed } = await keptTable(cohortOf(params, date), date.getTime());
+  return { ...tablePage(table, params, date), subscribed };
 }
 
 type Data = Route.ComponentProps["loaderData"];
-type Program = Data["programs"][number];
 
 export default function Home({ loaderData }: Route.ComponentProps) {
   const { cohort, preview, programs, total, page, filters, thisYear } = loaderData;
   const now = useNow(loaderData.now);
+  const subscribed = new Set(loaderData.subscribed);
   return (
     <Page title={`${cohort} 届保研项目`} hideTitle>
       {preview ? <PreviewNotice /> : <Filters data={loaderData} />}
@@ -74,12 +67,13 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                 thisYear={thisYear}
                 notice={program.notice.url}
                 place={
-                  <Place
+                  <ProgramPlace
                     program={program}
                     published={filters.sort === "published"}
                     thisYear={thisYear}
                   />
                 }
+                subscribe={<Subscribe program={program} subscribed={subscribed.has(program.id)} />}
               />
             ))}
           </ProgramCards>
@@ -171,11 +165,12 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
           />
           <Select
             aria-label="排序"
-            value={filters.sort === "published" ? "published" : ""}
+            value={filters.sort === "deadline" ? "" : filters.sort}
             onValueChange={(value) => set("sort", value)}
             options={[
               { value: "", label: "按截止时间" },
               { value: "published", label: "按发布时间" },
+              { value: "subscribers", label: "按订阅人数" },
             ]}
             className="sm:w-34"
           />
@@ -225,38 +220,8 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
           ),
         },
       ]}
-      active={narrowed || filters.sort === "published" || cohort !== current}
+      active={narrowed || filters.sort !== "deadline" || cohort !== current}
       clear={narrowed || filters.q ? keepOnly(search, ["cohort", "per_page"]) : null}
     />
   );
 }
-
-// Who runs the program, on its card: the school's emblem, the school and college as one name
-// that opens the college, and its tier and region beneath; sorted by publication, the date it
-// was published as well.
-function Place({ program, published, thisYear }: PlaceProps) {
-  return (
-    <div className="flex items-center gap-3">
-      <SchoolLogo school={program.school} size="md" />
-      <div className="min-w-0">
-        <Link
-          to={`/colleges/${program.college.id}`}
-          className="relative z-1 block font-medium break-keep wrap-anywhere hover:text-primary"
-        >
-          {program.school.name} {program.college.name}
-        </Link>
-        <p className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground">
-          <TierTag tier={program.school.tier} />
-          <span>{program.college.region}</span>
-          {published && program.notice.published_on && (
-            <span className="tabular-nums">
-              发布于 {formatTime({ date: program.notice.published_on }, thisYear)}
-            </span>
-          )}
-        </p>
-      </div>
-    </div>
-  );
-}
-
-type PlaceProps = { program: Program; published: boolean; thisYear: number };

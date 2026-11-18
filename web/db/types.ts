@@ -276,6 +276,15 @@ export interface Sources {
   url: string;
 }
 
+export interface Subscriptions {
+  created_at: Generated<Timestamp>;
+  deadline: Timestamp | null;
+  deadline_value: Json | null;
+  program_id: number;
+  remind_at: Timestamp | null;
+  user_id: number;
+}
+
 export interface Users {
   avatar_url: string | null;
   created_at: Generated<Timestamp>;
@@ -291,6 +300,7 @@ export interface Users {
   qq: number | null;
   role: string;
   synced_at: Timestamp;
+  token_refused_at: Timestamp | null;
 }
 
 export interface DB {
@@ -317,5 +327,6 @@ export interface DB {
   snapshots: Snapshots;
   source_probes: SourceProbes;
   sources: Sources;
+  subscriptions: Subscriptions;
   users: Users;
 }

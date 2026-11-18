@@ -1,7 +1,32 @@
 import { expect, test } from "vitest";
-import { closesAt, deadlineOf, startOf } from "./time.ts";
+import { beijingYear, closesAt, deadlineDay, deadlineOf, formatTime, startOf } from "./time.ts";
 
 const iso = (date: Date) => date.toISOString();
+
+test("times read as the notice wrote them, with the year only when it isn't this one", () => {
+  expect(formatTime({ date: "2026-06-30", time: "23:59" }, 2026)).toBe("6月30日 23:59");
+  expect(formatTime({ date: "2026-09-19", time: "24:00" }, 2026)).toBe("9月19日 24:00");
+  expect(formatTime({ date: "2026-06-22", mark: "before" }, 2026)).toBe("6月22日前");
+  expect(formatTime({ date: "2026-07-03", mark: "about" }, 2026)).toBe("7月3日前后");
+  expect(formatTime({ month: "2026-07", part: "early" }, 2026)).toBe("7月上旬");
+  expect(formatTime({ month: "2027-07" }, 2026)).toBe("2027年7月");
+  expect(formatTime({ date: "2027-01-10" }, 2026)).toBe("2027年1月10日");
+});
+
+test("the year turns at midnight in Beijing", () => {
+  expect(beijingYear(new Date("2026-12-31T15:59:59Z"))).toBe(2026);
+  expect(beijingYear(new Date("2026-12-31T16:00:00Z"))).toBe(2027);
+});
+
+test("a deadline falls on its day, the day before when marked 前, the first day of a month or a third", () => {
+  expect(deadlineDay({ date: "2026-06-30", time: "17:00" })).toBe("2026-06-30");
+  expect(deadlineDay({ date: "2026-06-30", time: "24:00" })).toBe("2026-06-30");
+  expect(deadlineDay({ date: "2026-06-30" })).toBe("2026-06-30");
+  expect(deadlineDay({ date: "2027-01-01", mark: "before" })).toBe("2026-12-31");
+  expect(deadlineDay({ date: "2026-07-03", mark: "about" })).toBe("2026-07-02");
+  expect(deadlineDay({ month: "2026-07", part: "mid" })).toBe("2026-07-11");
+  expect(deadlineDay({ month: "2026-07" })).toBe("2026-07-01");
+});
 
 test("a time to the minute is that minute in Beijing, and 24:00 is the end of the day", () => {
   expect(iso(deadlineOf({ date: "2026-06-30", time: "23:59" }))).toBe("2026-06-30T15:59:00.000Z");

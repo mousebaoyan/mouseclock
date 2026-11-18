@@ -34,6 +34,45 @@ export function deadlineOf(value: TimeValue) {
   return beijing(year, month, value.mark ? day : day + 1);
 }
 
+// The day a deadline falls on, which reminders count back from (design §11.3), erring early as
+// deadlineOf does: the day itself for a bare date or a time, 24:00 too; the day before for 「前」
+// and 「前后」; the first day of a third of a month or a month.
+export function deadlineDay(value: TimeValue) {
+  if ("month" in value) {
+    return `${value.month}-${String(value.part ? PART_FIRST_DAY[value.part] : 1).padStart(2, "0")}`;
+  }
+  if ("time" in value || !value.mark) return value.date;
+  const [year, month, day] = numbers(value.date, "-");
+  return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
+}
+
+// Times as the notice wrote them (design §8.2), on pages and in messages: neither shows the
+// instants worked out for sorting and reminders. The year is left out when it is `thisYear`, as
+// people write dates.
+
+export const PARTS = { early: "上旬", mid: "中旬", late: "下旬" };
+export const MARKS = { before: "前", about: "前后" };
+
+// The year in Beijing, for formatTime.
+export function beijingYear(now: Date) {
+  return new Date(now.getTime() + 8 * 3600_000).getUTCFullYear();
+}
+
+function yearMonth(year: number, month: number, thisYear: number) {
+  return year === thisYear ? `${month}月` : `${year}年${month}月`;
+}
+
+export function formatTime(value: TimeValue, thisYear: number) {
+  if ("month" in value) {
+    const [year, month] = value.month.split("-").map(Number);
+    return yearMonth(year, month, thisYear) + (value.part ? PARTS[value.part] : "");
+  }
+  const [year, month, day] = value.date.split("-").map(Number);
+  const date = `${yearMonth(year, month, thisYear)}${day}日`;
+  if ("time" in value) return `${date} ${value.time}`;
+  return value.mark ? date + MARKS[value.mark] : date;
+}
+
 // When applying is over, for the status (design §9.1): at the deadline; without one, when the
 // event ends; without either, when the cohort's recommendation ends, in October the year before.
 export function closesAt(deadline: Date | null, event: TimeValue | null, cohort: number) {

@@ -9,6 +9,7 @@ import { SITE_NAME } from "../../platform/site.ts";
 import { recordAudit } from "../../platform/audit.ts";
 import { isKind, KINDS, MESSAGE_KINDS, type EmailRule, type MessageKind } from "./kinds.ts";
 import { deliver } from "./mailer.ts";
+import type { Message } from "./messages.ts";
 
 // Which messages also go by email, and sending them (design §11.2).
 
@@ -132,7 +133,7 @@ async function wantsEmail(userId: number, kind: string) {
   return emailOn(rule, mine?.enabled);
 }
 
-type Written = { id: number; user_id: number; title: string; body: string; link: string };
+type Written = Message & { id: number };
 
 // Emails for messages just written, to those who take this kind by email. Whether each still goes
 // is asked again when it is sent.
@@ -171,13 +172,14 @@ export async function queueEmails(trx: Transaction<DB>, kind: MessageKind, messa
     .execute();
 }
 
-function plainText(kind: MessageKind, { title, body, link }: Written) {
+function plainText(kind: MessageKind, { title, body, link, links = [] }: Written) {
   return [
     title,
     "",
     body,
     "",
     `${env.PUBLIC_URL}${link}`,
+    ...links.map((l) => `${l.label}：${l.url}`),
     "",
     "——",
     `${MESSAGE_KINDS[kind].why}。不想收这类邮件，可以在「我的 · 邮件提醒」里关掉：${env.PUBLIC_URL}${SETTINGS_PATH}`,
@@ -186,7 +188,7 @@ function plainText(kind: MessageKind, { title, body, link }: Written) {
 
 // The message on a card, then why it came. Tables and inline styles only, the one thing mail apps
 // agree on, and no images. hono/html escapes what goes in.
-async function page(kind: MessageKind, { title, body, link }: Written) {
+async function page(kind: MessageKind, { title, body, link, links = [] }: Written) {
   const settings = `${env.PUBLIC_URL}${SETTINGS_PATH}`;
   const rendered = await html`<!doctype html>
     <html lang="zh-CN">
@@ -221,6 +223,17 @@ async function page(kind: MessageKind, { title, body, link }: Written) {
                         >在${SITE_NAME}查看</a
                       >
                     </p>
+                    ${
+                      links.length > 0 &&
+                      html`<p style="margin:16px 0 0;font-size:14px;">
+                        ${links.map(
+                          (l) =>
+                            html`<a href="${l.url}" style="color:#2563eb;margin-right:20px;"
+                              >${l.label}</a
+                            >`,
+                        )}
+                      </p>`
+                    }
                   </td>
                 </tr>
               </table>
@@ -271,7 +284,7 @@ export async function sendEmails() {
       .innerJoin("messages as m", "m.id", "e.message_id")
       .innerJoin("users as u", "u.id", "e.user_id")
       .select(["e.id", "e.user_id", "e.subject", "e.body", "e.html", "e.attempts", "m.kind"])
-      .select(["u.qq", "u.frozen"])
+      .select(["u.qq", "u.frozen", "u.token_refused_at"])
       .where("e.sent_at", "is", null)
       .where("e.dropped_at", "is", null)
       .where("e.next_at", "<=", sql<Date>`now()`)
@@ -279,8 +292,13 @@ export async function sendEmails() {
       .limit(1)
       .executeTakeFirst();
     if (!email) return;
-    // As things are now: the member may have turned this kind off, or left the group, since.
-    if (email.frozen || !mayEmail(email) || !(await wantsEmail(email.user_id, email.kind))) {
+    // As things are now: the member may have turned this kind off, left the group or been banned.
+    if (
+      email.frozen ||
+      email.token_refused_at !== null ||
+      !mayEmail(email) ||
+      !(await wantsEmail(email.user_id, email.kind))
+    ) {
       await settle(email.id, "dropped_at");
       continue;
     }

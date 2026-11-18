@@ -192,6 +192,7 @@ export const TableProgram = z
     apply_start: UnixSeconds.nullable(),
     apply_deadline: UnixSeconds.nullable(),
     closes_at: ClosesAt,
+    subscribers: Int.openapi({ description: "订阅人数" }),
     notice: z
       .object({ url: z.string(), published_on: IsoDate.nullable() })
       .openapi({ description: "原文：最近一个报名版本的通知，没有就用最近一个版本的" }),
@@ -295,6 +296,7 @@ export const ProgramDetail = z
     apply_start: UnixSeconds.nullable(),
     apply_deadline: UnixSeconds.nullable(),
     closes_at: ClosesAt,
+    subscribers: Int.openapi({ description: "订阅人数" }),
     verified: z.union([
       z.object({ by: z.string(), at: UnixSeconds }).openapi("Verified"),
       z.null(),

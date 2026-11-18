@@ -12,7 +12,8 @@ import { Select } from "~/components/ui/select";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { fieldLabel, formatValue } from "../fields.ts";
-import { beijingYear, formatApply } from "../time.ts";
+import { formatApply } from "../time.ts";
+import { beijingYear } from "../../server/modules/programs/time.ts";
 import { KINDS } from "../../server/modules/programs/schemas.ts";
 import type { Route } from "./+types/review.ts";
 
