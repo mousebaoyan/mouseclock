@@ -139,12 +139,13 @@ test("sorting by publication puts the newest first and undated ones last", () =>
 });
 
 test("sorting by subscribers puts the most first, and those with as many by deadline", () => {
+  // As the API gives them, by deadline.
   const programs = [
-    program(1, { subscribers: 2 }),
-    program(2, { subscribers: 5 }),
-    program(3, { subscribers: 2 }),
+    program(3, { deadline: 1500, subscribers: 2 }),
+    program(1, { deadline: 1600, subscribers: 5 }),
+    program(2, { deadline: 1700, subscribers: 2 }),
   ];
-  expect(ids("sort=subscribers", programs)).toEqual([2, 1, 3]);
+  expect(ids("sort=subscribers", programs)).toEqual([1, 3, 2]);
 });
 
 test("pages hold the chosen number of rows, and a page past the end shows the last", () => {

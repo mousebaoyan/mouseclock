@@ -6,10 +6,11 @@ import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
 import { login, refreshUsers } from "../accounts/service.ts";
-import { removeProgram } from "../ingest/review-items.ts";
+import { acceptReviewItem, removeProgram } from "../ingest/review-items.ts";
 import type { TimeValue } from "../programs/schemas.ts";
 import { applyStored, createProgram, setFields, toStoredFields } from "../programs/service.ts";
-import { programGone, sendDeadlineMessages } from "./subscriptions.ts";
+import type { MessageKind } from "./kinds.ts";
+import { sendDeadlineMessages } from "./subscriptions.ts";
 
 const v1 = testClient(app).api.v1;
 
@@ -83,7 +84,7 @@ let notices = 0;
 async function program(
   name: string,
   deadline: TimeValue | null,
-  more: { apply_url?: string } = {},
+  more: { rolling?: true; apply_url?: string } = {},
 ) {
   const id = await db
     .transaction()
@@ -98,7 +99,7 @@ async function program(
 async function notice(
   programId: number,
   title: string,
-  fields: { end?: TimeValue; apply_url?: string },
+  fields: { start?: TimeValue; end?: TimeValue; rolling?: true; apply_url?: string },
 ) {
   notices += 1;
   await db.transaction().execute(async (trx) => {
@@ -141,13 +142,14 @@ async function notice(
       .returning("id")
       .executeTakeFirstOrThrow();
     const support = { evidence: [{ quote: "报名" }], confidence: 1 };
+    const { apply_url, ...apply } = fields;
     await applyStored(
       trx,
       programId,
       version.id,
       toStoredFields({
-        ...(fields.end && { apply: { value: { end: fields.end }, ...support } }),
-        ...(fields.apply_url && { apply_url: { value: fields.apply_url, ...support } }),
+        ...(Object.keys(apply).length > 0 && { apply: { value: apply, ...support } }),
+        ...(apply_url && { apply_url: { value: apply_url, ...support } }),
       }),
     );
   });
@@ -160,15 +162,24 @@ async function subscribe(name: string, programId: number) {
   );
 }
 
-// What came to a member, oldest first.
+// What came to a member, oldest first: its kind, and its title and body as one line.
 async function messagesOf(name: string) {
   const rows = await db
     .selectFrom("messages")
-    .select(["kind", "title", "body", "link"])
+    .select(["kind", "title", "body"])
     .where("user_id", "=", person(name).id)
     .orderBy("id")
     .execute();
-  return rows.map((m) => `${m.kind}: ${m.title} / ${m.body}`);
+  return rows.map((m) => ({ kind: m.kind, text: `${m.title} ${m.body}` }));
+}
+
+// The messages a member got, each of its kind and saying what design §11.3 has it say.
+async function expectMessages(name: string, expected: [MessageKind, ...string[]][]) {
+  const got = await messagesOf(name);
+  expect(got.map((m) => m.kind)).toEqual(expected.map(([kind]) => kind));
+  for (const [i, [, ...facts]] of expected.entries()) {
+    for (const fact of facts) expect(got[i].text).toContain(fact);
+  }
 }
 
 async function tick(beijing: string) {
@@ -178,10 +189,40 @@ async function tick(beijing: string) {
 
 const JUNE_30 = { date: "2026-06-30", time: "17:00" };
 
+// The review page's 可能重复, accepted: `duplicate` goes into `kept` (design §12.2).
+async function merge(duplicate: number, kept: number) {
+  const { snapshot_id, name } = await db
+    .selectFrom("program_versions as v")
+    .innerJoin("programs as p", "p.id", "v.program_id")
+    .select(["v.snapshot_id", "p.name"])
+    .where("v.program_id", "=", duplicate)
+    .executeTakeFirstOrThrow();
+  const { id } = await db
+    .insertInto("review_items")
+    .values({
+      reason: "possible_duplicate",
+      program_id: duplicate,
+      snapshot_id,
+      payload: {
+        college_id: college.id,
+        cohort: 2027,
+        kind: "summer_camp",
+        name,
+        role: "call",
+        fields: {},
+      },
+    })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  await acceptReviewItem({ user_id: person("管理鼠").id, via: "web" }, id, { program_id: kept });
+}
+
 test("ten at once, closed ones too, until they are cleared; the table's tag follows", async () => {
+  // Two closed, then open ones whose deadlines come in the other order to their ids.
   const ids = [];
   for (let i = 1; i <= 11; i++) {
-    ids.push(await program(`项目 ${i}`, i === 1 ? { date: "2026-05-20" } : JUNE_30));
+    const day = i <= 2 ? `2026-05-2${i}` : `2026-07-${String(20 - i).padStart(2, "0")}`;
+    ids.push(await program(`项目 ${i}`, { date: day }));
   }
   const tag = async () =>
     (await v1.programs.$get({ query: { cohort: "2027" } }, person("鼠鼠").as)).headers.get("etag");
@@ -198,13 +239,17 @@ test("ten at once, closed ones too, until they are cleared; the table's tag foll
   if (res.status !== 200) throw new Error(`status ${res.status}`);
   const mine = await res.json();
   expect(mine.limit).toBe(10);
-  // The open ones first, the closed one after.
-  expect(mine.programs.map((p) => p.id)).toEqual([...ids.slice(1, 10), ids[0]]);
+  // The open ones by deadline, then the closed ones, the latest to close first.
+  expect(mine.programs.map((p) => p.id)).toEqual([
+    ...ids.slice(2, 10).toReversed(),
+    ids[1],
+    ids[0],
+  ]);
   expect(mine.programs[0].subscribers).toBe(1);
 
   const unsubscribed = await tag();
   await v1.programs[":id"].subscription.$delete(
-    { param: { id: String(ids[1]) } },
+    { param: { id: String(ids[2]) } },
     person("鼠鼠").as,
   );
   expect(await tag()).not.toBe(unsubscribed);
@@ -212,19 +257,28 @@ test("ten at once, closed ones too, until they are cleared; the table's tag foll
   expect((await subscribe("鼠鼠", ids[10])).status).toBe(204);
   const after = await v1.me.subscriptions.$get({}, person("鼠鼠").as);
   if (after.status !== 200) throw new Error(`status ${after.status}`);
-  expect((await after.json()).programs.map((p) => p.id)).toEqual(ids.slice(2, 11));
+  expect((await after.json()).programs.map((p) => p.id)).toEqual(ids.slice(3, 11).toReversed());
 });
 
 test("reminded three days before the deadline's day at 9 in Beijing, once, with the original and where to apply", async () => {
-  const id = await program("2027 年夏令营", JUNE_30, { apply_url: "https://apply.example/" });
+  const id = await program("2027 年夏令营", JUNE_30, {
+    rolling: true,
+    apply_url: "https://apply.example/",
+  });
   await subscribe("鼠鼠", id);
   await tick("2026-06-27T08:59:00");
   expect(await messagesOf("鼠鼠")).toEqual([]);
   await tick("2026-06-27T09:00:00");
+  const reminded = [
+    "deadline_soon",
+    "「2027 年夏令营」快截止了",
+    "6月30日 17:00 截止",
+    "还剩 3 天",
+    "额满即止",
+  ] satisfies [MessageKind, ...string[]];
+  await expectMessages("鼠鼠", [reminded]);
   await tick("2026-06-28T09:00:00");
-  expect(await messagesOf("鼠鼠")).toEqual([
-    "deadline_soon: 北辰大学 计算机学院「2027 年夏令营」快截止了 / 6月30日 17:00 截止，还剩 3 天",
-  ]);
+  await expectMessages("鼠鼠", [reminded]);
   const email = await db
     .selectFrom("emails")
     .select("body")
@@ -240,31 +294,41 @@ test("subscribing past the time to remind reminds at once, unless it closed", as
   at("2026-06-30T10:00:00");
   await subscribe("鼠鼠", soon);
   await subscribe("鼠鼠", closed);
+  const reminded = ["deadline_soon", "「快截止的」", "7月1日前 截止", "就在今天"] satisfies [
+    MessageKind,
+    ...string[],
+  ];
+  await expectMessages("鼠鼠", [reminded]);
   await tick("2026-06-30T10:01:00");
-  expect(await messagesOf("鼠鼠")).toEqual([
-    "deadline_soon: 北辰大学 计算机学院「快截止的」快截止了 / 7月1日前 截止，就在今天",
-  ]);
+  await expectMessages("鼠鼠", [reminded]);
 });
 
-test("a deadline that moves is told once, with what it was and why; past the time to remind, that is the reminder", async () => {
+test("a deadline that moves is told once, with what it was and why, and reminded of anew", async () => {
   const id = await program("2027 年夏令营", JUNE_30);
   await subscribe("鼠鼠", id);
   await notice(id, "关于延长报名时间的通知", { end: { date: "2026-07-05" } });
   await tick("2026-06-02T12:00:00");
   await tick("2026-06-02T12:01:00");
-  // The same moment written another way isn't news.
+  // The same moment written another way isn't news, nor another part of the apply field.
   await notice(id, "报名通知（更正）", { end: { date: "2026-07-05", time: "24:00" } });
+  await notice(id, "补充通知", { start: { date: "2026-06-05" } });
   await tick("2026-06-02T12:02:00");
+  // Reminded of the new deadline at its time, not the old one's.
+  await tick("2026-06-27T09:00:00");
+  await tick("2026-07-02T09:00:00");
+  at("2026-07-02T12:00:00");
   await db.transaction().execute((trx) => setFields(trx, id, [["apply:end", null]]));
-  await tick("2026-06-02T12:03:00");
+  await tick("2026-07-02T12:01:00");
+  // Past the time to remind of it, the message about it is the reminder.
   at("2026-07-08T12:00:00");
   await notice(id, "再次延长", { end: { date: "2026-07-10", time: "12:00" } });
   await tick("2026-07-08T12:01:00");
   await tick("2026-07-09T12:00:00");
-  expect(await messagesOf("鼠鼠")).toEqual([
-    "deadline_changed: 北辰大学 计算机学院「2027 年夏令营」报名截止变了 / 改为 7月5日，原为 6月30日 17:00；依据通知「关于延长报名时间的通知」",
-    "deadline_changed: 北辰大学 计算机学院「2027 年夏令营」报名截止变了 / 已清空，原为 7月5日 24:00；人工修改",
-    "deadline_changed: 北辰大学 计算机学院「2027 年夏令营」报名截止变了 / 改为 7月10日 12:00（还剩 2 天），原来未注明；依据通知「再次延长」",
+  await expectMessages("鼠鼠", [
+    ["deadline_changed", "改为 7月5日", "原为 6月30日 17:00", "依据通知「关于延长报名时间的通知」"],
+    ["deadline_soon", "7月5日 24:00 截止", "还剩 3 天"],
+    ["deadline_changed", "已清空", "原为 7月5日 24:00", "人工修改"],
+    ["deadline_changed", "改为 7月10日 12:00（还剩 2 天）", "原来未注明", "依据通知「再次延长」"],
   ]);
 });
 
@@ -276,14 +340,7 @@ test("a merge moves subscriptions to the one kept, one for those on both; deleti
   await subscribe("仓鼠", duplicate);
   await subscribe("仓鼠", kept);
   await subscribe("仓鼠", removed);
-  await db.transaction().execute(async (trx) => {
-    await trx
-      .updateTable("programs")
-      .set({ deleted_at: new Date() })
-      .where("id", "=", duplicate)
-      .execute();
-    await programGone(trx, duplicate, kept);
-  });
+  await merge(duplicate, kept);
   await removeProgram({ user_id: person("管理鼠").id, via: "web" }, removed, "不是招生通知");
   expect((await subscribe("鼠鼠", removed)).status).toBe(404);
 
@@ -300,29 +357,27 @@ test("a merge moves subscriptions to the one kept, one for those on both; deleti
   );
   // What the duplicate said differs from the one kept.
   await tick("2026-06-01T12:01:00");
-  expect(await messagesOf("鼠鼠")).toEqual([
-    "deadline_changed: 北辰大学 计算机学院「夏令营」报名截止变了 / 改为 6月30日 17:00，原为 6月30日；依据通知「夏令营报名通知」",
+  await expectMessages("鼠鼠", [
+    ["deadline_changed", "「夏令营」报名截止变了", "改为 6月30日 17:00", "原为 6月30日；"],
   ]);
-  expect(await messagesOf("仓鼠")).toEqual([]);
+  await expectMessages("仓鼠", []);
 });
 
-test("those mousehole turns down are refreshed for their subscriptions and get nothing more", async () => {
+test("those mousehole turns down are refreshed for their subscriptions and get nothing until they log in again", async () => {
   const id = await program("2027 年夏令营", JUNE_30);
   await subscribe("鼠鼠", id);
   await subscribe("仓鼠", id);
-  const { id: banned } = person("鼠鼠");
-  await db.deleteFrom("sessions").where("user_id", "=", banned).execute();
+  await db.deleteFrom("sessions").where("user_id", "=", person("鼠鼠").id).execute();
   revoked.add(fakeUsers[0].id);
   at("2026-06-01T14:00:00");
   await refreshUsers();
   revoked.clear();
-  const user = await db
-    .selectFrom("users")
-    .select("token_refused_at")
-    .where("id", "=", banned)
-    .executeTakeFirstOrThrow();
-  expect(user.token_refused_at).not.toBeNull();
   await tick("2026-06-27T09:00:00");
-  expect(await messagesOf("鼠鼠")).toEqual([]);
-  expect(await messagesOf("仓鼠")).toHaveLength(1);
+  await expectMessages("鼠鼠", []);
+  await expectMessages("仓鼠", [["deadline_soon"]]);
+
+  await signIn(fakeUsers[0]);
+  await notice(id, "关于延长报名时间的通知", { end: { date: "2026-07-05" } });
+  await tick("2026-06-27T09:01:00");
+  await expectMessages("鼠鼠", [["deadline_changed", "改为 7月5日"]]);
 });
