@@ -7,6 +7,7 @@ import { reviewItemsRoutes } from "./modules/ingest/review-routes.ts";
 import { tokenRoutes } from "./modules/ingest/token-routes.ts";
 import { ingestRoutes } from "./modules/ingest/routes.ts";
 import { programsRoutes } from "./modules/programs/routes.ts";
+import { remindersRoutes } from "./modules/reminders/routes.ts";
 import { reviewRoutes } from "./modules/review/routes.ts";
 import { sourcesRoutes } from "./modules/sources/routes.ts";
 import { db } from "./platform/db.ts";
@@ -22,6 +23,7 @@ const api = createRouter()
   .route("/", tokenRoutes)
   .route("/", programsRoutes)
   .route("/", reviewRoutes)
+  .route("/", remindersRoutes)
   .route("/", sourcesRoutes);
 
 export type ApiType = typeof api;

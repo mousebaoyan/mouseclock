@@ -37,6 +37,7 @@ jobs:
       MOUSEHOLE_URL: http://localhost:5173/fake-mousehole
       MOUSEHOLE_CLIENT_ID: mouseclock-dev
       MOUSEHOLE_CLIENT_SECRET: dev-secret-not-for-production
+      APP_SECRET: bW91c2VjbG9jay1kZXYta2V5LW5vdC1mb3ItcHJvZCE=
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

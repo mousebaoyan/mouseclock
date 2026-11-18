@@ -16,7 +16,7 @@ import {
 import { deadlineOf, startOf } from "../programs/time.ts";
 import type { Failure } from "../sources/schemas.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
-import { recordAudit } from "../review/service.ts";
+import { recordAudit } from "../../platform/audit.ts";
 
 // How long the crawler has to report on work before it is handed out again (api.md §6).
 const LEASE_MS = 2 * 3600_000;

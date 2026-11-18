@@ -78,7 +78,7 @@
 | | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回 |
 | | `PATCH /admin/inclusion-requests/{id}`、`POST /admin/inclusion-requests/{id}/merge` | 管理员改进度和原因、对上清单里的学校和学院；把一条并进另一条（`{ into }`），同求合在一起。都记进操作日志 |
 | 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
-| 我的 | `GET`、`PATCH /me/email-settings` | 每类消息发不发邮件：站长定成不发的不列，没动过的带站长的默认（[总体设计 §11.2](design.md#112-邮件)） |
+| 我的 | `GET`、`PATCH /me/email-settings` | 每类消息发不发邮件：站长定成不发的不列，没动过的带站长的默认；也说能不能收邮件，没有 QQ 号的收不到（[总体设计 §11.2](design.md#112-邮件)）。`PATCH` 只改给出的几类 |
 | | `GET`、`POST /me/tokens`，`DELETE /me/tokens/{id}` | 个人令牌，只认网页会话：生成时返回的令牌只出现这一次，每人最多 10 个（[总体设计 §13](design.md#13-agent-接入)） |
 | 数据下载 | `GET /export?cohort=&format=` | 一届的全部项目，`csv` 或 `json`，登录后可用（[总体设计 §13](design.md#13-agent-接入)） |
 | 群汇总 | `GET /bot/summary` | `{ text }`：写好的整段汇总，没什么可发时为 `null`（[总体设计 §11.5](design.md#115-群汇总)）。不用登录 |

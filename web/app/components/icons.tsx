@@ -36,6 +36,7 @@ function icon(node: IconNode) {
 
 export type LucideIcon = ReturnType<typeof icon>;
 
+export const Bell = icon(lucide.Bell);
 export const Check = icon(lucide.Check);
 export const ChevronDown = icon(lucide.ChevronDown);
 export const ChevronLeft = icon(lucide.ChevronLeft);
@@ -46,4 +47,5 @@ export const LogOut = icon(lucide.LogOut);
 export const Menu = icon(lucide.Menu);
 export const Quote = icon(lucide.TextQuote);
 export const Search = icon(lucide.Search);
+export const User = icon(lucide.UserRound);
 export const X = icon(lucide.X);

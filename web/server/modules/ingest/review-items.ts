@@ -6,7 +6,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import type { Evidence, ExtractedFields, Kind, Role, StoredValue } from "../programs/schemas.ts";
 import { currentFields, deleteProgram, lockProgram, setFields } from "../programs/service.ts";
-import { recordAudit } from "../review/service.ts";
+import { recordAudit } from "../../platform/audit.ts";
 import {
   docsOf,
   extractionContext,

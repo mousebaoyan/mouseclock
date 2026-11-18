@@ -13,7 +13,7 @@ web/                    网站，写法照鼠洞
     main.ts             进程入口：执行迁移，把 Hono 应用和 React Router 接在一起
     app.ts              组装 Hono 应用：健康检查和 /api/v1；接口测试直接对它发请求
     modules/            业务模块，一个领域一个目录：routes.ts（接口）、service.ts（业务逻辑）和测试
-    platform/           和业务无关的基础设施：环境变量、数据库、迁移、错误格式、日志、权限、定时任务
+    platform/           和业务无关的基础设施：环境变量、数据库、迁移、错误格式、日志、操作日志、权限、定时任务
   db/migrations/        SQL 迁移
   db/types.ts           kysely-codegen 从数据库生成的类型
   openapi/crawler.json  抓取节点接口的 OpenAPI 文档，由 `pnpm openapi` 生成
@@ -40,7 +40,7 @@ crawler/                抓取节点
 | | `programs` | 项目、字段、已核对、学院标签、我的报名 |
 | | `accounts` | 鼠洞登录、会话、个人令牌、权限 |
 | | `reminders` | 站内消息、邮件、订阅、关注、群汇总 |
-| | `review` | 反馈、修改申请、修改记录和撤销、争议、操作日志 |
+| | `review` | 反馈、修改申请、修改记录和撤销、争议 |
 | | `agents` | MCP 服务和 `/llms.txt` |
 | 抓取节点 | `crawl` | 领活、抓列表页和正文、下载附件、存下读过的图片、交结果 |
 | | `parse` | 从网页和附件里取出文字、链接、附件和日期写法，把图片切成小块 |

@@ -39,7 +39,7 @@ export interface AuditLog {
   created_at: Generated<Timestamp>;
   detail: Generated<Json>;
   id: Generated<number>;
-  target_id: number;
+  target_id: number | null;
   target_type: string;
   user_id: number;
 }
@@ -90,6 +90,51 @@ export interface Edits {
   reverts_id: number | null;
   user_id: number;
   via: string;
+}
+
+export interface EmailRules {
+  kind: string;
+  rule: string;
+}
+
+export interface Emails {
+  attempts: Generated<number>;
+  body: string;
+  created_at: Generated<Timestamp>;
+  dropped_at: Timestamp | null;
+  html: string;
+  id: Generated<number>;
+  message_id: number;
+  next_at: Generated<Timestamp>;
+  sent_at: Timestamp | null;
+  subject: string;
+  user_id: number;
+}
+
+export interface EmailSettings {
+  enabled: boolean;
+  kind: string;
+  user_id: number;
+}
+
+export interface MailAccounts {
+  host: string;
+  id: Generated<number>;
+  password: string;
+  port: number;
+  sort: number;
+  username: string;
+}
+
+export interface Messages {
+  body: string;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  kind: string;
+  link: string;
+  seen_at: Timestamp | null;
+  title: string;
+  user_id: number;
 }
 
 export interface ModelCalls {
@@ -255,6 +300,11 @@ export interface DB {
   crawl_runs: CrawlRuns;
   crawler_tokens: CrawlerTokens;
   edits: Edits;
+  email_rules: EmailRules;
+  email_settings: EmailSettings;
+  emails: Emails;
+  mail_accounts: MailAccounts;
+  messages: Messages;
   model_calls: ModelCalls;
   notices: Notices;
   program_fields: ProgramFields;
