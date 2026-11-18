@@ -39,7 +39,7 @@ crawler/                抓取节点
 | | `ingest` | 收抓取节点交来的结果：通知和快照、归并和版本、抽取拿不准等人审的条目、抓取看板 |
 | | `programs` | 项目、字段、已核对、学院标签、我的报名 |
 | | `accounts` | 鼠洞登录、会话、个人令牌、权限 |
-| | `reminders` | 订阅、关注、邮件、群汇总 |
+| | `reminders` | 站内消息、邮件、订阅、关注、群汇总 |
 | | `review` | 反馈、修改申请、修改记录和撤销、争议、操作日志 |
 | | `agents` | MCP 服务和 `/llms.txt` |
 | 抓取节点 | `crawl` | 领活、抓列表页和正文、下载附件、存下读过的图片、交结果 |
@@ -170,6 +170,7 @@ CI 不装浏览器。自动测试用假的浏览器对象、固定响应和假�
 | 类型 | kind | 冬令营 `winter_camp`、夏令营 `summer_camp`、预推免 `pre_recommendation`、九推 `september_round` |
 | 已核对 | verified | |
 | 有争议 | disputed | |
+| 消息 | message | 站内的提醒，点顶栏的铃铛看；和学院官网的「通知」不是一回事 |
 | 订阅 | subscription | 订阅项目，截止前提醒 |
 | 关注 | follow | 关注学院，有新通知就提醒 |
 | 我的报名 | application | 进度叫 stage，备注叫 note |

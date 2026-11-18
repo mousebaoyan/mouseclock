@@ -1,5 +1,5 @@
 name: 任务
-description: 一件可以认领、交付的具体工作，通常由维护者创建
+description: 认领总体设计 §17 里的一项功能，或者一件具体的工作
 title: "[任务] "
 labels: [task]
 body:
@@ -7,7 +7,7 @@ body:
     id: context
     attributes:
       label: 关联与状态
-      description: 属于路线图的哪一项，相关的 Issue 和 PR；进展有变化时更新这里
+      description: 做总体设计 §17 里的哪一项，相关的 Issue 和 PR；进展有变化时更新这里
     validations:
       required: true
   - type: textarea
@@ -25,9 +25,12 @@ body:
     validations:
       required: true
   - type: textarea
-    id: first-step
+    id: plan
     attributes:
-      label: 建议的第一步
+      label: 打算怎么做
+      description: 大致的做法，以及设计里没写到、要和维护者商量的地方
+    validations:
+      required: true
   - type: textarea
     id: acceptance
     attributes:
