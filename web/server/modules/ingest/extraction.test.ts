@@ -981,6 +981,26 @@ test("a duplicate is merged into the original and deleted", async () => {
   ]);
 });
 
+test("a merged program's links lead to the program it ended up in", async () => {
+  const { cs, notice, snapshot: first } = await setUp("merged.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const flagged = [];
+  for (const text of ["第二版", "第三版"]) {
+    const { snapshot_id } = await snapshot(notice, `${BODY}\n${text}`);
+    await extract(snapshot_id, [{ college_id: cs, fields: { apply: APPLY } }]);
+    flagged.push(...(await pendingOf(snapshot_id)));
+  }
+  const [original, second, third] = await programsOf(cs);
+  expect((await accept(flagged[0].id, { program_id: third.id })).status).toBe(204);
+  expect((await accept(flagged[1].id, { program_id: original.id })).status).toBe(204);
+  for (const { id } of [second, third]) {
+    const res = await v1.programs[":id"].$get({ param: { id: String(id) } }, member);
+    expect(res.status).toBe(308);
+    expect(res.headers.get("location")).toBe(`/api/v1/programs/${original.id}`);
+    expect(await res.json()).toEqual({ merged_into: original.id });
+  }
+});
+
 test("a field accepted from a notice older than the one the program has it from changes nothing", async () => {
   const { cs, notice, snapshot: snap } = await setUp("r7.edu.cn");
   await extract(snap, [

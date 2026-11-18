@@ -340,7 +340,7 @@ export async function listProgramEdits(programId: number) {
   return { edits: rows.map(toEdit) };
 }
 
-// The latest edits across the site, for the review page (design §12.4).
+// The latest edits across the site, for everyone signed in (design §12.4).
 export async function listRecentEdits(paging: { page: number; per_page: number }) {
   const page = await pageOf(
     editsQuery()

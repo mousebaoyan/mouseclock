@@ -21,7 +21,12 @@ function pagesFor(me: Me | null) {
   const main = [
     { to: "/", label: "项目总表" },
     { to: "/colleges", label: "院校清单" },
-    ...(me && !me.frozen ? [{ to: "/crawl", label: "抓取看板" }] : []),
+    ...(me && !me.frozen
+      ? [
+          { to: "/crawl", label: "抓取看板" },
+          { to: "/edits", label: "修改记录" },
+        ]
+      : []),
     ...(me?.can.edit ? [{ to: "/review", label: "审核" }] : []),
   ];
   const admin = [

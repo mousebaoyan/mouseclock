@@ -6,6 +6,7 @@ import {
   createRouter,
   errorResponse,
   IdParam,
+  Int,
   IntParam,
   type AppEnv,
 } from "../../platform/http.ts";
@@ -84,13 +85,22 @@ export const programsRoutes = createRouter()
       request: { params: IdParam },
       responses: {
         200: { description: "项目、原文和字段", content: json(ProgramDetail) },
+        308: {
+          description: "项目并进了另一个，`Location` 是留下的那个",
+          headers: z.object({ Location: z.string() }),
+          content: json(z.object({ merged_into: Int })),
+        },
         ...errors,
         404: errorResponse("项目不存在"),
       },
     }),
     async (c) => {
       authorize(c, "read");
-      return c.json(await getProgram(c.req.valid("param").id), 200);
+      const program = await getProgram(c.req.valid("param").id);
+      if ("merged_into" in program) {
+        return c.json(program, 308, { Location: `/api/v1/programs/${program.merged_into}` });
+      }
+      return c.json(program, 200);
     },
   )
   .openapi(

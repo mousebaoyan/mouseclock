@@ -4,12 +4,10 @@ import { data, Link, useFetcher } from "react-router";
 import { cn } from "~/cn";
 import { FormMessage } from "~/components/form";
 import { ExternalLink } from "~/components/icons";
-import { Empty, Page, Panel } from "~/components/page";
+import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { KindTag, PROGRAM_KINDS, type TagColor } from "~/components/tags";
-import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
-import { Segmented } from "~/components/ui/segmented";
 import { Select } from "~/components/ui/select";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
@@ -23,7 +21,6 @@ type Items = InferResponseType<Api["review-items"]["$get"], 200>;
 type Item = Items["items"][number];
 type Reason = Items["reason"];
 type Extracted = NonNullable<Item["extracted"]>;
-type Edits = InferResponseType<Api["edits"]["$get"], 200>;
 type Decide = (event: SubmitEvent<HTMLFormElement>) => void;
 
 // What each kind of item asks of a reviewer (design §8.3, §8.4), in the order the API lists them.
@@ -117,18 +114,13 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     page: params.get("page") ?? undefined,
     per_page: params.get("per_page") ?? undefined,
   };
-  const thisYear = beijingYear(new Date());
-  if (params.get("tab") === "edits") {
-    const edits = await readApi<Edits>(await api.edits.$get({ query: paging }));
-    return { tab: "edits" as const, edits, thisYear };
-  }
   const reason = params.get("reason");
   const items = await readApi<Items>(
     await api["review-items"].$get({
       query: { reason: isReason(reason) ? reason : undefined, ...paging },
     }),
   );
-  return { tab: "items" as const, items, thisYear };
+  return { items, thisYear: beijingYear(new Date()) };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
@@ -161,18 +153,7 @@ export async function action({ request, context }: Route.ActionArgs) {
 export default function Review({ loaderData }: Route.ComponentProps) {
   return (
     <Page title="审核" hideTitle>
-      <Segmented
-        label="审核"
-        items={[
-          { to: "/review", label: "待审核", on: loaderData.tab === "items" },
-          { to: "/review?tab=edits", label: "修改记录", on: loaderData.tab === "edits" },
-        ]}
-      />
-      {loaderData.tab === "items" ? (
-        <Queue items={loaderData.items} thisYear={loaderData.thisYear} />
-      ) : (
-        <EditList edits={loaderData.edits} thisYear={loaderData.thisYear} />
-      )}
+      <Queue items={loaderData.items} thisYear={loaderData.thisYear} />
     </Page>
   );
 }
@@ -785,48 +766,5 @@ function Choice({
       </label>
       {checked && children && <div className="px-3.5 pb-3.5 sm:pl-10.5">{children}</div>}
     </div>
-  );
-}
-
-function EditList({ edits, thisYear }: { edits: Edits; thisYear: number }) {
-  if (edits.items.length === 0) return <Empty>暂无修改记录</Empty>;
-  return (
-    <Panel flush>
-      <ol className="divide-y">
-        {edits.items.map((edit) => (
-          <li
-            key={edit.id}
-            className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:px-5"
-          >
-            <p className="min-w-0">
-              <span className="font-medium">{edit.user.display_name}</span>
-              <span className="text-muted-foreground">
-                {edit.reverts_id === null ? " 修改了 " : ` 撤销了 #${edit.reverts_id}，涉及 `}
-              </span>
-              <Link to={`/programs/${edit.program.id}#edits`} className="link">
-                {edit.program.school} {edit.program.college} {edit.program.name}
-              </Link>
-              <span className="text-muted-foreground"> 的{fieldLabel(edit.field)}</span>
-            </p>
-            <p className="text-xs text-subtle-foreground sm:row-span-2 sm:text-right">
-              #{edit.id}　<DateTime value={edit.created_at} />
-            </p>
-            <p className="text-[13px]">
-              <span className="text-muted-foreground line-through decoration-1">
-                {formatValue(edit.field, edit.old_value, thisYear)}
-              </span>
-              <span className="mx-1.5 text-subtle-foreground">→</span>
-              {formatValue(edit.field, edit.new_value, thisYear)}
-              {edit.reason !== null && (
-                <span className="ml-3 text-muted-foreground">理由：{edit.reason}</span>
-              )}
-            </p>
-          </li>
-        ))}
-      </ol>
-      <div className="px-4 pb-4 empty:hidden sm:px-5">
-        <Pagination total={edits.total} page={edits.page} perPage={edits.per_page} />
-      </div>
-    </Panel>
   );
 }
