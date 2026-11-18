@@ -425,12 +425,13 @@ async function mergeDuplicate(
     .execute();
   for (const version of versions) {
     const decided = decisions.filter((d) => d.snapshot_id === version.snapshot_id);
-    // One notice gave both, and a notice is one version of a program, not two.
+    // Both have a version from this snapshot, and a snapshot is one version of a program, not
+    // two. Another snapshot of the same notice is the usual duplicate, though, and merges.
     if (await hasVersion(trx, targetId, version.snapshot_id)) {
       throw new AppError(
         409,
         "already_merged",
-        "原来的项目也有这条通知的版本，同一条通知没法在一个项目里算两个版本",
+        "两个项目都有同一份快照的版本，没法合并，请删掉多出来的那个",
       );
     }
     await holdForReview(
@@ -476,13 +477,18 @@ async function mergeDuplicate(
     .where("reason", "=", "unparsed_date")
     .where("status", "=", "pending")
     .execute();
-  await dropProgram(trx, reviewer, duplicateId);
+  await dropProgram(trx, reviewer, duplicateId, targetId);
 }
 
 // What still waits on a deleted program has nothing left to decide; an item being accepted is
 // set afterwards as it is.
-async function dropProgram(trx: Transaction<DB>, reviewer: Reviewer, id: number) {
-  await deleteProgram(trx, id);
+async function dropProgram(
+  trx: Transaction<DB>,
+  reviewer: Reviewer,
+  id: number,
+  keptId: number | null,
+) {
+  await deleteProgram(trx, id, keptId);
   await trx
     .updateTable("review_items")
     .set({ status: "rejected", resolved_by: reviewer.user_id, resolved_at: new Date() })
@@ -504,7 +510,7 @@ export async function removeProgram(admin: Reviewer, id: number, reason: string)
       .forUpdate()
       .execute();
     await lockProgram(trx, id);
-    await dropProgram(trx, admin, id);
+    await dropProgram(trx, admin, id, null);
     await recordAudit(trx, {
       user_id: admin.user_id,
       action: "delete",

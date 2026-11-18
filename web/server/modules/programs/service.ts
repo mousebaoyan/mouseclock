@@ -169,8 +169,20 @@ function notFound(): never {
   throw new AppError(404, "not_found", "项目不存在");
 }
 
+// Where a merged program's links lead (design §12.2). Asked only once the program isn't found:
+// a merge marks it deleted and where it went in one go, so this sees both or neither.
+async function mergedInto(id: number) {
+  const row = await db
+    .selectFrom("programs")
+    .select("merged_into")
+    .where("id", "=", id)
+    .executeTakeFirst();
+  if (!row || row.merged_into === null) notFound();
+  return { merged_into: row.merged_into };
+}
+
 // A program's page (design §10): its fields with their evidence, and the original to check
-// them against.
+// them against. A merged program has none of its own and leads to the one it went into.
 export async function getProgram(id: number) {
   const row = await db
     .selectFrom("programs as p")
@@ -203,7 +215,7 @@ export async function getProgram(id: number) {
     .where("p.id", "=", id)
     .where("p.deleted_at", "is", null)
     .executeTakeFirst();
-  if (!row) notFound();
+  if (!row) return mergedInto(id);
   return {
     id: row.id,
     school: { name: row.school_name, tier: row.school_tier, logo: row.school_logo },
@@ -584,9 +596,22 @@ async function applyTimes(trx: Transaction<DB>, programId: number) {
   };
 }
 
-// A program merged into another on the review page (design §12.2); it stays for the record.
-export async function deleteProgram(trx: Transaction<DB>, id: number) {
-  await trx.updateTable("programs").set({ deleted_at: new Date() }).where("id", "=", id).execute();
+// A program an admin deleted, or one merged into another on the review page (design §12.2); it
+// stays for the record. A merged one's links lead to where it went, and so do those of the ones
+// merged into it before, so a link never has to be followed twice.
+export async function deleteProgram(trx: Transaction<DB>, id: number, keptId: number | null) {
+  await trx
+    .updateTable("programs")
+    .set({ deleted_at: new Date(), merged_into: keptId })
+    .where("id", "=", id)
+    .execute();
+  if (keptId !== null) {
+    await trx
+      .updateTable("programs")
+      .set({ merged_into: keptId })
+      .where("merged_into", "=", id)
+      .execute();
+  }
 }
 
 // Someone checked all of a program's fields against the original (design §9.2).

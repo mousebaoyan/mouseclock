@@ -137,6 +137,7 @@ export interface Programs {
   deleted_at: Timestamp | null;
   id: Generated<number>;
   kind: string;
+  merged_into: number | null;
   name: string;
   verified_at: Timestamp | null;
   verified_by: number | null;

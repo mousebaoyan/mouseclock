@@ -59,15 +59,17 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const api = context.get(apiContext).programs[":id"];
   const param = { id: params.id };
-  const [program, { versions }, { edits }] = await Promise.all([
-    api.$get({ param }).then((res) => readApi<Program>(res)),
-    api.versions.$get({ param }).then((res) => readApi<{ versions: Version[] }>(res)),
-    api.edits.$get({ param }).then((res) => readApi<{ edits: Edit[] }>(res)),
+  const [res, versions, edits] = await Promise.all([
+    api.$get({ param }),
+    api.versions.$get({ param }),
+    api.edits.$get({ param }),
   ]);
+  // A merged program's page is the one it went into (design §12.2).
+  if (res.status === 308) return redirect(`/programs/${(await res.json()).merged_into}`, 301);
   return {
-    program,
-    versions,
-    edits,
+    program: await readApi<Program>(res),
+    versions: (await readApi<{ versions: Version[] }>(versions)).versions,
+    edits: (await readApi<{ edits: Edit[] }>(edits)).edits,
     thisYear: beijingYear(new Date()),
     now: Math.floor(Date.now() / 1000),
   };
