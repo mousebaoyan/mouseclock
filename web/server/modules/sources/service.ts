@@ -5,7 +5,7 @@ import type { DB } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
-import { recordAudit } from "../review/service.ts";
+import { recordAudit } from "../../platform/audit.ts";
 import type { Kind } from "../programs/schemas.ts";
 import { applyOf, eventEndOf, logoOf } from "../programs/service.ts";
 import { closesAt } from "../programs/time.ts";

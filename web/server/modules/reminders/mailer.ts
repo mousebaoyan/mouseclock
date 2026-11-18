@@ -5,7 +5,7 @@ import { env } from "../../platform/env.ts";
 import { AppError } from "../../platform/errors.ts";
 import { log } from "../../platform/log.ts";
 import { SITE_NAME } from "../../platform/site.ts";
-import { recordAudit } from "../review/service.ts";
+import { recordAudit } from "../../platform/audit.ts";
 
 // The mailboxes the owner set up (design §11.2), and the one place mail leaves through. As in
 // mousehole: tried in order, and one that fails rests a while so the next takes over. A QQ

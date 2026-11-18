@@ -3,6 +3,7 @@ import { sql, type Selectable, type Transaction } from "kysely";
 import type { DB, Edits, Json } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
+import { recordAudit } from "../../platform/audit.ts";
 import { unix } from "../../platform/http.ts";
 import { holdEditing, restoreEditing, revokeEditing } from "../accounts/service.ts";
 import {
@@ -16,33 +17,6 @@ import type { StoredValue } from "../programs/schemas.ts";
 import { ProgramColumns, type ProgramEdit } from "./schemas.ts";
 
 type Actor = { user_id: number; via: "web" };
-
-export async function recordAudit(
-  trx: Transaction<DB>,
-  entry: {
-    user_id: number;
-    action: string;
-    target_type:
-      | "school"
-      | "college"
-      | "program"
-      | "source"
-      | "source_probe"
-      | "user"
-      | "review_item"
-      | "crawler_token"
-      | "email_rules"
-      | "mail_accounts";
-    // None for settings, which have no row of their own.
-    target_id: number | null;
-    detail: Record<string, unknown>;
-  },
-) {
-  await trx
-    .insertInto("audit_log")
-    .values({ ...entry, detail: JSON.stringify(entry.detail) })
-    .execute();
-}
 
 const COLUMNS = ProgramColumns.keyof().options;
 type FieldEdits = Omit<ProgramEdit, (typeof COLUMNS)[number] | "reason" | "basis">;

@@ -6,7 +6,7 @@ import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
 import { log } from "../../platform/log.ts";
 import { SITE_NAME } from "../../platform/site.ts";
-import { recordAudit } from "../review/service.ts";
+import { recordAudit } from "../../platform/audit.ts";
 import { isKind, KINDS, MESSAGE_KINDS, type EmailRule, type MessageKind } from "./kinds.ts";
 import { deliver } from "./mailer.ts";
 
