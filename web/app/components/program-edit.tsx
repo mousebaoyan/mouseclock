@@ -14,7 +14,9 @@ import { Select } from "./ui/select.tsx";
 
 type ProgramApi = ReturnType<typeof createApi>["programs"][":id"];
 type Program = InferResponseType<ProgramApi["$get"], 200>;
-export type Edit = InferResponseType<ProgramApi["edits"]["$get"], 200>["edits"][number];
+type History = InferResponseType<ProgramApi["edits"]["$get"], 200>;
+export type Edit = History["edits"][number];
+type Review = History["reviews"][number];
 
 // What a form edits: the program's name, cohort and kind, or one of its fields.
 export type EditField =
@@ -282,12 +284,14 @@ function TimeInput({ name, label, value }: { name: string; label: string; value?
 // all someone's edits and take back their editing.
 export function EditHistory({
   edits,
+  reviews,
   thisYear,
   canEdit,
   canAdmin,
   error,
 }: {
   edits: Edit[];
+  reviews: Review[];
   thisYear: number;
   canEdit: boolean;
   canAdmin: boolean;
@@ -298,9 +302,14 @@ export function EditHistory({
   const revoking = canAdmin
     ? edits.find((edit) => String(edit.user.id) === search.get("revoke"))
     : undefined;
-  if (edits.length === 0) {
+  if (edits.length + reviews.length === 0) {
     return <p className="text-[13px] text-muted-foreground">暂无修改记录</p>;
   }
+  // The reviews of disputes among the edits, by time.
+  const entries = [
+    ...edits.map((edit, i) => ({ at: edit.created_at, edit, i })),
+    ...reviews.map((review) => ({ at: review.at, review })),
+  ].toSorted((a, b) => b.at - a.at);
   return (
     <div className="space-y-3">
       <FormMessage error={error} />
@@ -332,75 +341,135 @@ export function EditHistory({
         </Form>
       )}
       <ol className="relative space-y-4 border-l pl-5">
-        {edits.map((edit, i) => (
-          <li key={edit.id} className="relative text-sm">
-            <span
-              aria-hidden="true"
-              className="absolute top-1.5 -left-[24.5px] size-2 rounded-full border-2 border-card bg-input ring-1 ring-input"
-            />
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-              <span className="font-medium">{edit.user.display_name}</span>
-              <span className="text-muted-foreground">
-                {edit.reverts_id === null ? "修改了" : `撤销了 #${edit.reverts_id} 的`}
-                {fieldLabel(edit.field)}
-              </span>
-              {edit.reverted && <Tag color="gray">已撤销</Tag>}
-              <span className="text-xs text-subtle-foreground">
-                #{edit.id}　<DateTime value={edit.created_at} />
-                {edit.via === "agent" && "　通过 Agent"}
-              </span>
-            </p>
-            <div className="mt-1.5 grid gap-1 rounded-md bg-muted/70 px-3 py-2 text-[13px] sm:grid-cols-[3rem_minmax(0,1fr)]">
-              <span className="text-muted-foreground">修改前</span>
-              <span className="text-muted-foreground line-through decoration-1">
-                {formatValue(edit.field, edit.old_value, thisYear)}
-              </span>
-              <span className="text-muted-foreground">修改后</span>
-              <span>{formatValue(edit.field, edit.new_value, thisYear)}</span>
-            </div>
-            {edit.reason !== null && (
-              <p className="mt-1.5 text-[13px] text-muted-foreground">
-                理由：{edit.reason}
-                {edit.basis !== null && (
-                  <>
-                    　依据：
-                    <Basis basis={edit.basis} />
-                  </>
-                )}
+        {entries.map((entry) =>
+          "review" in entry ? (
+            <li key={`review-${entry.at}`} className="relative text-sm">
+              <span
+                aria-hidden="true"
+                className="absolute top-1.5 -left-[24.5px] size-2 rounded-full border-2 border-card bg-tag-red ring-1 ring-tag-red"
+              />
+              <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="font-medium">{entry.review.by.display_name}</span>
+                <span className="text-muted-foreground">
+                  复核了争议：{entry.review.result === "corrected" ? "已改正" : "确认没错"}
+                </span>
+                <span className="text-xs text-subtle-foreground">
+                  <DateTime value={entry.review.at} />
+                </span>
               </p>
-            )}
-            {(canEdit || canAdmin) && (
-              <div className="mt-1.5 flex flex-wrap gap-1">
-                {canEdit && !edit.reverted && (
-                  <Form method="post" preventScrollReset>
-                    <input type="hidden" name="intent" value="revert" />
-                    <input type="hidden" name="edit_id" value={edit.id} />
-                    <Button variant="ghost" size="xs" disabled={busy} className="-ml-2">
-                      撤销此修改
-                    </Button>
-                  </Form>
-                )}
-                {/* Once a person, at their latest edit. */}
-                {canAdmin && edits.findIndex((item) => item.user.id === edit.user.id) === i && (
-                  <Link
-                    to={`?revoke=${edit.user.id}#edits`}
-                    replace
-                    preventScrollReset
-                    className={buttonVariants({
-                      variant: "ghost",
-                      size: "xs",
-                      className: "text-destructive hover:text-destructive",
-                    })}
-                  >
-                    撤销此人的全部修改
-                  </Link>
-                )}
-              </div>
-            )}
-          </li>
-        ))}
+              <p className="mt-1.5 text-[13px] text-muted-foreground wrap-anywhere">
+                说明：{entry.review.note}
+              </p>
+            </li>
+          ) : (
+            <EditEntry
+              key={entry.edit.id}
+              edit={entry.edit}
+              latestOfUser={
+                edits.findIndex((item) => item.user.id === entry.edit.user.id) === entry.i
+              }
+              thisYear={thisYear}
+              canEdit={canEdit}
+              canAdmin={canAdmin}
+              busy={busy}
+            />
+          ),
+        )}
       </ol>
     </div>
+  );
+}
+
+function EditEntry({
+  edit,
+  latestOfUser,
+  thisYear,
+  canEdit,
+  canAdmin,
+  busy,
+}: {
+  edit: Edit;
+  latestOfUser: boolean;
+  thisYear: number;
+  canEdit: boolean;
+  canAdmin: boolean;
+  busy: boolean;
+}) {
+  return (
+    <li className="relative text-sm">
+      <span
+        aria-hidden="true"
+        className="absolute top-1.5 -left-[24.5px] size-2 rounded-full border-2 border-card bg-input ring-1 ring-input"
+      />
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-medium">{edit.user.display_name}</span>
+        <span className="text-muted-foreground">
+          {edit.reverts_id === null ? "修改了" : `撤销了 #${edit.reverts_id} 的`}
+          {fieldLabel(edit.field)}
+        </span>
+        {edit.reverted && <Tag color="gray">已撤销</Tag>}
+        <span className="text-xs text-subtle-foreground">
+          #{edit.id}　<DateTime value={edit.created_at} />
+          {edit.via === "agent" && "　通过 Agent"}
+        </span>
+      </p>
+      <div className="mt-1.5 grid gap-1 rounded-md bg-muted/70 px-3 py-2 text-[13px] sm:grid-cols-[3rem_minmax(0,1fr)]">
+        <span className="text-muted-foreground">修改前</span>
+        <span className="text-muted-foreground line-through decoration-1">
+          {formatValue(edit.field, edit.old_value, thisYear)}
+        </span>
+        <span className="text-muted-foreground">修改后</span>
+        <span>{formatValue(edit.field, edit.new_value, thisYear)}</span>
+      </div>
+      {edit.reason !== null && (
+        <p className="mt-1.5 text-[13px] text-muted-foreground">
+          {edit.feedback_id !== null && (
+            <>
+              照
+              <Link to={`/feedback/${edit.feedback_id}`} className="link">
+                修改申请 #{edit.feedback_id}
+              </Link>
+              　
+            </>
+          )}
+          理由：{edit.reason}
+          {edit.basis !== null && (
+            <>
+              　依据：
+              <Basis basis={edit.basis} />
+            </>
+          )}
+        </p>
+      )}
+      {(canEdit || canAdmin) && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {canEdit && !edit.reverted && (
+            <Form method="post" preventScrollReset>
+              <input type="hidden" name="intent" value="revert" />
+              <input type="hidden" name="edit_id" value={edit.id} />
+              <Button variant="ghost" size="xs" disabled={busy} className="-ml-2">
+                撤销此修改
+              </Button>
+            </Form>
+          )}
+          {/* Once a person, at their latest edit. */}
+          {canAdmin && latestOfUser && (
+            <Link
+              to={`?revoke=${edit.user.id}#edits`}
+              replace
+              preventScrollReset
+              className={buttonVariants({
+                variant: "ghost",
+                size: "xs",
+                className: "text-destructive hover:text-destructive",
+              })}
+            >
+              撤销此人的全部修改
+            </Link>
+          )}
+        </div>
+      )}
+    </li>
   );
 }
 

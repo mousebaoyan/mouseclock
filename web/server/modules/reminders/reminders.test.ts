@@ -155,6 +155,7 @@ test("an email goes by the owner's rule until the member sets their own, and nev
     { kind: "deadline_changed", label: "截止变了", enabled: false, default_enabled: false },
     { kind: "college_news", label: "学院有新通知", enabled: true, default_enabled: true },
     { kind: "inclusion_result", label: "求收录有结果", enabled: true, default_enabled: true },
+    { kind: "feedback_result", label: "反馈有结果", enabled: false, default_enabled: false },
   ]);
 
   // A member's own switch doesn't outlast "never", and the kind leaves their page.
@@ -168,6 +169,7 @@ test("an email goes by the owner's rule until the member sets their own, and nev
     "deadline_changed",
     "college_news",
     "inclusion_result",
+    "feedback_result",
   ]);
   await rules.$put(
     { json: { deadline_soon: "default_on", deadline_changed: "default_on" } },

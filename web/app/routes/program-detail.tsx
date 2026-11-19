@@ -14,13 +14,8 @@ import { Field, FormMessage } from "~/components/form";
 import { ExternalLink, Quote } from "~/components/icons";
 import { Facts, Page, Panel } from "~/components/page";
 import { SchoolLogo } from "~/components/school-logo";
-import {
-  EditForm,
-  EditHistory,
-  EditLink,
-  type Edit,
-  type EditField,
-} from "~/components/program-edit";
+import { FeedbackForm, FeedbackLink, WaitingFeedback, type Feedback } from "~/components/feedback";
+import { EditForm, EditHistory, EditLink, type EditField } from "~/components/program-edit";
 import { ApplyDeadline, ApplyStart, Missing, ProgramStatus } from "~/components/program";
 import { Subscribe } from "~/components/subscribe";
 import { KindTag, RoleTag, STAGES, Tag, TierTag } from "~/components/tags";
@@ -30,7 +25,7 @@ import { Reveal } from "~/components/ui/reveal";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { DEGREES, fieldLabel, MODES } from "../fields.ts";
-import { editValues, FormError } from "../program-edit.server.ts";
+import { editValues, feedbackValue, FormError } from "../program-edit.server.ts";
 import type { loader as rootLoader } from "../root.tsx";
 import { applicationsOf, subscribedTo } from "../table-cache.ts";
 import { formatApply, formatWindow, useNow } from "../time.ts";
@@ -40,6 +35,7 @@ import type { Route } from "./+types/program-detail.ts";
 type ProgramApi = ReturnType<typeof createApi>["programs"][":id"];
 type Program = InferResponseType<ProgramApi["$get"], 200>;
 type Version = InferResponseType<ProgramApi["versions"]["$get"], 200>["versions"][number];
+type History = InferResponseType<ProgramApi["edits"]["$get"], 200>;
 type Fields = Program["fields"];
 // What every field and part has besides its value.
 type Support = Pick<NonNullable<Fields["quota"]>, "evidence" | "version">;
@@ -63,10 +59,11 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const api = context.get(apiContext);
   const param = { id: params.id };
-  const [res, versions, edits, subscribed, applications] = await Promise.all([
+  const [res, versions, history, feedback, subscribed, applications] = await Promise.all([
     api.programs[":id"].$get({ param }),
     api.programs[":id"].versions.$get({ param }),
     api.programs[":id"].edits.$get({ param }),
+    api.programs[":id"].feedback.$get({ param }),
     subscribedTo(api),
     applicationsOf(api),
   ]);
@@ -76,7 +73,8 @@ export async function loader({ params, context }: Route.LoaderArgs) {
   return {
     program: await readApi<Program>(res),
     versions: (await readApi<{ versions: Version[] }>(versions)).versions,
-    edits: (await readApi<{ edits: Edit[] }>(edits)).edits,
+    history: await readApi<History>(history),
+    feedback: (await readApi<{ feedback: Feedback[] }>(feedback)).feedback,
     subscribed: subscribed.includes(id),
     application: id in applications ? applications[id] : null,
     thisYear: beijingYear(new Date()),
@@ -105,6 +103,33 @@ export async function action({ request, params, context }: Route.ActionArgs) {
     }
     return redirect(`/programs/${params.id}`);
   }
+  if (intent === "feedback") {
+    const group = formText(form, "group");
+    const field = formText(form, "field") || null;
+    const reason = formText(form, "reason");
+    const basis = formText(form, "basis").trim();
+    let json;
+    try {
+      json =
+        field !== null && formText(form, "kind") === "edit"
+          ? { kind: "edit" as const, field, value: feedbackValue(field, form), reason, basis }
+          : { kind: "problem" as const, field, reason, basis: basis || null };
+    } catch (error) {
+      if (error instanceof FormError)
+        return data({ intent, field: group, error: error.message }, 400);
+      throw error;
+    }
+    const res = await api.programs[":id"].feedback.$post({ param, json });
+    if (res.status !== 201) {
+      return data({ intent, field: group, error: (await res.json()).error.message }, res.status);
+    }
+    return redirect(`/programs/${params.id}#feedback`);
+  }
+  if (intent === "withdraw_feedback") {
+    const res = await api.feedback[":id"].$delete({ param: { id: formText(form, "feedback_id") } });
+    if (res.status === 204) return redirect(`/programs/${params.id}#feedback`);
+    return data({ intent, field: null, error: (await res.json()).error.message }, res.status);
+  }
   if (intent === "delete") {
     const json = { reason: formText(form, "reason") };
     const res = await api.programs[":id"].$delete({ param, json });
@@ -125,12 +150,16 @@ export async function action({ request, params, context }: Route.ActionArgs) {
 }
 
 export default function ProgramDetail({ loaderData, actionData }: Route.ComponentProps) {
-  const { program, versions, edits, thisYear } = loaderData;
+  const { program, versions, history, feedback, thisYear } = loaderData;
   const { school, college, notice, verified } = program;
   const now = useNow(loaderData.now);
-  const can = useRouteLoaderData<typeof rootLoader>("root")?.me?.can;
+  const me = useRouteLoaderData<typeof rootLoader>("root")?.me;
+  const can = me?.can;
   const [search] = useSearchParams();
   const editing = can?.edit ? search.get("edit") : null;
+  // Muted members only read what others said (design §12.1).
+  const mayGive = me !== undefined && me !== null && !me.muted;
+  const giving = mayGive ? search.get("feedback") : null;
   // Anyone who can open the page keeps their own record of applying.
   const recording = search.get("edit") === "application";
   const { application } = loaderData;
@@ -143,6 +172,8 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
   const { event } = program.fields;
   const formError = (field: string) =>
     actionData?.intent === "edit" && actionData.field === field ? actionData.error : undefined;
+  const feedbackError = (group: string) =>
+    actionData?.intent === "feedback" && actionData.field === group ? actionData.error : undefined;
   return (
     <Page
       title={program.name}
@@ -163,6 +194,7 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
           <span>{program.cohort} 届</span>
           <KindTag kind={program.kind} />
           {verified && <Tag color="green">已核对</Tag>}
+          {program.disputed && <Tag color="red">有争议</Tag>}
           {notice.removed && <Tag color="gray">原文已删除</Tag>}
         </>
       }
@@ -182,6 +214,16 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
               className={buttonVariants({ variant: "outline", className: "max-sm:order-last" })}
             >
               {application ? `报名进度：${STAGES[application.stage].label}` : "记报名"}
+            </Link>
+          )}
+          {mayGive && giving !== "program" && (
+            <Link
+              to="?feedback=program"
+              replace
+              preventScrollReset
+              className={buttonVariants({ variant: "ghost", className: "max-sm:order-last" })}
+            >
+              反馈
             </Link>
           )}
           {can?.edit && editing !== "program" && (
@@ -240,8 +282,25 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
           />
         </div>
       )}
+      {program.disputed && (
+        <p
+          role="note"
+          className="rounded-xl border border-tag-red/30 bg-tag-red/8 px-4 py-3 text-[13px] text-pretty sm:px-5"
+        >
+          <span className="font-medium text-tag-red">有争议：</span>
+          有几个人反馈这里可能有错，请以原文为准
+        </p>
+      )}
       {editing === "program" && (
         <EditForm field="program" program={program} error={formError("program")} />
+      )}
+      {giving === "program" && (
+        <FeedbackForm
+          group="program"
+          program={program}
+          canEdit={Boolean(can?.edit)}
+          error={feedbackError("program")}
+        />
       )}
       <Facts
         items={[
@@ -282,13 +341,23 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
                           program={program}
                           error={formError(row.field)}
                         />
+                      ) : giving === row.field ? (
+                        <FeedbackForm
+                          group={row.field}
+                          program={program}
+                          canEdit={Boolean(can?.edit)}
+                          error={feedbackError(row.field)}
+                        />
                       ) : (
                         <>
                           <div className="flex items-start justify-between gap-3">
                             <div className="min-w-0 leading-relaxed">
                               {stated(row) ? row.value : <Missing />}
                             </div>
-                            {can?.edit && <EditLink field={row.field} />}
+                            <div className="flex shrink-0 gap-0.5">
+                              {mayGive && stated(row) && <FeedbackLink group={row.field} />}
+                              {can?.edit && <EditLink field={row.field} />}
+                            </div>
                           </div>
                           {stated(row) && <Evidence parts={row.parts} versions={versions} />}
                         </>
@@ -301,7 +370,8 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
           </Panel>
           <Panel id="edits" title="修改记录">
             <EditHistory
-              edits={edits}
+              edits={history.edits}
+              reviews={history.reviews}
               thisYear={thisYear}
               canEdit={Boolean(can?.edit)}
               canAdmin={Boolean(can?.admin)}
@@ -314,6 +384,14 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
           </Panel>
         </div>
         <aside className="space-y-5">
+          <Panel
+            id="feedback"
+            title={`待处理的反馈${feedback.length > 0 ? `（${feedback.length}）` : ""}`}
+            description="别人说过的问题，不用再提"
+          >
+            <WaitingFeedback feedback={feedback} me={me?.id} thisYear={thisYear} />
+            {actionData?.intent === "withdraw_feedback" && <FormMessage error={actionData.error} />}
+          </Panel>
           {can?.edit && (
             <Panel title="核对">
               {verified ? (

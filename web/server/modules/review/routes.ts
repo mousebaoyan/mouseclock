@@ -5,6 +5,7 @@ import {
   EditRevokedUser,
   ProgramEdit,
   ProgramEdits,
+  ProgramHistory,
   RecentEdits,
   RecentEditsQuery,
   RevokeResult,
@@ -68,7 +69,10 @@ export const reviewRoutes = createRouter()
       summary: "项目的修改记录",
       request: { params: IdParam },
       responses: {
-        200: { description: "修改和撤销，最新的在前", content: json(ProgramEdits) },
+        200: {
+          description: "修改、撤销和争议的复核，最新的在前",
+          content: json(ProgramHistory),
+        },
         ...readErrors,
         404: errorResponse("项目不存在"),
       },

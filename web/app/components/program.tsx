@@ -71,7 +71,14 @@ export function ProgramCard({
   subscribe,
   notice,
 }: {
-  program: Instants & { id: number; kind: Kind; name: string; apply: ApplyValue | null };
+  // Disputed only where the table's fields come (design §12.3).
+  program: Instants & {
+    id: number;
+    kind: Kind;
+    name: string;
+    apply: ApplyValue | null;
+    disputed?: boolean;
+  };
   now: number;
   thisYear: number;
   place: ReactNode;
@@ -84,6 +91,7 @@ export function ProgramCard({
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">{place}</div>
         <div className="flex flex-wrap justify-end gap-1.5">
+          {program.disputed && <Tag color="red">有争议</Tag>}
           <ProgramStatus program={program} now={now} />
           <KindTag kind={program.kind} />
         </div>

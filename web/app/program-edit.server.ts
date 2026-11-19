@@ -1,6 +1,7 @@
-import { KINDS, type TimeValue } from "../server/modules/programs/schemas.ts";
+import { KINDS, type StoredValue, type TimeValue } from "../server/modules/programs/schemas.ts";
 import type { ProgramEdit } from "../server/modules/review/schemas.ts";
 import { formText } from "./admin.server.ts";
+import { fieldLabel } from "./fields.ts";
 import { parseTime, TIME_HINT } from "./time.ts";
 
 type Values = Omit<ProgramEdit, "reason" | "basis">;
@@ -84,4 +85,30 @@ function timeOf(text: string, label: string): TimeValue | undefined {
   const value = parseTime(text);
   if (!value) throw new FormError(`${label}的写法不对，${TIME_HINT}`);
   return value;
+}
+
+// The value a feedback form (components/feedback.tsx) asks one part to be; left empty, cleared.
+export function feedbackValue(field: string, form: FormData): StoredValue | null {
+  const text = formText(form, "value").trim();
+  const label = fieldLabel(field);
+  if (field.startsWith("dates:")) {
+    const start = timeOf(formText(form, "start").trim(), `「${label}」的开始`);
+    const end = timeOf(formText(form, "end").trim(), `「${label}」的结束`);
+    return start ? { start, end } : end ? { end } : null;
+  }
+  if (field.endsWith(":start") || field.endsWith(":end")) return timeOf(text, label) ?? null;
+  if (field === "apply:rolling") return form.has("value") ? true : null;
+  if (field === "cohort") return text ? Number(text) : null;
+  if (field === "degrees") {
+    const degrees = form.getAll("degrees").filter((value) => typeof value === "string");
+    return degrees.length > 0 ? degrees : null;
+  }
+  if (LISTS.some((list) => list === field)) {
+    const items = text
+      .split("\n")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    return items.length > 0 ? items : null;
+  }
+  return text || null;
 }

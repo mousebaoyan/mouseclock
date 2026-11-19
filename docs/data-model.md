@@ -52,7 +52,7 @@
 
 | 表 | 模块 | 说明 |
 | --- | --- | --- |
-| `edits` | `review` | 每次人工修改，包括撤销（`reverts_id`）：改的是字段（`field` 是 `program_fields` 的 `key`，分部分的字段一部分一行），或者项目的名称、届、类型；改前改后的值、理由、依据（原文链接或截图）、谁、通过网页还是 Agent。改前的值为空是原来没有，改后的为空是清空。`old_version_id`、`old_edit_id` 是改前的来源，撤销时连来源一起放回去，也用来判断这次修改还在不在（[总体设计 §12.4](design.md#124-记录和撤销)）：来自哪个版本，或者是哪次修改设的；都为空是原来没有，名称、届、类型是建项目时的。撤销的理由和依据为空 |
+| `edits` | `review` | 每次人工修改，包括撤销（`reverts_id`）：改的是字段（`field` 是 `program_fields` 的 `key`，分部分的字段一部分一行），或者项目的名称、届、类型；改前改后的值、理由、依据（原文链接或截图）、谁、通过网页还是 Agent；照修改申请改的，`feedback_id` 指向那条申请。改前的值为空是原来没有，改后的为空是清空。`old_version_id`、`old_edit_id` 是改前的来源，撤销时连来源一起放回去，也用来判断这次修改还在不在（[总体设计 §12.4](design.md#124-记录和撤销)）：来自哪个版本，或者是哪次修改设的；都为空是原来没有，名称、届、类型是建项目时的。撤销的理由和依据为空 |
 | `review_items` | `ingest` | 审核页上待人判断的：抽取时没上表的字段（证据找不到、证据在图片里、置信度低、明显不对、和人工改的值冲突），以及没法直接归并的项目（编号或学院对不上、届不对、可能重复、报名通知没有截止、原文时间无法识别）。`payload` 是抽取出来的原样，除未识别日期只记处理结果外，通过就照它上表：字段的带 `key`，`payload` 是 `program_fields` 那一行的 `value`、`evidence` 和 `confidence`；项目的是抽取给的整个项目（编号、学院、届、类型、名称、作用和字段）；`unparsed_date` 的项目还带 `unresolved_dates` 原文和证据，其他确定字段可已合并，关闭这一待审只记处理结果，不把原文换算或写入时间值 |
 | `audit_log` | `platform` | 管理员和站长的其他操作，各模块在做这件事的事务里调 `platform/audit.ts` 的 `recordAudit` 记；改的是设置的（邮件规则、发信邮箱），`target_id` 为空 |
 
@@ -97,8 +97,8 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `feedback` | `program_id`、`user_id`、`kind`、`field`、`old_value`、`proposed_value`、`reason`、`basis`、`status`、`via`、`created_at`、`reviewed_by`、`reviewed_at`、`review_note` | 反馈和修改申请（[总体设计 §12.1](design.md#121-反馈)）。`kind` 是只说有问题 `problem` 还是修改申请 `edit`；`field` 是 `program_fields` 的键，或者 `name`、`cohort`、`kind`，为空是说整个项目；`old_value` 是提的时候（改过的就是最后一次改的时候）这一处的值，审核时和现在的比，不一样就标出来；修改申请的 `proposed_value` 为空是要清空。`status` 是 `pending`、`accepted`（通过、已改正）、`rejected`（驳回、没问题）、`withdrawn`（撤回）。`edits` 加 `feedback_id`，指向照它改的修改申请 |
-| `disputes` | `program_id`、`opened_at`、`resolved_by`、`resolved_at`、`result`、`note` | 每次争议一行，`resolved_at` 为空是还在争议中，`result` 是改正了 `corrected` 还是确认没错 `confirmed`；争议的人数从上一次的 `resolved_at` 以后数（[总体设计 §12.3](design.md#123-争议)） |
+| `feedback` | `program_id`、`user_id`、`kind`、`field`、`old_value`、`proposed_value`、`reason`、`basis`、`status`、`via`、`created_at`、`reviewed_by`、`reviewed_at`、`review_note` | 反馈和修改申请（[总体设计 §12.1](design.md#121-反馈)）。`kind` 是只说有问题 `problem` 还是修改申请 `edit`；`field` 是 `program_fields` 的键，或者 `name`、`cohort`、`kind`，为空是说整个项目；`old_value` 是提的时候这一处的值，审核时和现在的比，不一样就标出来；修改申请的 `proposed_value` 为空是要清空。`status` 是 `pending`、`accepted`（通过、已改正）、`rejected`（驳回、没问题）、`withdrawn`（撤回）；同一个人对同一个项目的同一处只有一条 `pending`（部分唯一索引，`field` 为空也算同一处），再提就删掉那一条、新建一条，审核的人手上的旧编号就失效了，不会通过没看过的内容；`created_at` 取写入的时刻，不取事务开始的时刻：复核时等着项目锁的反馈算在复核以后。`review_note` 只有处理了的才有，驳回的必须有。项目删了，待处理的记成 `rejected`、`review_note` 写「项目已删除」 |
+| `disputes` | `program_id`、`opened_at`、`resolved_by`、`resolved_at`、`result`、`note` | 每次争议一行，`resolved_at` 为空是还在争议中，一个项目同时只有一条；`result` 是改正了 `corrected` 还是确认没错 `confirmed`；争议的人数从上一次的 `resolved_at` 以后数，`resolved_at` 和反馈的 `created_at` 一样取写入的时刻（[总体设计 §12.3](design.md#123-争议)） |
 
 ### 求收录（`sources`）
 

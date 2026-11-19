@@ -10,6 +10,7 @@ export const MESSAGE_KINDS = {
     email: "default_on",
     why: "你提过、同求过或关注着这个学院",
   },
+  feedback_result: { label: "反馈有结果", email: "default_off", why: "你提过这条反馈" },
 } as const satisfies Record<string, { label: string; email: EmailRule; why: string }>;
 
 export type MessageKind = keyof typeof MESSAGE_KINDS;

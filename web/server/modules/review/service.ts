@@ -14,9 +14,10 @@ import {
   type FieldSource,
 } from "../programs/service.ts";
 import type { StoredValue } from "../programs/schemas.ts";
+import type { z } from "@hono/zod-openapi";
 import { ProgramColumns, type ProgramEdit } from "./schemas.ts";
 
-type Actor = { user_id: number; via: "web" };
+export type Actor = { user_id: number; via: "web" };
 
 const COLUMNS = ProgramColumns.keyof().options;
 type FieldEdits = Omit<ProgramEdit, (typeof COLUMNS)[number] | "reason" | "basis">;
@@ -116,57 +117,90 @@ export async function editProgram(
     await holdEditing(trx, actor.user_id);
     const program = await lockProgram(trx, programId);
     const current = await currentFields(trx, programId);
-    const values = { name, cohort, kind };
-    const columns = COLUMNS.flatMap((column) => {
-      const value = values[column];
-      return value === undefined || value === program[column] ? [] : [{ column, value }];
-    });
-    const changes = fieldChanges(fields, [...current.keys()]).filter(
-      ({ key, value }) => !isDeepStrictEqual(current.get(key)?.value ?? null, value),
-    );
-    if (columns.length + changes.length === 0) {
+    const columns = changedColumns(program, { name, cohort, kind });
+    const changes = changedFields(current, fieldChanges(fields, [...current.keys()]));
+    if (Object.keys(columns).length + changes.length === 0) {
       throw new AppError(400, "no_change", "改后的值和现在的一样");
     }
-    const recorded: number[] = [];
-    const record = async (
-      field: string,
-      old_value: Json | null,
-      new_value: Json | null,
-      source: Source,
-    ) => {
-      const { id } = await trx
-        .insertInto("edits")
-        .values({
-          field,
-          old_value: json(old_value),
-          new_value: json(new_value),
-          ...replacing(source),
-          program_id: programId,
-          reason,
-          basis,
-          user_id: actor.user_id,
-          via: actor.via,
-        })
-        .returning("id")
-        .executeTakeFirstOrThrow();
-      recorded.push(id);
-      return id;
-    };
-    for (const { column, value } of columns) {
-      await record(column, program[column], value, await columnSource(trx, programId, column));
-    }
-    if (columns.length > 0) await updateProgram(trx, programId, values);
-    const sources: [string, FieldSource][] = [];
-    for (const { key, value } of changes) {
-      const now = current.get(key);
-      const id = await record(key, now?.value ?? null, value, sourceOf(now));
-      sources.push([key, { value, edit_id: id }]);
-    }
-    await setFields(trx, programId, sources);
-    return recorded;
+    return writeEdit(trx, actor, { id: programId, ...program }, current, columns, changes, {
+      reason,
+      basis,
+      feedback_id: null,
+    });
   });
   const rows = await editsQuery().where("edits.id", "in", ids).orderBy("edits.id").execute();
   return { edits: rows.map(toEdit) };
+}
+
+type Program = Awaited<ReturnType<typeof lockProgram>> & { id: number };
+type Current = Awaited<ReturnType<typeof currentFields>>;
+type Columns = z.infer<typeof ProgramColumns>;
+
+// The columns given that differ from the program's.
+export function changedColumns(program: Columns, { name, cohort, kind }: Columns) {
+  const changed: Columns = {};
+  if (name !== undefined && name !== program.name) changed.name = name;
+  if (cohort !== undefined && cohort !== program.cohort) changed.cohort = cohort;
+  if (kind !== undefined && kind !== program.kind) changed.kind = kind;
+  return changed;
+}
+
+// The rows of program_fields given whose values differ from what they are.
+export function changedFields(current: Current, rows: { key: string; value: Json | null }[]) {
+  return rows.filter(
+    ({ key, value }) => !isDeepStrictEqual(current.get(key)?.value ?? null, value),
+  );
+}
+
+// The row of edits for each column and field a change sets, and the values set; an accepted
+// edit request's are the reviewer's, linked to it (design §12.2). Returns the edits' ids.
+export async function writeEdit(
+  trx: Transaction<DB>,
+  actor: Actor,
+  program: Program,
+  current: Current,
+  columns: Columns,
+  changes: { key: string; value: Json | null }[],
+  why: { reason: string; basis: string; feedback_id: number | null },
+) {
+  const recorded: number[] = [];
+  const record = async (
+    field: string,
+    old_value: Json | null,
+    new_value: Json | null,
+    source: Source,
+  ) => {
+    const { id } = await trx
+      .insertInto("edits")
+      .values({
+        field,
+        old_value: json(old_value),
+        new_value: json(new_value),
+        ...replacing(source),
+        program_id: program.id,
+        ...why,
+        user_id: actor.user_id,
+        via: actor.via,
+      })
+      .returning("id")
+      .executeTakeFirstOrThrow();
+    recorded.push(id);
+    return id;
+  };
+  for (const column of COLUMNS) {
+    const value = columns[column];
+    if (value === undefined) continue;
+    await record(column, program[column], value, await columnSource(trx, program.id, column));
+  }
+  if (Object.keys(columns).length > 0) await updateProgram(trx, program.id, columns);
+  const sources: [string, FieldSource][] = [];
+  for (const { key, value } of changes) {
+    const now = current.get(key);
+    const id = await record(key, now?.value ?? null, value, sourceOf(now));
+    sources.push([key, { value, edit_id: id }]);
+  }
+  await setFields(trx, program.id, sources);
+  return recorded;
 }
 
 // The field back as it was before the edit, its source too (design §12.4). Null, changing
@@ -286,6 +320,7 @@ function editsQuery() {
       "users.display_name",
       sql<"web" | "agent">`edits.via`.as("via"),
       "edits.reverts_id",
+      "edits.feedback_id",
       // PostgreSQL answers exists with a boolean; Kysely types it for every database.
       eb
         .exists(
@@ -304,7 +339,7 @@ function toEdit({ user_id, display_name, created_at, ...edit }: EditRow) {
 }
 
 export async function listProgramEdits(programId: number) {
-  const [program, rows] = await Promise.all([
+  const [program, rows, reviews] = await Promise.all([
     db
       .selectFrom("programs")
       .select("id")
@@ -312,9 +347,32 @@ export async function listProgramEdits(programId: number) {
       .where("deleted_at", "is", null)
       .executeTakeFirst(),
     editsQuery().where("edits.program_id", "=", programId).orderBy("edits.id", "desc").execute(),
+    db
+      .selectFrom("disputes")
+      .innerJoin("users", "users.id", "disputes.resolved_by")
+      .select([
+        "users.id",
+        "users.display_name",
+        // Not null once reviewed, as all these are.
+        sql<Date>`disputes.resolved_at`.as("resolved_at"),
+        sql<"corrected" | "confirmed">`disputes.result`.as("result"),
+        sql<string>`disputes.note`.as("note"),
+      ])
+      .where("disputes.program_id", "=", programId)
+      .where("disputes.resolved_at", "is not", null)
+      .orderBy("disputes.resolved_at", "desc")
+      .execute(),
   ]);
   if (!program) throw new AppError(404, "not_found", "项目不存在");
-  return { edits: rows.map(toEdit) };
+  return {
+    edits: rows.map(toEdit),
+    reviews: reviews.map(({ id, display_name, resolved_at, result, note }) => ({
+      by: { id, display_name },
+      at: unix(resolved_at),
+      result,
+      note,
+    })),
+  };
 }
 
 // The latest edits across the site, for everyone signed in (design §12.4).

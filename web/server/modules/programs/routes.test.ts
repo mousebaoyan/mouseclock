@@ -150,6 +150,7 @@ test("members get the whole cohort with the table's fields, by deadline", async 
     apply_deadline: Date.parse("2026-06-01T09:00:00Z") / 1000,
     closes_at: Date.parse("2026-06-01T09:00:00Z") / 1000,
     subscribers: 0,
+    disputed: false,
     notice: { url: `https://college.example/notices/${open}-0`, published_on: "2026-05-01" },
   });
   // No deadline: over when the cohort's recommendation is, at the end of October.
@@ -389,6 +390,7 @@ test("a program's page puts each field back together, every part with its eviden
     apply_deadline: Date.parse("2026-06-05T16:00:00Z") / 1000,
     closes_at: Date.parse("2026-06-05T16:00:00Z") / 1000,
     subscribers: 0,
+    disputed: false,
     verified: { by: "鼠鼠", at: now.getTime() / 1000 },
     notice: { ...first.notice, published_on: "2026-05-01", removed: false },
     fields: {

@@ -94,7 +94,7 @@ export const ApplyValue = z
   .openapi("ApplyValue");
 export type ApplyValue = z.infer<typeof ApplyValue>;
 
-const Mode = z.enum(["online", "offline", "hybrid"]);
+export const Mode = z.enum(["online", "offline", "hybrid"]);
 const Degrees = z.array(z.enum(["master", "direct_phd"])).min(1);
 export const DegreeList = Degrees.refine((v) => new Set(v).size === v.length, "招收类型有重复");
 export const ApplyUrl = z.url({ protocol: /^(?:https?|mailto)$/ }).max(2000);
@@ -194,6 +194,7 @@ export const TableProgram = z
     apply_deadline: UnixSeconds.nullable(),
     closes_at: ClosesAt,
     subscribers: Int.openapi({ description: "订阅人数" }),
+    disputed: z.boolean().openapi({ description: "有争议" }),
     notice: z
       .object({ url: z.string(), published_on: IsoDate.nullable() })
       .openapi({ description: "原文：最近一个报名版本的通知，没有就用最近一个版本的" }),
@@ -228,10 +229,11 @@ function part<S extends z.ZodType>(value: S) {
   });
 }
 
-// One of the other dates, which has a start, an end or both (§8.2).
+// One of the other dates, which has a start, an end or both (§8.2). Strict, so a start written
+// wrong fails rather than being dropped for the end-only form.
 export const DateWindow = z.union([
-  z.object({ start: TimeValue, end: TimeValue.optional() }),
-  z.object({ end: TimeValue }),
+  z.strictObject({ start: TimeValue, end: TimeValue.optional() }),
+  z.strictObject({ end: TimeValue }),
 ]);
 export type DateWindow = z.infer<typeof DateWindow>;
 
@@ -298,6 +300,7 @@ export const ProgramDetail = z
     apply_deadline: UnixSeconds.nullable(),
     closes_at: ClosesAt,
     subscribers: Int.openapi({ description: "订阅人数" }),
+    disputed: z.boolean().openapi({ description: "有争议" }),
     verified: z.union([
       z.object({ by: z.string(), at: UnixSeconds }).openapi("Verified"),
       z.null(),
