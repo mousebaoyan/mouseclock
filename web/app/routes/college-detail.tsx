@@ -71,6 +71,7 @@ export async function clientAction({ serverAction }: Route.ClientActionArgs) {
 
 export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
   const { college, votes, thisYear } = loaderData;
+  const me = useRouteLoaderData<typeof rootLoader>("root")?.me;
   const { school } = college;
   const now = useNow(loaderData.now);
   return (
@@ -87,20 +88,32 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
           {college.directions.length > 0 && <span>招生方向：{college.directions.join("、")}</span>}
         </>
       }
-      actions={college.sources.map((source) => (
-        <a
-          key={source.id}
-          href={source.url}
-          target="_blank"
-          rel="nofollow noopener"
-          title={source.unavailable_reason ?? source.url}
-          className={buttonVariants({ variant: "outline" })}
-        >
-          {source.section || "学院通知"}
-          {source.unavailable_reason && <Tag color="amber">暂停抓取</Tag>}
-          <ExternalLink />
-        </a>
-      ))}
+      actions={[
+        // Not crawled yet: ask for it (design §10.1).
+        !me?.muted && college.sources.every((source) => source.unavailable_reason) && (
+          <Link
+            key="ask"
+            to={`/requests?new&college=${college.id}`}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            求收录
+          </Link>
+        ),
+        ...college.sources.map((source) => (
+          <a
+            key={source.id}
+            href={source.url}
+            target="_blank"
+            rel="nofollow noopener"
+            title={source.unavailable_reason ?? source.url}
+            className={buttonVariants({ variant: "outline" })}
+          >
+            {source.section || "学院通知"}
+            {source.unavailable_reason && <Tag color="amber">暂停抓取</Tag>}
+            <ExternalLink />
+          </a>
+        )),
+      ]}
     >
       <CollegeTagPanel college={college} votes={votes} />
       {college.programs.length === 0 ? (

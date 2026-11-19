@@ -24,6 +24,7 @@ function pagesFor(me: Me | null) {
     { to: "/colleges", label: "院校清单" },
     ...(me && !me.frozen
       ? [
+          { to: "/requests", label: "求收录" },
           { to: "/crawl", label: "抓取看板" },
           { to: "/edits", label: "修改记录" },
         ]
@@ -57,6 +58,9 @@ const OPENED = [
   "revoke",
   "votes",
   "delete",
+  "new",
+  "college",
+  "asked",
 ];
 
 function unchanging() {

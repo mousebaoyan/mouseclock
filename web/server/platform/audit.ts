@@ -12,6 +12,7 @@ export async function recordAudit(
       | "school"
       | "college"
       | "college_tag"
+      | "inclusion_request"
       | "program"
       | "source"
       | "source_probe"

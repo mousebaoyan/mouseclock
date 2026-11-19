@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { Int, IntParam, named, PageParams, UnixSeconds, Url } from "../../platform/http.ts";
+import { Int, IntParam, named, Page, PageParams, UnixSeconds, Url } from "../../platform/http.ts";
 import { ApplyValue, ClosesAt, CollegeTagCount, IsoDate, Kind } from "../programs/schemas.ts";
 
 export const PageQuery = PageParams.extend({ q: z.string().trim().max(200).default("") });
@@ -179,4 +179,59 @@ export const PublicCollegeDetail = z.object({
     .openapi({ description: "全部预设：几个人贴了，自己贴了没有" }),
   sources: z.array(PublicSource),
   programs: z.array(PublicProgramCohort),
+});
+
+// 求收录 (design §10.1): a college from the list, or one by name under a school from the list or
+// a school by name too.
+export const REQUEST_STATUSES = ["queued", "onboarding", "included", "unavailable"] as const;
+export const RequestStatus = z.enum(REQUEST_STATUSES, named("进度")).openapi("RequestStatus", {
+  description: "排队中、接入中、已收录、暂时抓不了",
+});
+export type RequestStatus = z.infer<typeof RequestStatus>;
+const SchoolName = z.string(named("学校名称")).trim().min(1).max(200);
+const CollegeName = z.string(named("学院名称")).trim().min(1).max(200);
+const asked = {
+  url_hint: z
+    .url({ protocol: /^https?$/, ...named("通知列表页的链接") })
+    .max(2000)
+    .nullable()
+    .default(null),
+  note: z.string(named("备注")).trim().max(500).default(""),
+};
+export const InclusionRequestInput = z
+  .union([
+    z.strictObject({ college_id: Int.positive(), ...asked }),
+    z.strictObject({ school_id: Int.positive(), college_name: CollegeName, ...asked }),
+    z.strictObject({ school_name: SchoolName, college_name: CollegeName, ...asked }),
+  ])
+  .openapi("InclusionRequestInput");
+// An admin moves it along, or matches it to the list.
+export const InclusionRequestPatch = z
+  .union([
+    z.strictObject({
+      status: z.literal("unavailable"),
+      reason: z.string(named("暂时抓不了的原因")).trim().min(1).max(500),
+    }),
+    z.strictObject({ status: z.enum(["queued", "onboarding", "included"], named("进度")) }),
+    z.strictObject({ college_id: Int.positive() }),
+    z.strictObject({ school_id: Int.positive() }),
+  ])
+  .openapi("InclusionRequestPatch");
+export const RequestQuery = PageParams.extend({ status: RequestStatus.default("queued") });
+export const InclusionRequest = z
+  .object({
+    id: Int,
+    school: z.object({ id: Int.nullable(), name: z.string() }),
+    college: z.object({ id: Int.nullable(), name: z.string() }),
+    url_hint: z.string().nullable(),
+    note: z.string(),
+    status: RequestStatus,
+    reason: z.string().nullable(),
+    votes: Int.openapi({ description: "同求的人数，提的人也算" }),
+    mine: z.boolean().openapi({ description: "自己同求了没有" }),
+    created_at: UnixSeconds,
+  })
+  .openapi("InclusionRequest");
+export const InclusionRequestList = Page(InclusionRequest).extend({
+  counts: z.array(z.object({ status: RequestStatus, count: Int })),
 });

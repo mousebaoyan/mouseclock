@@ -153,6 +153,7 @@ test("an email goes by the owner's rule until the member sets their own, and nev
   expect((await settings.json()).kinds).toEqual([
     { kind: "deadline_soon", label: "快截止了", enabled: false, default_enabled: true },
     { kind: "deadline_changed", label: "截止变了", enabled: false, default_enabled: false },
+    { kind: "inclusion_result", label: "求收录有结果", enabled: true, default_enabled: true },
   ]);
 
   // A member's own switch doesn't outlast "never", and the kind leaves their page.
@@ -162,7 +163,10 @@ test("an email goes by the owner's rule until the member sets their own, and nev
   expect(await emailsTo("仓鼠")).toHaveLength(1);
   const after = await v1.me["email-settings"].$get({}, mine);
   if (after.status !== 200) throw new Error(`status ${after.status}`);
-  expect((await after.json()).kinds.map((k) => k.kind)).toEqual(["deadline_changed"]);
+  expect((await after.json()).kinds.map((k) => k.kind)).toEqual([
+    "deadline_changed",
+    "inclusion_result",
+  ]);
   await rules.$put(
     { json: { deadline_soon: "default_on", deadline_changed: "default_on" } },
     owner,

@@ -26,6 +26,7 @@ import {
   type PublicProgramCohort,
 } from "./schemas.ts";
 import type { LogoType } from "./logo-files.ts";
+import { includeCollege } from "./inclusion-requests.ts";
 
 export type Actor = { user_id: number; via: "web" | "seed" };
 
@@ -482,6 +483,7 @@ export async function createSource(actor: Actor, values: z.infer<typeof SourceIn
       target_id: row.id,
       detail: { via: actor.via, before: null, after: row },
     });
+    if (row.unavailable_reason === null) await includeCollege(trx, row.college_id);
     return row.id;
   });
 }
@@ -534,6 +536,11 @@ export async function updateSource(actor: Actor, id: number, values: z.infer<typ
       target_id: id,
       detail: { via: actor.via, before, after },
     });
+    // A college with a source crawled is included (design §10.1).
+    const crawled = after.unavailable_reason === null;
+    if (crawled && (after.college_id !== before.college_id || before.unavailable_reason !== null)) {
+      await includeCollege(trx, after.college_id);
+    }
     return id;
   });
 }
