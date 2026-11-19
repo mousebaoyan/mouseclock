@@ -5,7 +5,7 @@ import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { ProgramCard, ProgramCards, ProgramPlace } from "~/components/program";
 import { Subscribe } from "~/components/subscribe";
-import { PROGRAM_KINDS } from "~/components/tags";
+import { PROGRAM_KINDS, StageTag } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
 import { Segmented } from "~/components/ui/segmented";
@@ -13,7 +13,7 @@ import { MultiSelect, Select } from "~/components/ui/select";
 import { SITE_DESCRIPTION, SITE_NAME } from "../../server/platform/site.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { cohortOf, tablePage } from "../program-table.ts";
-import { keptTable, subscribedTo } from "../table-cache.ts";
+import { keptTable, stagesOf, subscribedTo } from "../table-cache.ts";
 import type { loader as rootLoader } from "../root.tsx";
 import { currentCohort, STATUS_LABELS, useNow } from "../time.ts";
 import type { Route } from "./+types/home.ts";
@@ -30,19 +30,20 @@ export async function loader({ request, context }: Route.LoaderArgs) {
   const params = new URL(request.url).searchParams;
   const date = new Date();
   const api = context.get(apiContext);
-  const [table, subscribed] = await Promise.all([
+  const [table, subscribed, stages] = await Promise.all([
     api.programs.$get({ query: { cohort: cohortOf(params, date) } }).then(readApi<TableData>),
     subscribedTo(api),
+    stagesOf(api),
   ]);
-  return { ...tablePage(table, params, date), subscribed };
+  return { ...tablePage(table, params, date), subscribed, stages };
 }
 
 // After that the browser keeps the whole cohort (table-cache.ts).
 export async function clientLoader({ request }: Route.ClientLoaderArgs) {
   const params = new URL(request.url).searchParams;
   const date = new Date();
-  const { table, subscribed } = await keptTable(cohortOf(params, date), date.getTime());
-  return { ...tablePage(table, params, date), subscribed };
+  const { table, subscribed, stages } = await keptTable(cohortOf(params, date), date.getTime());
+  return { ...tablePage(table, params, date), subscribed, stages };
 }
 
 type Data = Route.ComponentProps["loaderData"];
@@ -51,6 +52,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
   const { cohort, preview, programs, total, page, filters, thisYear } = loaderData;
   const now = useNow(loaderData.now);
   const subscribed = new Set(loaderData.subscribed);
+  const { stages } = loaderData;
   return (
     <Page title={`${cohort} 届保研项目`} hideTitle>
       {preview ? <PreviewNotice /> : <Filters data={loaderData} />}
@@ -73,6 +75,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
                     thisYear={thisYear}
                   />
                 }
+                stage={program.id in stages && <StageTag stage={stages[program.id]} />}
                 subscribe={<Subscribe program={program} subscribed={subscribed.has(program.id)} />}
               />
             ))}

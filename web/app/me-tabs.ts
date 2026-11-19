@@ -2,5 +2,6 @@
 // it is done.
 export const ME_TABS = [
   { to: "/me/subscriptions", label: "订阅" },
+  { to: "/me/applications", label: "报名" },
   { to: "/me/email", label: "邮件提醒" },
 ] as const;

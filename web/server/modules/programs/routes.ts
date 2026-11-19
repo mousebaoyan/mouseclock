@@ -10,12 +10,16 @@ import {
   IntParam,
   type AppEnv,
 } from "../../platform/http.ts";
+import { clearApplication, listApplications, setApplication } from "./applications.ts";
 import {
+  ApplicationInput,
+  Applications,
   ProgramDetail,
   ProgramTable,
   ProgramTableQuery,
   ProgramVersions,
   SnapshotDetail,
+  Stage,
 } from "./schemas.ts";
 import {
   getAttachmentFile,
@@ -139,6 +143,62 @@ export const programsRoutes = createRouter()
       const { id } = authorize(c, "edit");
       await verifyProgram(c.req.valid("param").id, id);
       return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "put",
+      path: "/programs/{id}/application",
+      summary: "记报名",
+      description: "记下或改掉自己对这个项目的报名进度和备注，只有自己看得到（总体设计 §9.4）。",
+      request: { params: IdParam, body: { required: true, content: json(ApplicationInput) } },
+      responses: {
+        204: { description: "已记下" },
+        ...errors,
+        400: errorResponse("编号或填的内容有误"),
+        404: errorResponse("项目不存在"),
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "read");
+      await setApplication(id, c.req.valid("param").id, c.req.valid("json"));
+      return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "delete",
+      path: "/programs/{id}/application",
+      summary: "清除报名记录",
+      request: { params: IdParam },
+      responses: {
+        204: { description: "已清除，没记过的也一样" },
+        ...errors,
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "read");
+      await clearApplication(id, c.req.valid("param").id);
+      return c.body(null, 204);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/me/applications",
+      summary: "自己的报名记录",
+      description: "带各进度的条数；总表卡片上的进度也用它。删掉的项目的记录不在里面。",
+      request: { query: z.object({ stage: Stage.optional() }) },
+      responses: {
+        200: { description: "报名记录", content: json(Applications) },
+        400: errorResponse("进度的写法有误"),
+        401: errorResponse("没有登录"),
+        403: errorResponse("账号已冻结"),
+      },
+    }),
+    async (c) => {
+      const { id } = authorize(c, "read");
+      return c.json(await listApplications(id, c.req.valid("query").stage), 200);
     },
   )
   .openapi(

@@ -147,6 +147,21 @@ export async function programCards(ids: number[]) {
   return (await tableQuery().where("p.id", "in", ids).execute()).map(tableProgram);
 }
 
+// One's own lists' order: the open ones by deadline, then the closed ones, the latest to close
+// first.
+export function inDeadlineOrder<T>(
+  items: T[],
+  card: (item: T) => { id: number; closes_at: number },
+) {
+  const now = unix(new Date());
+  const open = items.filter((item) => card(item).closes_at > now);
+  const closed = items.filter((item) => card(item).closes_at <= now);
+  return [
+    ...open.toSorted((a, b) => card(a).closes_at - card(b).closes_at || card(a).id - card(b).id),
+    ...closed.toSorted((a, b) => card(b).closes_at - card(a).closes_at || card(a).id - card(b).id),
+  ];
+}
+
 // A program's fields put back together (design §8.2), the parts of a field under it. Each part
 // keeps its own evidence and the version it came from. Fields people cleared are left out.
 function fieldsOf(program: string) {
@@ -636,6 +651,28 @@ export async function deleteProgram(trx: Transaction<DB>, id: number, keptId: nu
       .set({ merged_into: keptId })
       .where("merged_into", "=", id)
       .execute();
+    // Records of applying go along; one who kept a record on both keeps the later one (§9.4).
+    await trx
+      .insertInto("applications")
+      .columns(["user_id", "program_id", "stage", "note", "updated_at"])
+      .expression((eb) =>
+        eb
+          .selectFrom("applications")
+          .select(["user_id", eb.val(keptId).as("program_id"), "stage", "note", "updated_at"])
+          .where("program_id", "=", id),
+      )
+      .onConflict((oc) =>
+        oc
+          .columns(["user_id", "program_id"])
+          .doUpdateSet((eb) => ({
+            stage: eb.ref("excluded.stage"),
+            note: eb.ref("excluded.note"),
+            updated_at: eb.ref("excluded.updated_at"),
+          }))
+          .whereRef("applications.updated_at", "<", "excluded.updated_at"),
+      )
+      .execute();
+    await trx.deleteFrom("applications").where("program_id", "=", id).execute();
   }
 }
 

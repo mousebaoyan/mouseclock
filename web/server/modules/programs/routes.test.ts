@@ -4,9 +4,10 @@ import { afterAll, beforeAll, beforeEach, expect, test, vi } from "vitest";
 import { fakeUsers, type FakeUser } from "../../../test/fake-mousehole.ts";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
+import { env } from "../../platform/env.ts";
 import { login } from "../accounts/service.ts";
-import type { ApplyValue, ExtractedFields, Role } from "./schemas.ts";
-import { applyStored, createProgram, toStoredFields } from "./service.ts";
+import type { ApplyValue, ExtractedFields, Role, Stage } from "./schemas.ts";
+import { applyStored, createProgram, deleteProgram, toStoredFields } from "./service.ts";
 
 const api = testClient(app).api.v1;
 const now = new Date("2026-05-15T04:00:00Z");
@@ -528,4 +529,119 @@ test("guests and frozen accounts see no program's page, versions or snapshots", 
   for (const url of [`/programs/${id}`, `/programs/${id}/versions`]) {
     expect((await app.request(`/api/v1${url}`, member)).status).toBe(404);
   }
+});
+
+// Cookie sessions write only from the site's own pages.
+async function writer(profile: FakeUser) {
+  const { headers } = await session(profile);
+  return { headers: { ...headers, origin: env.PUBLIC_URL } };
+}
+
+async function record(
+  as: { headers: Record<string, string> },
+  id: number,
+  stage: Stage,
+  note = "",
+) {
+  const param = { id: String(id) };
+  return api.programs[":id"].application.$put({ param, json: { stage, note } }, as);
+}
+
+async function applications(as: { headers: Record<string, string> }, stage?: Stage) {
+  const res = await api.me.applications.$get({ query: stage ? { stage } : {} }, as);
+  if (res.status !== 200) throw new Error("Applications failed");
+  const { counts, applications: items } = await res.json();
+  return {
+    counts: Object.fromEntries(counts.filter((c) => c.count > 0).map((c) => [c.stage, c.count])),
+    items: items.map((a) => ({ id: a.program.id, stage: a.stage, note: a.note })),
+  };
+}
+
+test("one keeps records of applying, listed by deadline with counts, seen by no one else", async () => {
+  const seeded = await college();
+  const later = await program(seeded, { apply: until("2026-06-10") });
+  const sooner = await program(seeded, { apply: until("2026-06-01") });
+  const closed = await program(seeded, { apply: until("2026-05-01") });
+  const me = await writer(fakeUsers[0]);
+  expect((await record(me, later, "applied", " 材料还差推荐信 ")).status).toBe(204);
+  expect((await record(me, sooner, "want")).status).toBe(204);
+  expect((await record(me, closed, "failed")).status).toBe(204);
+  expect((await record(me, later, "submitted", "导师已回复")).status).toBe(204);
+
+  expect(await applications(me)).toEqual({
+    counts: { want: 1, submitted: 1, failed: 1 },
+    items: [
+      { id: sooner, stage: "want", note: "" },
+      { id: later, stage: "submitted", note: "导师已回复" },
+      { id: closed, stage: "failed", note: "" },
+    ],
+  });
+  // The counts stay whatever the filter.
+  expect(await applications(me, "submitted")).toEqual({
+    counts: { want: 1, submitted: 1, failed: 1 },
+    items: [{ id: later, stage: "submitted", note: "导师已回复" }],
+  });
+  const other = await writer(fakeUsers[1]);
+  expect(await applications(other)).toEqual({ counts: {}, items: [] });
+
+  await record(other, later, "want");
+  const param = { id: String(later) };
+  expect((await api.programs[":id"].application.$delete({ param }, me)).status).toBe(204);
+  expect((await applications(me)).items.map((a) => a.id)).toEqual([sooner, closed]);
+  expect((await applications(other)).items).toEqual([{ id: later, stage: "want", note: "" }]);
+});
+
+test("frozen accounts can't keep records, muted ones can; what is turned down", async () => {
+  const seeded = await college();
+  const id = await program(seeded, { apply: until("2026-06-01") });
+  const json = { stage: "want" as const, note: "" };
+  const param = { id: String(id) };
+  expect((await api.programs[":id"].application.$put({ param, json })).status).toBe(401);
+  expect((await record(await writer(fakeUsers[5]), id, "want")).status).toBe(403);
+  const muted = await writer(fakeUsers[4]);
+  expect((await record(muted, id, "admitted")).status).toBe(204);
+
+  const me = await writer(fakeUsers[0]);
+  const bad = await app.request(`/api/v1/programs/${id}/application`, {
+    method: "PUT",
+    headers: { ...me.headers, "content-type": "application/json" },
+    body: JSON.stringify({ stage: "won", note: "" }),
+  });
+  expect(bad.status).toBe(400);
+  expect((await record(me, id, "want", "字".repeat(1001))).status).toBe(400);
+
+  // A deleted program can't be recorded, and the records on it go unseen.
+  await db.updateTable("programs").set({ deleted_at: now }).where("id", "=", id).execute();
+  expect((await record(me, id, "want")).status).toBe(404);
+  expect(await applications(muted)).toEqual({ counts: {}, items: [] });
+});
+
+test("a merge moves records to the program kept, keeping the later of two", async () => {
+  const seeded = await college();
+  const duplicate = await program(seeded, { apply: until("2026-06-01") });
+  const kept = await program(seeded, { apply: until("2026-06-01") });
+  const [only, newer, older] = await Promise.all(fakeUsers.slice(0, 3).map(writer));
+  await record(only, duplicate, "applied", "只记在重复的上");
+  await record(newer, kept, "want");
+  await record(older, duplicate, "want", "早先记的");
+  vi.setSystemTime(new Date(now.getTime() + 60_000));
+  await record(newer, duplicate, "admitted", "后来记的");
+  await record(older, kept, "excellent", "后来记的");
+
+  await db.transaction().execute((trx) => deleteProgram(trx, duplicate, kept));
+  expect((await applications(only)).items).toEqual([
+    { id: kept, stage: "applied", note: "只记在重复的上" },
+  ]);
+  expect((await applications(newer)).items).toEqual([
+    { id: kept, stage: "admitted", note: "后来记的" },
+  ]);
+  expect((await applications(older)).items).toEqual([
+    { id: kept, stage: "excellent", note: "后来记的" },
+  ]);
+  const left = await db
+    .selectFrom("applications")
+    .select("program_id")
+    .where("program_id", "=", duplicate)
+    .execute();
+  expect(left).toEqual([]);
 });

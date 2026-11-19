@@ -14,10 +14,38 @@ export async function subscribedTo(api: Api) {
   throw data(error.message, { status: res.status });
 }
 
+// One's records of applying, by program, for its page to change it and the note; none for guests
+// and frozen accounts.
+export async function applicationsOf(api: Api) {
+  const res = await api.me.applications.$get({ query: {} });
+  if (res.status === 200) {
+    const { applications } = await res.json();
+    return Object.fromEntries(
+      applications.map(({ program, stage, note }) => [program.id, { stage, note }]),
+    );
+  }
+  const { error } = await res.json();
+  if (error.code === "login_required" || error.code === "member_frozen") return {};
+  throw data(error.message, { status: res.status });
+}
+
+// The cards show only how far each went, not the notes.
+export async function stagesOf(api: Api) {
+  return Object.fromEntries(
+    Object.entries(await applicationsOf(api)).map(([id, { stage }]) => [id, stage]),
+  );
+}
+
 // The browser keeps the whole cohort and filters, sorts and pages it itself (design §14). It asks
-// again for another cohort, after a while, or once one's own subscriptions changed, which shows on
-// the cards; the server answers 304 while nothing changed.
-let kept: { cohort: string; at: number; table: TableData; subscribed: number[] } | null = null;
+// again for another cohort, after a while, or once one's own subscriptions or records of applying
+// changed, which show on the cards; the server answers 304 while nothing changed.
+let kept: {
+  cohort: string;
+  at: number;
+  table: TableData;
+  subscribed: number[];
+  stages: Awaited<ReturnType<typeof stagesOf>>;
+} | null = null;
 const KEEP_MS = 5 * 60_000;
 
 export async function keptTable(cohort: string, now: number) {
@@ -26,7 +54,10 @@ export async function keptTable(cohort: string, now: number) {
     const res = await api.programs.$get({ query: { cohort } });
     if (res.status !== 200) throw data((await res.json()).error.message, { status: res.status });
     const table = await res.json();
-    kept = { cohort, at: now, table, subscribed: table.preview ? [] : await subscribedTo(api) };
+    const [subscribed, stages] = table.preview
+      ? [[], {}]
+      : await Promise.all([subscribedTo(api), stagesOf(api)]);
+    kept = { cohort, at: now, table, subscribed, stages };
   }
   return kept;
 }

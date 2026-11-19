@@ -60,13 +60,14 @@ export function ProgramCards({ children }: { children: ReactNode }) {
 
 // Who runs the program on top, beside how long is left and what kind it is, which is what a list
 // is read for: the two tags side by side, or one above the other when who runs it needs the
-// room. Then its name, and at the foot when it takes applications. The whole card opens the
-// program; the other links on it sit above that.
+// room. Then its name, and at the foot when it takes applications and how far one's own
+// application went. The whole card opens the program; the other links on it sit above that.
 export function ProgramCard({
   program,
   now,
   thisYear,
   place,
+  stage,
   subscribe,
   notice,
 }: {
@@ -74,6 +75,7 @@ export function ProgramCard({
   now: number;
   thisYear: number;
   place: ReactNode;
+  stage?: ReactNode;
   subscribe?: ReactNode;
   notice?: string;
 }) {
@@ -103,6 +105,7 @@ export function ProgramCard({
             </>
           )}
         </p>
+        {stage}
         {subscribe}
         {notice && (
           <a

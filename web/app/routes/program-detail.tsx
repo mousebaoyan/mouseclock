@@ -9,6 +9,7 @@ import {
   useRouteLoaderData,
   useSearchParams,
 } from "react-router";
+import { ApplicationForm } from "~/components/application";
 import { Field, FormMessage } from "~/components/form";
 import { ExternalLink, Quote } from "~/components/icons";
 import { Facts, Page, Panel } from "~/components/page";
@@ -22,7 +23,7 @@ import {
 } from "~/components/program-edit";
 import { ApplyDeadline, ApplyStart, Missing, ProgramStatus } from "~/components/program";
 import { Subscribe } from "~/components/subscribe";
-import { KindTag, RoleTag, Tag, TierTag } from "~/components/tags";
+import { KindTag, RoleTag, STAGES, Tag, TierTag } from "~/components/tags";
 import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { Reveal } from "~/components/ui/reveal";
@@ -31,7 +32,7 @@ import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { DEGREES, fieldLabel, MODES } from "../fields.ts";
 import { editValues, FormError } from "../program-edit.server.ts";
 import type { loader as rootLoader } from "../root.tsx";
-import { subscribedTo } from "../table-cache.ts";
+import { applicationsOf, subscribedTo } from "../table-cache.ts";
 import { formatApply, formatWindow, useNow } from "../time.ts";
 import { beijingYear } from "../../server/modules/programs/time.ts";
 import type { Route } from "./+types/program-detail.ts";
@@ -62,19 +63,22 @@ export function meta({ loaderData }: Route.MetaArgs) {
 export async function loader({ params, context }: Route.LoaderArgs) {
   const api = context.get(apiContext);
   const param = { id: params.id };
-  const [res, versions, edits, subscribed] = await Promise.all([
+  const [res, versions, edits, subscribed, applications] = await Promise.all([
     api.programs[":id"].$get({ param }),
     api.programs[":id"].versions.$get({ param }),
     api.programs[":id"].edits.$get({ param }),
     subscribedTo(api),
+    applicationsOf(api),
   ]);
+  const id = Number(params.id);
   // A merged program's page is the one it went into (design §12.2).
   if (res.status === 308) return redirect(`/programs/${(await res.json()).merged_into}`, 301);
   return {
     program: await readApi<Program>(res),
     versions: (await readApi<{ versions: Version[] }>(versions)).versions,
     edits: (await readApi<{ edits: Edit[] }>(edits)).edits,
-    subscribed: subscribed.includes(Number(params.id)),
+    subscribed: subscribed.includes(id),
+    application: id in applications ? applications[id] : null,
     thisYear: beijingYear(new Date()),
     now: Math.floor(Date.now() / 1000),
   };
@@ -127,6 +131,9 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
   const can = useRouteLoaderData<typeof rootLoader>("root")?.me?.can;
   const [search] = useSearchParams();
   const editing = can?.edit ? search.get("edit") : null;
+  // Anyone who can open the page keeps their own record of applying.
+  const recording = search.get("edit") === "application";
+  const { application } = loaderData;
   const rows = rowsOf(program.fields, thisYear, Boolean(can?.edit));
   const apply = program.fields.apply;
   const applyValue = apply
@@ -167,6 +174,16 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
             outlined
             className="max-sm:order-last"
           />
+          {!recording && (
+            <Link
+              to="?edit=application"
+              replace
+              preventScrollReset
+              className={buttonVariants({ variant: "outline", className: "max-sm:order-last" })}
+            >
+              {application ? `报名进度：${STAGES[application.stage].label}` : "记报名"}
+            </Link>
+          )}
           {can?.edit && editing !== "program" && (
             <Link
               to="?edit=program"
@@ -204,6 +221,25 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
         </>
       }
     >
+      {recording && (
+        <div className="rounded-xl border border-primary/30 bg-card p-4 shadow-card">
+          <ApplicationForm
+            programId={program.id}
+            application={application}
+            next={`/programs/${program.id}`}
+            cancel={
+              <Link
+                to="."
+                replace
+                preventScrollReset
+                className={buttonVariants({ variant: "outline", size: "sm" })}
+              >
+                取消
+              </Link>
+            }
+          />
+        </div>
+      )}
       {editing === "program" && (
         <EditForm field="program" program={program} error={formError("program")} />
       )}

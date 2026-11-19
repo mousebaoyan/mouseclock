@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
 import { Check } from "~/components/icons";
-import type { Kind, Role } from "../../server/modules/programs/schemas.ts";
+import type { Kind, Role, Stage } from "../../server/modules/programs/schemas.ts";
 import { TIERS } from "../tiers.ts";
 import type { Status } from "../time.ts";
 
@@ -116,6 +116,21 @@ export const PROGRAM_KINDS: Record<Kind, { label: string; color: TagColor }> = {
 
 export function KindTag({ kind }: { kind: Kind }) {
   return <Tag color={PROGRAM_KINDS[kind].color}>{PROGRAM_KINDS[kind].label}</Tag>;
+}
+
+// How far one's application went (design §9.4), in the order the stages are offered.
+export const STAGES: Record<Stage, { label: string; color: TagColor }> = {
+  want: { label: "想报", color: "violet" },
+  applied: { label: "已报名", color: "blue" },
+  submitted: { label: "已交材料", color: "sky" },
+  admitted: { label: "入营", color: "teal" },
+  excellent: { label: "优营", color: "green" },
+  failed: { label: "未通过", color: "red" },
+  gave_up: { label: "放弃", color: "gray" },
+};
+
+export function StageTag({ stage }: { stage: Stage }) {
+  return <Tag color={STAGES[stage].color}>{STAGES[stage].label}</Tag>;
 }
 
 export const STATUS_COLORS: Record<Status, TagColor> = {
