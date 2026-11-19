@@ -83,7 +83,7 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `applications` | `user_id`、`program_id`、`stage`、`note`、`updated_at` | `(user_id, program_id)` 唯一，只有本人能看。`stage` 是想报 `want`、已报名 `applied`、已交材料 `submitted`、入营 `admitted`、优营 `excellent`、未通过 `failed`、放弃 `gave_up` |
+| `applications` | `user_id`、`program_id`、`stage`、`note`、`updated_at` | `(user_id, program_id)` 唯一，只有本人能看。`stage` 是想报 `want`、已报名 `applied`、已交材料 `submitted`、入营 `admitted`、优营 `excellent`、未通过 `failed`、放弃 `gave_up`；`note` 最多 1000 字，没写为空串。项目删了记录留着、不显示，合并时挪到留下的项目上（`deleteProgram`） |
 
 ### 学院标签（`programs`）
 

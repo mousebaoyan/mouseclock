@@ -340,3 +340,42 @@ export const SnapshotDetail = z
     attachments: z.array(Attachment),
   })
   .openapi("SnapshotDetail");
+
+// One's own record of applying to a program (design §9.4): how far it went, in any order.
+export const STAGES = [
+  "want",
+  "applied",
+  "submitted",
+  "admitted",
+  "excellent",
+  "failed",
+  "gave_up",
+] as const;
+export const Stage = z.enum(STAGES, named("进度")).openapi({
+  description: "想报、已报名、已交材料、入营、优营、未通过、放弃",
+});
+export type Stage = z.infer<typeof Stage>;
+export const ApplicationInput = z
+  .strictObject({
+    stage: Stage,
+    note: z.string(named("备注")).trim().max(1000),
+  })
+  .openapi("ApplicationInput");
+export const Application = z
+  .object({
+    program: TableProgram,
+    stage: Stage,
+    note: z.string(),
+    updated_at: UnixSeconds,
+  })
+  .openapi("Application");
+export const Applications = z
+  .object({
+    counts: z
+      .array(z.object({ stage: Stage, count: Int }))
+      .openapi({ description: "各进度各有几条，按进度的顺序，不看筛选" }),
+    applications: z
+      .array(Application)
+      .openapi({ description: "还没截止的按截止排在前，截止了的在后" }),
+  })
+  .openapi("Applications");

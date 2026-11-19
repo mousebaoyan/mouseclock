@@ -23,6 +23,14 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
+export interface Applications {
+  note: Generated<string>;
+  program_id: number;
+  stage: string;
+  updated_at: Generated<Timestamp>;
+  user_id: number;
+}
+
 export interface Attachments {
   content_type: string;
   data: Buffer | null;
@@ -305,6 +313,7 @@ export interface Users {
 }
 
 export interface DB {
+  applications: Applications;
   attachments: Attachments;
   audit_log: AuditLog;
   colleges: Colleges;

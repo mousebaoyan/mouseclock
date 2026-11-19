@@ -4,7 +4,7 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import type { TimeValue } from "../programs/schemas.ts";
-import { applyOf, originalNotice, programCards } from "../programs/service.ts";
+import { applyOf, inDeadlineOrder, originalNotice, programCards } from "../programs/service.ts";
 import { beijingYear, deadlineDay, formatTime } from "../programs/time.ts";
 import { sendMessages, type Message } from "./messages.ts";
 
@@ -70,27 +70,15 @@ export async function unsubscribe(userId: number, programId: number) {
     .execute();
 }
 
-// One's subscriptions as the table shows programs: the open ones by deadline, then the closed
-// ones, the latest to close first.
+// One's subscriptions as the table shows programs: the open ones by deadline first.
 export async function listSubscriptions(userId: number) {
   const mine = await db
     .selectFrom("subscriptions")
     .select("program_id")
     .where("user_id", "=", userId)
     .execute();
-  const now = unix(new Date());
   const programs = await programCards(mine.map((s) => s.program_id));
-  return {
-    limit: SUBSCRIPTION_LIMIT,
-    programs: [
-      ...programs
-        .filter((p) => p.closes_at > now)
-        .toSorted((a, b) => a.closes_at - b.closes_at || a.id - b.id),
-      ...programs
-        .filter((p) => p.closes_at <= now)
-        .toSorted((a, b) => b.closes_at - a.closes_at || a.id - b.id),
-    ],
-  };
+  return { limit: SUBSCRIPTION_LIMIT, programs: inDeadlineOrder(programs, (p) => p) };
 }
 
 export async function clearClosed(userId: number) {

@@ -6,6 +6,7 @@ export default [
   route("colleges/:id", "routes/college-detail.tsx"),
   route("programs/:id", "routes/program-detail.tsx"),
   route("programs/:id/subscription", "routes/program-subscription.ts"),
+  route("programs/:id/application", "routes/program-application.ts"),
   route("snapshots/:id", "routes/snapshot.tsx"),
   route("review", "routes/review.tsx"),
   route("crawl", "routes/crawl.tsx"),
@@ -14,6 +15,7 @@ export default [
   route("me", "routes/me.tsx", [
     index("routes/me-index.ts"),
     route("subscriptions", "routes/me-subscriptions.tsx"),
+    route("applications", "routes/me-applications.tsx"),
     route("email", "routes/me-email.tsx"),
   ]),
   route("logout", "routes/logout.ts"),
