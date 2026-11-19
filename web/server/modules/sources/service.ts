@@ -378,6 +378,7 @@ export async function listSources({
       "url",
       "section",
       "browser",
+      "keep_all",
       "unavailable_reason",
       "crawled_at",
     ]);
@@ -439,6 +440,7 @@ export async function getSource(id: number) {
       "url",
       "section",
       "browser",
+      "keep_all",
       "unavailable_reason",
       "crawled_at",
     ])
@@ -454,7 +456,16 @@ export async function createSource(actor: Actor, values: z.infer<typeof SourceIn
     const row = await trx
       .insertInto("sources")
       .values({ ...values, config: values.config === null ? null : JSON.stringify(values.config) })
-      .returning(["id", "college_id", "url", "section", "browser", "config", "unavailable_reason"])
+      .returning([
+        "id",
+        "college_id",
+        "url",
+        "section",
+        "browser",
+        "keep_all",
+        "config",
+        "unavailable_reason",
+      ])
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -471,7 +482,16 @@ export async function updateSource(actor: Actor, id: number, values: z.infer<typ
   return write(async (trx) => {
     const before = await trx
       .selectFrom("sources")
-      .select(["id", "college_id", "url", "section", "browser", "config", "unavailable_reason"])
+      .select([
+        "id",
+        "college_id",
+        "url",
+        "section",
+        "browser",
+        "keep_all",
+        "config",
+        "unavailable_reason",
+      ])
       .where("id", "=", id)
       .forUpdate()
       .executeTakeFirst();
@@ -488,7 +508,16 @@ export async function updateSource(actor: Actor, id: number, values: z.infer<typ
               : JSON.stringify(values.config),
       })
       .where("id", "=", id)
-      .returning(["id", "college_id", "url", "section", "browser", "config", "unavailable_reason"])
+      .returning([
+        "id",
+        "college_id",
+        "url",
+        "section",
+        "browser",
+        "keep_all",
+        "config",
+        "unavailable_reason",
+      ])
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -569,7 +598,7 @@ export async function leaseSources(
         .forUpdate()
         .skipLocked(),
     )
-    .returning(["id", "url", "browser", "crawled_at"])
+    .returning(["id", "url", "browser", "keep_all", "crawled_at"])
     .returning(sql<Record<string, unknown> | null>`config`.as("config"))
     .execute();
 }

@@ -103,6 +103,7 @@ export async function action({ request, context }: Route.ActionArgs) {
     url: formText(form, "url"),
     section: formText(form, "section"),
     browser: form.get("browser") === "on",
+    keep_all: form.get("keep_all") === "on",
     config: formText(form, "config"),
     unavailable_reason: formText(form, "unavailable_reason"),
   };
@@ -160,6 +161,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
       ? {
           url: tried.url,
           browser: tried.browser,
+          keep_all: source?.keep_all ?? false,
           section: source?.section ?? "",
           unavailable_reason: source?.unavailable_reason ?? null,
         }
@@ -398,6 +400,9 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                 <Checkbox name="browser" value="on" defaultChecked={fields?.browser ?? false}>
                   需要浏览器执行 JavaScript
                 </Checkbox>
+                <Checkbox name="keep_all" value="on" defaultChecked={fields?.keep_all ?? false}>
+                  全收：这个列表只发保研的通知，每条都送去抽取，不看初筛的分数
+                </Checkbox>
                 <Field
                   label="抓取配置（JSON）"
                   hint="留空则使用通用抓取；配置须为 JSON 对象，字段由抓取节点定义"
@@ -469,6 +474,7 @@ function SourceName({ source }: { source: ListedSource }) {
         </span>
       )}
       {source.browser && <Tag color="gray">浏览器渲染</Tag>}
+      {source.keep_all && <Tag color="gray">全收</Tag>}
     </>
   );
 }

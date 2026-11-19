@@ -42,8 +42,12 @@ class Screen:
                 raise StepError("error", f"初筛失败: {result.error}")
             if result.score is None or result.usage is None:
                 raise StepError("error", "初筛失败: invalid_response")
+            # A keep-all list sends every notice on whatever its score, which is still recorded
+            # for calibrating the threshold (design §8.1).
             return ScreeningResult(
-                notice_id=notice.id, score=result.score, screened_in=result.score >= THRESHOLD
+                notice_id=notice.id,
+                score=result.score,
+                screened_in=source.keep_all or result.score >= THRESHOLD,
             )
 
         started = time.monotonic()

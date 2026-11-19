@@ -270,6 +270,7 @@ export interface Sources {
   crawled_at: Timestamp | null;
   created_at: Generated<Timestamp>;
   id: Generated<number>;
+  keep_all: Generated<boolean>;
   leased_until: Timestamp | null;
   section: Generated<string>;
   unavailable_reason: string | null;

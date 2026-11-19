@@ -46,6 +46,7 @@ const endpoints: [string, string, object?][] = [
       url: "https://some.example/list",
       section: "",
       browser: false,
+      keep_all: false,
       config: null,
       unavailable_reason: null,
     },
@@ -151,6 +152,7 @@ test("admins maintain schools, colleges and sources with before/after audit reco
         url: "https://test.example/list",
         section: "通知公告",
         browser: false,
+        keep_all: false,
         config: null,
         unavailable_reason: null,
       },
@@ -168,13 +170,14 @@ test("admins maintain schools, colleges and sources with before/after audit reco
   expect(await initial.json()).toMatchObject({ items: [{ id: source.id, last_run: null }] });
   const config = { list: "#list", pagination: { next: ".next" }, years: 2 };
   const updated = await api.admin.sources[":id"].$patch(
-    { param, json: { config, browser: true, unavailable_reason: "需要登录" } },
+    { param, json: { config, browser: true, keep_all: true, unavailable_reason: "需要登录" } },
     admin,
   );
   expect(updated.status).toBe(200);
   expect(await updated.json()).toMatchObject({
     config,
     browser: true,
+    keep_all: true,
     unavailable_reason: "需要登录",
     section: "通知公告",
   });
@@ -204,7 +207,13 @@ test("admins maintain schools, colleges and sources with before/after audit reco
       .status,
   ).toBe(200);
   expect((await takeWork(crawler.id, now)).sources).toContainEqual(
-    expect.objectContaining({ id: source.id, config, browser: true, backfill: true }),
+    expect.objectContaining({
+      id: source.id,
+      config,
+      browser: true,
+      keep_all: true,
+      backfill: true,
+    }),
   );
 
   const logs = await db.selectFrom("audit_log").selectAll().orderBy("id").execute();
@@ -283,6 +292,7 @@ test("a source paused after leasing still accepts listing and run results withou
     url: "https://leased.example/list",
     section: "通知公告",
     browser: false,
+    keep_all: false,
     config: null,
     unavailable_reason: null,
   });
@@ -373,6 +383,7 @@ test("source constraints and explicit nulls preserve unrelated settings and audi
     url: "http://source.example/list",
     section: "招生",
     browser: true,
+    keep_all: false,
     config: { list: ".list" },
     unavailable_reason: "验证码",
   };
@@ -487,6 +498,7 @@ test("conflicts, missing parents and invalid configuration do not change data or
         url: "https://x.example/list",
         section: "",
         browser: false,
+        keep_all: false,
         config,
         unavailable_reason: null,
       }),
@@ -595,7 +607,7 @@ test("school lists are searchable by name or any short name, and paginated; owne
 });
 
 test("what admins fill in wrongly is turned down naming the field and the fix", async () => {
-  const source = { college_id: 1, section: "", browser: false, config: null };
+  const source = { college_id: 1, section: "", browser: false, keep_all: false, config: null };
   const college = { school_id: 1, name: "计算机学院", kind: "college", region: "北京" };
   for (const [method, path, body, message] of [
     ["POST", "schools", { name: " ", short_names: [], tier: null }, "学校名称不能为空"],
@@ -706,6 +718,7 @@ test("an admin probes a list page, sees what the crawler found and adopts its co
     url,
     section: "通知公告",
     browser: false,
+    keep_all: false,
     config: null,
     unavailable_reason: null,
   });

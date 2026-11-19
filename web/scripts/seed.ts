@@ -249,6 +249,7 @@ for (const school of SCHOOLS) {
       url: `https://${host}/tzgg.htm`,
       section: "通知公告",
       browser: i === 2,
+      keep_all: false,
       config: null,
       unavailable_reason: i === 3 ? "示例：需要登录" : null,
     });
