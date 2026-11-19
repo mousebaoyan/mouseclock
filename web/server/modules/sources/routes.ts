@@ -179,8 +179,8 @@ export const sourcesRoutes = router
       },
     }),
     async (c) => {
-      authorize(c, "read");
-      return c.json(await getPublicCollege(c.req.valid("param").id), 200);
+      const { id } = authorize(c, "read");
+      return c.json(await getPublicCollege(c.req.valid("param").id, id), 200);
     },
   )
   .openapi(

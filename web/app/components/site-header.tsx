@@ -35,6 +35,7 @@ function pagesFor(me: Me | null) {
       ? [
           { to: "/admin/colleges", label: "院校管理" },
           { to: "/admin/sources", label: "来源管理" },
+          { to: "/admin/tags", label: "学院标签" },
           { to: "/admin/users", label: "修改权限" },
         ]
       : []),
@@ -46,7 +47,17 @@ function pagesFor(me: Me | null) {
 }
 
 // What opens an editor, a question or a notice on a page, rather than where its list is.
-const OPENED = ["edit", "edit_school", "edit_college", "saved", "probe", "adopt", "revoke"];
+const OPENED = [
+  "edit",
+  "edit_school",
+  "edit_college",
+  "saved",
+  "probe",
+  "adopt",
+  "revoke",
+  "votes",
+  "delete",
+];
 
 function unchanging() {
   return () => {};

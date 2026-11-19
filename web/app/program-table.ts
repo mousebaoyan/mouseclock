@@ -1,5 +1,5 @@
 import type { Kind } from "../server/modules/programs/schemas.ts";
-import { anyOf, choices, tally } from "./facets.ts";
+import { allOf, anyOf, choices, tally } from "./facets.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
 import { currentCohort, statusOf, type Status } from "./time.ts";
 import { beijingYear } from "../server/modules/programs/time.ts";
@@ -11,7 +11,7 @@ import { beijingYear } from "../server/modules/programs/time.ts";
 type Program = {
   id: number;
   school: { name: string; short_names: string[]; tier: string | null };
-  college: { name: string; region: string; directions: string[] };
+  college: { name: string; region: string; directions: string[]; tags: string[] };
   kind: Kind;
   name: string;
   apply_start: number | null;
@@ -43,6 +43,7 @@ export function readFilters(params: URLSearchParams) {
     kinds: params.getAll("kind"),
     regions: params.getAll("region"),
     directions: params.getAll("direction"),
+    tags: params.getAll("tag"),
     status: STATUS_FILTERS.find((s) => s === status) ?? null,
     sort: SORTS.find((s) => s === params.get("sort")) ?? "deadline",
     page: Number.isInteger(page) && page > 0 ? page : 1,
@@ -80,6 +81,7 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
         text.toLowerCase().includes(q),
       )) &&
     FACETS.every((facet) => facet === skip || anyOf(picks[facet], VALUES[facet](p))) &&
+    allOf(filters.tags, p.college.tags) &&
     (skip === "status" || statusMatches(filters.status, status));
   const tallyOf = (facet: Facet) =>
     tally(rows.filter((row) => passes(row, facet)).flatMap((row) => VALUES[facet](row.program)));
@@ -97,6 +99,8 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
     direction: tallyOf("direction"),
   };
   const matched = rows.filter((row) => passes(row)).map((row) => row.program);
+  // A tag picked narrows what the others count, as picking another would narrow it further.
+  const tagCounts = tally(matched.flatMap((p) => p.college.tags));
   // Newest first, those listed without a date last; or the most subscribed first. Ties stay by
   // deadline.
   if (filters.sort === "published") {
@@ -111,10 +115,11 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
   return {
     programs: matched.slice((page - 1) * filters.perPage, page * filters.perPage),
     total: matched.length,
-    counts,
+    counts: { ...counts, tag: tagCounts },
     page,
     regions: choices(programs.map((p) => p.college.region)),
     directions: choices(programs.flatMap((p) => p.college.directions)),
+    tags: choices(programs.flatMap((p) => p.college.tags)),
   };
 }
 

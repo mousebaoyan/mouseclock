@@ -28,6 +28,7 @@ test("each kind of person may do what design §6.2 gives them, and no more", () 
       null,
       {
         read: "login_required",
+        contribute: "login_required",
         edit: "login_required",
         admin: "login_required",
         owner: "login_required",
@@ -38,6 +39,7 @@ test("each kind of person may do what design §6.2 gives them, and no more", () 
       { ...member, level: 4, role: "admin", frozen: true },
       {
         read: "member_frozen",
+        contribute: "member_frozen",
         edit: "member_frozen",
         admin: "member_frozen",
         owner: "member_frozen",
@@ -46,33 +48,50 @@ test("each kind of person may do what design §6.2 gives them, and no more", () 
     [
       "member",
       member,
-      { read: null, edit: "level_required", admin: "forbidden", owner: "forbidden" },
+      {
+        read: null,
+        contribute: null,
+        edit: "level_required",
+        admin: "forbidden",
+        owner: "forbidden",
+      },
     ],
     [
       "L3",
       { ...member, level: 3 },
-      { read: null, edit: null, admin: "forbidden", owner: "forbidden" },
+      { read: null, contribute: null, edit: null, admin: "forbidden", owner: "forbidden" },
     ],
     [
       "muted L3",
       { ...member, level: 3, muted: true },
-      { read: null, edit: "muted", admin: "muted", owner: "muted" },
+      { read: null, contribute: "muted", edit: "muted", admin: "muted", owner: "muted" },
     ],
     [
       "L3 whose editing was taken back",
       { ...member, level: 3, edit_revoked: true },
-      { read: null, edit: "edit_revoked", admin: "forbidden", owner: "forbidden" },
+      {
+        read: null,
+        contribute: null,
+        edit: "edit_revoked",
+        admin: "forbidden",
+        owner: "forbidden",
+      },
     ],
     [
       "admin below L3",
       { ...member, role: "admin" },
-      { read: null, edit: null, admin: null, owner: "forbidden" },
+      { read: null, contribute: null, edit: null, admin: null, owner: "forbidden" },
     ],
-    ["owner", { ...member, role: "owner" }, { read: null, edit: null, admin: null, owner: null }],
+    [
+      "owner",
+      { ...member, role: "owner" },
+      { read: null, contribute: null, edit: null, admin: null, owner: null },
+    ],
   ];
   for (const [who, viewer, expected] of people) {
     const got = {
       read: refusal(viewer, "read"),
+      contribute: refusal(viewer, "contribute"),
       edit: refusal(viewer, "edit"),
       admin: refusal(viewer, "admin"),
       owner: refusal(viewer, "owner"),

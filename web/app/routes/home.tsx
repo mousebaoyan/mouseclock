@@ -111,7 +111,11 @@ function PreviewNotice() {
   );
 }
 
-function Filters({ data: { filters, regions, directions, counts, now, cohort } }: { data: Data }) {
+function Filters({
+  data: { filters, regions, directions, tags, counts, now, cohort },
+}: {
+  data: Data;
+}) {
   const { search } = useLocation();
   const { hrefWith, set } = useFilters();
   const current = currentCohort(new Date(now * 1000));
@@ -122,7 +126,8 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
     filters.kinds.length +
       filters.tiers.length +
       filters.regions.length +
-      filters.directions.length >
+      filters.directions.length +
+      filters.tags.length >
       0;
   const statusChoices = [
     { value: "", label: "未截止" },
@@ -164,6 +169,14 @@ function Filters({ data: { filters, regions, directions, counts, now, cohort } }
               label: d,
               count: counts.direction[d] ?? 0,
             }))}
+            className="sm:w-36"
+          />
+          <MultiSelect
+            aria-label="学院标签"
+            all="全部标签"
+            picked={filters.tags}
+            onPickedChange={(values) => set("tag", values)}
+            options={tags.map((t) => ({ value: t, label: t, count: counts.tag[t] ?? 0 }))}
             className="sm:w-36"
           />
           <Select

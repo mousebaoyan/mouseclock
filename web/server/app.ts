@@ -6,6 +6,7 @@ import { dashboardRoutes } from "./modules/ingest/dashboard-routes.ts";
 import { reviewItemsRoutes } from "./modules/ingest/review-routes.ts";
 import { tokenRoutes } from "./modules/ingest/token-routes.ts";
 import { ingestRoutes } from "./modules/ingest/routes.ts";
+import { collegeTagRoutes } from "./modules/programs/college-tag-routes.ts";
 import { programsRoutes } from "./modules/programs/routes.ts";
 import { remindersRoutes } from "./modules/reminders/routes.ts";
 import { reviewRoutes } from "./modules/review/routes.ts";
@@ -22,6 +23,7 @@ const api = createRouter()
   .route("/", reviewItemsRoutes)
   .route("/", tokenRoutes)
   .route("/", programsRoutes)
+  .route("/", collegeTagRoutes)
   .route("/", reviewRoutes)
   .route("/", remindersRoutes)
   .route("/", sourcesRoutes);

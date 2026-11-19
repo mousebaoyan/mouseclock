@@ -6,6 +6,11 @@ export function anyOf(picked: string[], values: string[]) {
   return picked.length === 0 || values.some((value) => picked.includes(value));
 }
 
+// Colleges' tags narrow instead (design §9.3): what has every one picked passes.
+export function allOf(picked: string[], values: string[]) {
+  return picked.every((value) => values.includes(value));
+}
+
 // How many have each value.
 export function tally(values: string[]) {
   const counts: Record<string, number> = {};

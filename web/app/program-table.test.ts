@@ -12,6 +12,7 @@ function program(
     tier?: string;
     region?: string;
     directions?: string[];
+    tags?: string[];
     school?: string;
     short?: string[];
     published?: string | null;
@@ -29,6 +30,7 @@ function program(
       name: "计算机学院",
       region: values.region ?? "北京",
       directions: values.directions ?? [],
+      tags: values.tags ?? [],
     },
     kind: values.kind ?? "summer_camp",
     name: `项目${id}`,
@@ -73,6 +75,20 @@ test("filters narrow down together; tiers and kinds take any of those ticked", (
   expect(ids("kind=pre_recommendation", programs)).toEqual([2]);
   expect(ids("kind=summer_camp&kind=pre_recommendation&region=北京", programs)).toEqual([2]);
   expect(ids("region=北京&region=上海&direction=计算机&direction=人工智能", programs)).toEqual([1]);
+});
+
+test("colleges' tags narrow: each picked has to be there, and each counts among what is left", () => {
+  const programs = [
+    program(1, { tags: ["对双非友好", "有机试"] }),
+    program(2, { tags: ["对双非友好"] }),
+    program(3, { tags: ["有机试"] }),
+    program(4),
+  ];
+  expect(ids("tag=对双非友好", programs)).toEqual([1, 2]);
+  expect(ids("tag=对双非友好&tag=有机试", programs)).toEqual([1]);
+  const view = tableView(programs, readFilters(new URLSearchParams("tag=对双非友好")), NOW);
+  expect(view.counts.tag).toEqual({ 对双非友好: 2, 有机试: 1 });
+  expect(view.tags).toEqual(["对双非友好", "有机试"]);
 });
 
 test("the tier 其他 picks the schools with no tier, alongside any others ticked", () => {

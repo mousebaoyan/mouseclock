@@ -7,6 +7,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../../platform/audit.ts";
 import type { Kind } from "../programs/schemas.ts";
+import { collegeTagCounts, TAG_THRESHOLD, tagsOf } from "../programs/college-tags.ts";
 import { applyOf, eventEndOf, logoOf } from "../programs/service.ts";
 import { closesAt } from "../programs/time.ts";
 import {
@@ -211,6 +212,7 @@ export async function listPublicColleges() {
       "colleges.kind",
       "colleges.region",
       "colleges.directions",
+      tagsOf("colleges.id").as("tags"),
     ])
     .orderBy("schools.name")
     .orderBy("colleges.name")
@@ -237,12 +239,14 @@ export async function listPublicColleges() {
       kind: row.kind,
       region: row.region,
       directions: row.directions,
+      tags: row.tags,
     });
   }
   return { schools: [...schools.values()] };
 }
 
-export async function getPublicCollege(id: number) {
+// A college's page as `userId` sees it: their own tags are marked.
+export async function getPublicCollege(id: number, userId: number) {
   const college = await db
     .selectFrom("colleges")
     .innerJoin("schools", "schools.id", "colleges.school_id")
@@ -261,7 +265,8 @@ export async function getPublicCollege(id: number) {
     .executeTakeFirst();
   if (!college) throw new AppError(404, "not_found", "学院不存在");
 
-  const [sources, programs] = await Promise.all([
+  const [tagCounts, sources, programs] = await Promise.all([
+    collegeTagCounts(id, userId),
     db
       .selectFrom("sources")
       .select(["id", "url", "section", "unavailable_reason"])
@@ -305,6 +310,9 @@ export async function getPublicCollege(id: number) {
     kind: college.kind,
     region: college.region,
     directions: college.directions,
+    // From the same counts, so the two agree.
+    tags: tagCounts.filter((tag) => tag.count >= TAG_THRESHOLD).map((tag) => tag.name),
+    tag_counts: tagCounts,
     sources,
     programs: [...grouped].map(([cohort, cohortPrograms]) => ({
       cohort,

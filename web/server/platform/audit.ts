@@ -11,6 +11,7 @@ export async function recordAudit(
     target_type:
       | "school"
       | "college"
+      | "college_tag"
       | "program"
       | "source"
       | "source_probe"

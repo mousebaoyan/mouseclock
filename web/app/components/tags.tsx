@@ -95,6 +95,15 @@ export function Chip({
   );
 }
 
+// The tags that count as a college's (design §9.3), in gray: impressions, not facts.
+export function CollegeTags({ tags }: { tags: string[] }) {
+  return tags.map((tag) => (
+    <Tag key={tag} color="gray">
+      {tag}
+    </Tag>
+  ));
+}
+
 export function TierTag({ tier }: { tier: string | null }) {
   const found = TIERS.find((item) => item.value === tier);
   return found ? <Tag color={found.color}>{found.label}</Tag> : null;

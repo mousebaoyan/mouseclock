@@ -4,6 +4,7 @@ import type { DB, Json } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
+import { tagsOf } from "./college-tags.ts";
 import { sanitizeSnapshot } from "./sanitize.ts";
 import type {
   ApplyValue,
@@ -99,6 +100,7 @@ function tableQuery() {
       "c.name as college_name",
       "c.region as college_region",
       "c.directions as college_directions",
+      tagsOf("c.id").as("college_tags"),
       "notice.url as notice_url",
       "notice.published_on as notice_published_on",
     ])
@@ -119,6 +121,7 @@ function tableProgram(row: Awaited<ReturnType<ReturnType<typeof tableQuery>["exe
       name: row.college_name,
       region: row.college_region,
       directions: row.college_directions,
+      tags: row.college_tags,
     },
     kind: row.kind,
     name: row.name,
@@ -387,10 +390,10 @@ export async function getAttachmentFile(snapshotId: number, position: number) {
 
 // What the table's data is as of. It changes only with a new version, an edit or revert, what
 // admins do (reviews, deleting programs, editing schools and colleges), each of which adds a row to
-// a table that only grows, or a subscription. Counted rather than the highest id: transactions can
-// commit in another order than they took their ids. Subscriptions come and go, so the latest one
-// made counts too: subscribing makes a later one, unsubscribing lowers the count, and a merge, which
-// moves them, is a review.
+// a table that only grows, or a subscription or a college's tag. Counted rather than the highest
+// id: transactions can commit in another order than they took their ids. Subscriptions and tags
+// come and go, so the latest one made counts too: making one makes a later one, taking one back
+// lowers the count, and a merge, which moves subscriptions, is a review, as removing tags is.
 export async function tableVersion() {
   const { rows } = await sql<{ version: string }>`
     select concat(
@@ -398,7 +401,9 @@ export async function tableVersion() {
       (select count(*) from edits), '-',
       (select count(*) from audit_log), '-',
       (select count(*) from subscriptions), '-',
-      (select floor(extract(epoch from max(created_at)) * 1000)::bigint from subscriptions)
+      (select floor(extract(epoch from max(created_at)) * 1000)::bigint from subscriptions), '-',
+      (select count(*) from college_tag_votes), '-',
+      (select floor(extract(epoch from max(created_at)) * 1000)::bigint from college_tag_votes)
     ) as version
   `.execute(db);
   return rows[0].version;

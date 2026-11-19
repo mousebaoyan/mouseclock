@@ -185,6 +185,7 @@ export const TableProgram = z
       name: z.string(),
       region: z.string(),
       directions: z.array(z.string()),
+      tags: z.array(z.string()).openapi({ description: "算数的学院标签：3 人以上贴的" }),
     }),
     kind: Kind,
     name: z.string(),
@@ -379,3 +380,34 @@ export const Applications = z
       .openapi({ description: "还没截止的按截止排在前，截止了的在后" }),
   })
   .openapi("Applications");
+
+// What members make of a college (design §9.3), from the admins' presets.
+export const TagInput = z
+  .strictObject({
+    name: z.string(named("标签名")).trim().min(1).max(20),
+    description: z.string(named("说明")).trim().min(1).max(200),
+  })
+  .openapi("TagInput");
+export const TagPatch = TagInput.extend({
+  sort: Int.min(1).openapi({ description: "排第几，从 1 起；别的往后挪" }),
+})
+  .partial()
+  .refine((value) => Object.keys(value).length > 0, "请填写要修改的字段")
+  .openapi("TagPatch");
+export const CollegeTag = z
+  .object({ id: Int, name: z.string(), description: z.string(), sort: Int })
+  .openapi("CollegeTag");
+export const AdminTag = CollegeTag.extend({
+  voters: Int.openapi({ description: "在各学院贴过它的有几个人，删除前提示用" }),
+}).openapi("AdminTag");
+// A preset on a college's page: how many put it on, and whether oneself did.
+export const CollegeTagCount = CollegeTag.omit({ sort: true })
+  .extend({ count: Int, mine: z.boolean() })
+  .openapi("CollegeTagCount");
+export const TagVote = z
+  .object({
+    id: Int,
+    user: z.object({ id: Int, display_name: z.string(), avatar_url: z.string().nullable() }),
+    created_at: UnixSeconds,
+  })
+  .openapi("TagVote");

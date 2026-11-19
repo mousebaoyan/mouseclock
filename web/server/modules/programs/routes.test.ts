@@ -136,7 +136,13 @@ test("members get the whole cohort with the table's fields, by deadline", async 
   expect(programs[1]).toEqual({
     id: open,
     school: { name: "测试大学", short_names: ["测试大"], tier: "985", logo: null },
-    college: { id: seeded.collegeId, name: "计算机学院", region: "北京", directions: ["计算机"] },
+    college: {
+      id: seeded.collegeId,
+      name: "计算机学院",
+      region: "北京",
+      directions: ["计算机"],
+      tags: [],
+    },
     kind: "summer_camp",
     name: "夏令营",
     apply: { start: { date: "2026-05-10" }, end: { date: "2026-06-01", time: "17:00" } },
@@ -244,6 +250,29 @@ test("a member's browser keeps the table until a version or an admin changes som
   const preview = await app.request(url, { headers: { "if-none-match": etag } });
   expect(preview.status).toBe(200);
   expect(preview.headers.get("etag")).toBeNull();
+});
+
+test("the table carries the college tags that count, and a vote changes its tag", async () => {
+  const seeded = await college();
+  await program(seeded, { apply: until("2026-06-01") });
+  const { id: tag } = await db
+    .selectFrom("college_tags")
+    .select("id")
+    .where("name", "=", "看重科研")
+    .executeTakeFirstOrThrow();
+  const query = { cohort: "2027" };
+  const etag = (await api.programs.$get({ query }, member)).headers.get("etag") ?? "";
+  expect(etag).toMatch(/^".+"$/);
+  for (const profile of fakeUsers.slice(0, 3)) {
+    const param = { id: String(seeded.collegeId), tag: String(tag) };
+    await api.colleges[":id"].tags[":tag"].$put({ param }, await writer(profile));
+  }
+  const res = await api.programs.$get(
+    { query },
+    { headers: { ...member.headers, "if-none-match": etag } },
+  );
+  if (res.status !== 200) throw new Error("Table failed");
+  expect((await res.json()).programs.map((p) => p.college.tags)).toEqual([["看重科研"]]);
 });
 
 test("a change committed after a later one still changes the tag", async () => {
