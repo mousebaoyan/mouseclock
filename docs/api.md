@@ -52,7 +52,7 @@
 | | `GET /me/subscriptions` | 自己订阅的项目，字段同总表，还没截止的按截止排在前，截止了的在后；以及最多能订几个（`limit`）。「我的 · 订阅」和总表卡片上的「已订阅」用 |
 | | `DELETE /me/subscriptions/closed` | 取消全部已截止的订阅 |
 | | `PUT`、`DELETE /colleges/{id}/follow` | 关注、取消（[总体设计 §11.4](design.md#114-关注学院)）；关注还没收录的学院，算替它求收录 |
-| | `GET /me/follows` | 自己关注的学院，每个带这一届的项目数、最近一条通知的日期，没收录的带求收录的进度；院校清单上的「已关注」也用它 |
+| | `GET /me/follows?cohort=` | 自己关注的学院，每个带 `cohort` 这一届的项目数、最近一条通知的日期，没收录的带求收录的进度；院校清单上的「已关注」也用它 |
 | 我的报名 | `PUT`、`DELETE /programs/{id}/application` | 记报名：进度和备注；清除（[总体设计 §9.4](design.md#94-我的报名)） |
 | | `GET /me/applications?stage=` | 自己的报名记录，带各进度的条数；总表卡片上的进度也用它 |
 | 学院标签 | `PUT`、`DELETE /colleges/{id}/tags/{tag}` | 贴标签、撤回（[总体设计 §9.3](design.md#93-学院标签)） |
@@ -74,9 +74,9 @@
 | | `GET /disputes` | 有争议的项目和它们的反馈，审核页用；管理员 |
 | | `POST /programs/{id}/resolve-dispute` | 复核争议，管理员，只认网页会话：带 `{ result, note }`，`result` 是改正了 `corrected` 还是确认没错 `confirmed`；这个项目待处理的反馈照它一起关掉（[总体设计 §12.3](design.md#123-争议)） |
 | | `DELETE /programs/{id}` | 删除项目，管理员，只认网页会话：带 `{ reason }`，理由必填。软删除，版本、快照和记录都留着，它待审的条目一起关掉，记进操作日志 |
-| 求收录 | `GET /inclusion-requests?status=`、`POST /inclusion-requests` | 列表、提交（[总体设计 §10.1](design.md#101-求收录)）：学院已收录的返回 `409 already_included`；有人提过、还没收录的算同求，返回那一条 |
-| | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回 |
-| | `PATCH /admin/inclusion-requests/{id}`、`POST /admin/inclusion-requests/{id}/merge` | 管理员改进度和原因、对上清单里的学校和学院；把一条并进另一条（`{ into }`），同求合在一起。都记进操作日志 |
+| 求收录 | `GET /inclusion-requests?status=`、`POST /inclusion-requests` | 列表、提交（[总体设计 §10.1](design.md#101-求收录)）：学院已收录的返回 `409 already_included`；有人提过、还没收录的算同求，返回那一条。列表里关注着这个学院的也算同求：`votes` 每人算一次，`mine` 是自己同求了或关注着，`following` 是关注着 |
+| | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回；撤回只撤自己点的那一票，关注算的那一票取消关注才撤 |
+| | `PATCH /admin/inclusion-requests/{id}`、`POST /admin/inclusion-requests/{id}/merge` | 管理员改进度和原因、对上清单里的学校和学院；把一条并进另一条（`{ into }`），同求合在一起；对上了学院的不能并进没对上的（`409 merge_into_matched`）。都记进操作日志 |
 | 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
 | 我的 | `GET`、`PATCH /me/email-settings` | 每类消息发不发邮件：站长定成不发的不列，没动过的带站长的默认；也说能不能收邮件，没有 QQ 号的收不到（[总体设计 §11.2](design.md#112-邮件)）。`PATCH` 只改给出的几类 |
 | | `GET`、`POST /me/tokens`，`DELETE /me/tokens/{id}` | 个人令牌，只认网页会话：生成时返回的令牌只出现这一次，每人最多 10 个（[总体设计 §13](design.md#13-agent-接入)） |

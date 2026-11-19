@@ -3,6 +3,7 @@ import { Link } from "react-router";
 import { cn } from "~/cn";
 import { Check } from "~/components/icons";
 import type { Kind, Role, Stage } from "../../server/modules/programs/schemas.ts";
+import type { RequestStatus } from "../../server/modules/sources/schemas.ts";
 import { TIERS } from "../tiers.ts";
 import type { Status } from "../time.ts";
 
@@ -126,6 +127,14 @@ export const PROGRAM_KINDS: Record<Kind, { label: string; color: TagColor }> = {
 export function KindTag({ kind }: { kind: Kind }) {
   return <Tag color={PROGRAM_KINDS[kind].color}>{PROGRAM_KINDS[kind].label}</Tag>;
 }
+
+// Where an ask for a college is (design §10.1).
+export const REQUEST_STATUSES: Record<RequestStatus, string> = {
+  queued: "排队中",
+  onboarding: "接入中",
+  included: "已收录",
+  unavailable: "暂时抓不了",
+};
 
 // How far one's application went (design §9.4), in the order the stages are offered.
 export const STAGES: Record<Stage, { label: string; color: TagColor }> = {

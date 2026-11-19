@@ -50,19 +50,26 @@ export async function listRequests(
   { status, ...paging }: z.infer<typeof RequestQuery>,
 ) {
   let query = named(db)
-    .select((eb) => [
+    .select([
       "inclusion_requests.url_hint",
       "inclusion_requests.note",
       "inclusion_requests.created_at",
-      eb
-        .selectFrom("inclusion_votes as v")
-        .whereRef("v.request_id", "=", "inclusion_requests.id")
-        .select((v) => v.fn.countAll<number>().as("votes"))
-        .as("votes"),
+      // Following the college counts as a vote (design §10.1), each person once.
+      sql<number>`(
+        select count(*) from (
+          select user_id from inclusion_votes where request_id = inclusion_requests.id
+          union
+          select user_id from follows where college_id = inclusion_requests.college_id
+        ) as voters
+      )`.as("votes"),
       sql<boolean>`exists (
         select from inclusion_votes as v
         where v.request_id = inclusion_requests.id and v.user_id = ${userId}
-      )`.as("mine"),
+      )`.as("voted"),
+      sql<boolean>`exists (
+        select from follows as f
+        where f.college_id = inclusion_requests.college_id and f.user_id = ${userId}
+      )`.as("following"),
     ])
     .where("inclusion_requests.status", "=", status);
   query =
@@ -89,8 +96,9 @@ export async function listRequests(
       note: row.note,
       status: row.status,
       reason: row.reason,
-      votes: row.votes ?? 0,
-      mine: row.mine,
+      votes: row.votes,
+      mine: row.voted || row.following,
+      following: row.following,
       created_at: unix(row.created_at),
     })),
     counts: REQUEST_STATUSES.map((s) => ({
@@ -114,7 +122,7 @@ async function writeRequests<T>(operation: (trx: Transaction<DB>) => Promise<T>)
   }
 }
 
-function crawled(executor: Kysely<DB>, collegeId: number) {
+export function crawled(executor: Kysely<DB>, collegeId: number) {
   return executor
     .selectFrom("sources")
     .select("id")
@@ -178,7 +186,6 @@ export async function voteFor(userId: number, requestId: number) {
   });
 }
 
-// A queued one no one votes for any more leaves the list.
 export async function withdrawVote(userId: number, requestId: number) {
   await db.transaction().execute(async (trx) => {
     const request = await trx
@@ -197,8 +204,9 @@ export async function withdrawVote(userId: number, requestId: number) {
   });
 }
 
-// A queued ask no one wants any more leaves the list; the others stay (design §10.1).
-async function dropUnwanted(trx: Transaction<DB>, requestId: number) {
+// A queued ask no one votes for or follows the college of any more leaves the list; the others
+// stay (design §10.1).
+export async function dropUnwanted(trx: Transaction<DB>, requestId: number) {
   await trx
     .deleteFrom("inclusion_requests")
     .where("id", "=", requestId)
@@ -209,6 +217,16 @@ async function dropUnwanted(trx: Transaction<DB>, requestId: number) {
           eb
             .selectFrom("inclusion_votes")
             .whereRef("request_id", "=", "inclusion_requests.id")
+            .select("user_id"),
+        ),
+      ),
+    )
+    .where((eb) =>
+      eb.not(
+        eb.exists(
+          eb
+            .selectFrom("follows")
+            .whereRef("follows.college_id", "=", "inclusion_requests.college_id")
             .select("user_id"),
         ),
       ),
@@ -305,7 +323,12 @@ export async function mergeRequest(actor: Actor, id: number, into: number) {
       .forUpdate()
       .execute();
     const before = rows.find((r) => r.id === id);
-    if (!before || rows.length < 2) throw new AppError(404, "not_found", "求收录不存在");
+    const target = rows.find((r) => r.id === into);
+    if (!before || !target) throw new AppError(404, "not_found", "求收录不存在");
+    // The college it is matched to is what its followers count by and what being crawled includes.
+    if (before.college_id !== null && target.college_id === null) {
+      throw new AppError(409, "merge_into_matched", "这条对上了学院，要把另一条并进这一条");
+    }
     const moved = await trx
       .insertInto("inclusion_votes")
       .columns(["request_id", "user_id", "created_at"])
@@ -349,10 +372,18 @@ export async function includeCollege(trx: Transaction<DB>, collegeId: number) {
 async function tell(trx: Transaction<DB>, ids: number[]) {
   if (ids.length === 0) return;
   const rows = await named(trx).where("inclusion_requests.id", "in", ids).execute();
+  // Those who voted and those following the college, each once.
   const voters = await trx
     .selectFrom("inclusion_votes")
     .select(["request_id", "user_id"])
     .where("request_id", "in", ids)
+    .union((eb) =>
+      eb
+        .selectFrom("follows")
+        .innerJoin("inclusion_requests", "inclusion_requests.college_id", "follows.college_id")
+        .select(["inclusion_requests.id as request_id", "follows.user_id"])
+        .where("inclusion_requests.id", "in", ids),
+    )
     .execute();
   await sendMessages(
     trx,

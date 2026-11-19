@@ -1,5 +1,6 @@
 import type { InferResponseType } from "hono/client";
 import { Link, useLocation } from "react-router";
+import { Follow } from "~/components/follow";
 import { ChipGroup, FilterBar, keepOnly, SearchBox, useFilters } from "~/components/filters";
 import { Group, List, Row } from "~/components/list";
 import { Empty, Page } from "~/components/page";
@@ -12,9 +13,12 @@ import { MultiSelect, Select } from "~/components/ui/select";
 import { Table, Td, Tr } from "~/components/ui/table";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { collegeView, regionsOf, SORTS } from "../college-list.ts";
+import { currentCohort } from "../time.ts";
 import type { Route } from "./+types/colleges.ts";
 
-type CollegeList = InferResponseType<ReturnType<typeof createApi>["colleges"]["$get"], 200>;
+type Api = ReturnType<typeof createApi>;
+type CollegeList = InferResponseType<Api["colleges"]["$get"], 200>;
+type Follows = InferResponseType<Api["me"]["follows"]["$get"], 200>;
 // The short names are only for search, which the loader does; the page goes without them.
 type School = Omit<CollegeList["schools"][number], "short_names">;
 
@@ -22,15 +26,34 @@ export function meta() {
   return [{ title: "院校清单 · 鼠钟" }, { name: "description", content: "鼠钟收录的学校与学院" }];
 }
 
-// The schools the address asks for (college-list.ts).
+// The schools the address asks for (college-list.ts), and those one follows.
 export async function loader({ request, context }: Route.LoaderArgs) {
-  const { schools } = await readApi<CollegeList>(await context.get(apiContext).colleges.$get());
-  return collegeView(schools, new URL(request.url).searchParams);
+  const api = context.get(apiContext);
+  const query = { cohort: String(currentCohort(new Date())) };
+  const [{ schools }, { follows }] = await Promise.all([
+    api.colleges.$get().then(readApi<CollegeList>),
+    api.me.follows.$get({ query }).then(readApi<Follows>),
+  ]);
+  return {
+    ...collegeView(schools, new URL(request.url).searchParams),
+    followed: follows.map((f) => f.college.id),
+  };
 }
 
 export default function Colleges({ loaderData }: Route.ComponentProps) {
-  const { schools, total, colleges, page, perPage, filters, counts, regions, directions, tags } =
-    loaderData;
+  const {
+    schools,
+    total,
+    colleges,
+    page,
+    perPage,
+    filters,
+    counts,
+    regions,
+    directions,
+    tags,
+    followed,
+  } = loaderData;
   const { search } = useLocation();
   const { set } = useFilters();
   const active =
@@ -112,8 +135,8 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
           <p className="mb-4 text-[13px] text-muted-foreground">
             共 {total} 所学校、{colleges} 个学院
           </p>
-          <SchoolTable schools={schools} />
-          <Schools schools={schools} />
+          <SchoolTable schools={schools} followed={followed} />
+          <Schools schools={schools} followed={followed} />
           <Pagination total={total} page={page} perPage={perPage} />
         </div>
       )}
@@ -137,9 +160,13 @@ function SchoolLabel({ school }: { school: School }) {
 }
 
 // Wide screens: each school once, with its tier, beside the rows of its colleges.
-function SchoolTable({ schools }: { schools: School[] }) {
+function SchoolTable({ schools, followed }: { schools: School[]; followed: number[] }) {
   return (
-    <Table className="max-lg:hidden" head={["学校", "学院", "类型", "所在地", "招生方向"]}>
+    <Table
+      className="max-lg:hidden"
+      head={["学校", "学院", "类型", "所在地", "招生方向"]}
+      actions="关注"
+    >
       {schools.map((school) =>
         school.colleges.map((college, i) => (
           <Tr key={college.id}>
@@ -165,6 +192,9 @@ function SchoolTable({ schools }: { schools: School[] }) {
             <Td className="text-muted-foreground">
               {college.directions.join("、") || <Missing />}
             </Td>
+            <Td nowrap>
+              <Follow college={college.id} following={followed.includes(college.id)} />
+            </Td>
           </Tr>
         )),
       )}
@@ -173,7 +203,7 @@ function SchoolTable({ schools }: { schools: School[] }) {
 }
 
 // Phones: each school with its colleges beneath it, each row opening its college.
-function Schools({ schools }: { schools: School[] }) {
+function Schools({ schools, followed }: { schools: School[]; followed: number[] }) {
   return (
     <div className="space-y-6 lg:hidden">
       {schools.map((school) => (
@@ -209,6 +239,7 @@ function Schools({ schools }: { schools: School[] }) {
                     </>
                   )
                 }
+                side={<Follow college={college.id} following={followed.includes(college.id)} />}
               />
             ))}
           </List>

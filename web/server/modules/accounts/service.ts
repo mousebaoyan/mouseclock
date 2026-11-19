@@ -119,8 +119,8 @@ export async function profileOf(userId: number) {
 }
 
 // Every person logged in, or who uses the site without opening it, an hour after their last
-// refresh (design §6.1): a subscription sends them messages, so a ban or leaving the group must
-// reach here. One at a time: mousehole's server is busy enough.
+// refresh (design §6.1): a subscription or a follow sends them messages, so a ban or leaving the
+// group must reach here. One at a time: mousehole's server is busy enough.
 export async function refreshUsers() {
   const due = await db
     .selectFrom("users")
@@ -141,6 +141,12 @@ export async function refreshUsers() {
             .selectFrom("subscriptions")
             .select("subscriptions.user_id")
             .whereRef("subscriptions.user_id", "=", "users.id"),
+        ),
+        eb.exists(
+          eb
+            .selectFrom("follows")
+            .select("follows.user_id")
+            .whereRef("follows.user_id", "=", "users.id"),
         ),
       ]),
     )

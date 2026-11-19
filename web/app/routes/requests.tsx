@@ -18,6 +18,7 @@ import { Empty, Page, Panel } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
+import { REQUEST_STATUSES } from "~/components/tags";
 import { Segmented } from "~/components/ui/segmented";
 import { Select } from "~/components/ui/select";
 import {
@@ -34,13 +35,6 @@ type Api = ReturnType<typeof createApi>;
 type Requests = InferResponseType<Api["inclusion-requests"]["$get"], 200>;
 type Request = Requests["items"][number];
 type CollegeList = InferResponseType<Api["colleges"]["$get"], 200>;
-
-const STATUSES: Record<RequestStatus, string> = {
-  queued: "排队中",
-  onboarding: "接入中",
-  included: "已收录",
-  unavailable: "暂时抓不了",
-};
 
 export function meta() {
   return [{ title: "求收录 · 鼠钟" }];
@@ -157,7 +151,7 @@ export default function Requests({ loaderData, actionData }: Route.ComponentProp
           label="进度"
           items={requests.counts.map((c) => ({
             to: `?status=${c.status}`,
-            label: STATUSES[c.status],
+            label: REQUEST_STATUSES[c.status],
             count: c.count,
             on: c.status === status,
           }))}
@@ -187,7 +181,7 @@ export default function Requests({ loaderData, actionData }: Route.ComponentProp
       {!asking && actionData?.error && <FormMessage error={actionData.error} />}
       <div>
         {requests.items.length === 0 ? (
-          <Empty>{`没有${STATUSES[status]}的求收录`}</Empty>
+          <Empty>{`没有${REQUEST_STATUSES[status]}的求收录`}</Empty>
         ) : (
           <List>
             {requests.items.map((item) => (
@@ -292,7 +286,9 @@ function VoteButton({ item, muted }: { item: Request; muted: boolean }) {
       <button
         type="submit"
         aria-pressed={on}
-        disabled={muted || closed || fetcher.state !== "idle"}
+        // Following the college counts as voting, until one stops following it.
+        disabled={muted || closed || item.following || fetcher.state !== "idle"}
+        title={item.following ? "关注着这个学院，就算同求了" : undefined}
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] whitespace-nowrap tabular-nums pointer-coarse:h-9 disabled:cursor-default",
           on
@@ -300,7 +296,7 @@ function VoteButton({ item, muted }: { item: Request; muted: boolean }) {
             : "bg-card text-foreground/80 enabled:hover:border-input enabled:hover:text-foreground",
         )}
       >
-        {closed ? "同求过" : "同求"}
+        {closed ? "同求过" : item.following ? "关注着" : "同求"}
         <span className="text-xs font-normal opacity-60">{count}</span>
       </button>
       {fetcher.state === "idle" && fetcher.data && (
@@ -449,7 +445,7 @@ function Handle({
             value={status}
             onValueChange={setStatus}
             // Included is a college on the list being crawled.
-            options={Object.entries(STATUSES)
+            options={Object.entries(REQUEST_STATUSES)
               .filter(([value]) => value !== "included" || item.college.id !== null)
               .map(([value, label]) => ({ value, label }))}
             className="w-32"

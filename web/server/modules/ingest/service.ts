@@ -15,6 +15,7 @@ import {
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
 import type { Failure } from "../sources/schemas.ts";
+import { announceNews } from "../reminders/follows.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
 import { recordAudit } from "../../platform/audit.ts";
 
@@ -459,6 +460,8 @@ export async function recordRun(run: {
         .values(usage.map((u) => ({ ...u, source_id: run.source_id })))
         .execute();
     }
+    // Followers hear of what the round brought (design §11.4), once.
+    if (inserted) await announceNews(trx, { source_id: run.source_id });
     await finishSourceCrawl(trx, run.source_id, run.finished_at);
   });
 }

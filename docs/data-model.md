@@ -77,7 +77,8 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `follows` | `user_id`、`college_id`、`created_at` | 关注学院，`(user_id, college_id)` 唯一。一轮里的新通知按 `notices.first_seen_at` 落在这一轮的起止之间来认，抓取节点不用改（[总体设计 §11.4](design.md#114-关注学院)） |
+| `follows` | `user_id`、`college_id`、`created_at` | 关注学院，`(user_id, college_id)` 唯一（[总体设计 §11.4](design.md#114-关注学院)）。抓取节点不用改：一个来源每交一轮、审核把它的一个项目放好时，网站把它还没发过的通知发给关注者 |
+| `announced_notices` | `notice_id`、`college_id` | 哪条通知已经告诉过哪个学院的关注者，每对只发一次。没记上的、有项目的通知就是新通知，除非来源第一轮成功读列表以前就有（往回翻补的），或者同一个网址在别的来源里先见过；建表时已经在表上的都记上，不算新的 |
 
 ### 我的报名（`programs`）
 

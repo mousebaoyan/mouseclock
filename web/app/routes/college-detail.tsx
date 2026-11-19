@@ -1,6 +1,7 @@
 import type { InferResponseType } from "hono/client";
 import { data, Link, useFetcher, useRouteLoaderData } from "react-router";
 import { cn } from "~/cn";
+import { Follow } from "~/components/follow";
 import { FormMessage } from "~/components/form";
 import { ExternalLink } from "~/components/icons";
 import { List, Row } from "~/components/list";
@@ -89,6 +90,13 @@ export default function CollegeDetail({ loaderData }: Route.ComponentProps) {
         </>
       }
       actions={[
+        <Follow
+          key="follow"
+          college={college.id}
+          following={college.following}
+          followers={college.followers}
+          outlined
+        />,
         // Not crawled yet: ask for it (design §10.1).
         !me?.muted && college.sources.every((source) => source.unavailable_reason) && (
           <Link

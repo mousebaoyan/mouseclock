@@ -151,6 +151,7 @@ export const inclusionRequestRoutes = createRouter()
         204: { description: "已合并" },
         ...admins,
         404: errorResponse("求收录不存在"),
+        409: errorResponse("这条对上了学院、那条没有，要反过来并（`merge_into_matched`）"),
       },
     }),
     async (c) => {

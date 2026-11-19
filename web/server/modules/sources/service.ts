@@ -261,6 +261,15 @@ export async function getPublicCollege(id: number, userId: number) {
       "schools.name as school_name",
       "schools.tier as school_tier",
       logoOf("schools.id").as("school_logo"),
+      (eb) =>
+        eb
+          .selectFrom("follows")
+          .select((f) => f.fn.countAll<number>().as("count"))
+          .whereRef("follows.college_id", "=", "colleges.id")
+          .as("followers"),
+      sql<boolean>`exists (
+        select from follows where college_id = colleges.id and user_id = ${userId}
+      )`.as("following"),
     ])
     .where("colleges.id", "=", id)
     .executeTakeFirst();
@@ -314,6 +323,8 @@ export async function getPublicCollege(id: number, userId: number) {
     // From the same counts, so the two agree.
     tags: tagCounts.filter((tag) => tag.count >= TAG_THRESHOLD).map((tag) => tag.name),
     tag_counts: tagCounts,
+    followers: college.followers ?? 0,
+    following: college.following,
     sources,
     programs: [...grouped].map(([cohort, cohortPrograms]) => ({
       cohort,

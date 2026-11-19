@@ -153,6 +153,7 @@ test("an email goes by the owner's rule until the member sets their own, and nev
   expect((await settings.json()).kinds).toEqual([
     { kind: "deadline_soon", label: "快截止了", enabled: false, default_enabled: true },
     { kind: "deadline_changed", label: "截止变了", enabled: false, default_enabled: false },
+    { kind: "college_news", label: "学院有新通知", enabled: true, default_enabled: true },
     { kind: "inclusion_result", label: "求收录有结果", enabled: true, default_enabled: true },
   ]);
 
@@ -165,6 +166,7 @@ test("an email goes by the owner's rule until the member sets their own, and nev
   if (after.status !== 200) throw new Error(`status ${after.status}`);
   expect((await after.json()).kinds.map((k) => k.kind)).toEqual([
     "deadline_changed",
+    "college_news",
     "inclusion_result",
   ]);
   await rules.$put(
