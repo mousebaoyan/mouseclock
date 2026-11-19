@@ -57,6 +57,7 @@ export const SourceInput = z.strictObject({
   url: z.url({ protocol: /^https?$/, ...named("网址") }).max(2000),
   section: z.string(named("栏目名")).trim().max(200),
   browser: z.boolean(),
+  keep_all: z.boolean(),
   config: Config.nullable(),
   unavailable_reason: z.string(named("暂时抓不了的原因")).trim().min(1).max(1000).nullable(),
 });
@@ -92,6 +93,7 @@ export const Source = z.object({
   url: z.string(),
   section: z.string(),
   browser: z.boolean(),
+  keep_all: z.boolean(),
   unavailable_reason: z.string().nullable(),
   crawled_at: UnixSeconds.nullable(),
 });

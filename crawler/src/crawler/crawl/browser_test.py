@@ -10,7 +10,9 @@ from crawler.crawl.browser import Browser
 from crawler.crawl.contract import WorkSource
 from crawler.crawl.fetch import INTERVAL, Fetcher, FetchError
 
-SOURCE = WorkSource(id=7, url="https://a/list", browser=True, config=None, backfill=False)
+SOURCE = WorkSource(
+    id=7, url="https://a/list", browser=True, keep_all=False, config=None, backfill=False
+)
 
 
 def run(main: Callable[[], Awaitable[None]]) -> None:

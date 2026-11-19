@@ -26,6 +26,7 @@ SOURCE = WorkSource(
     id=7,
     url="https://example.edu.cn/tzgg.htm",
     browser=False,
+    keep_all=False,
     config=None,
     backfill=False,
 )

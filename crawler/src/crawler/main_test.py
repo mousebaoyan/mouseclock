@@ -41,7 +41,14 @@ def test_bad_configuration_is_named_without_its_values(caplog: pytest.LogCapture
 
 def test_a_failing_round_leaves_the_others_and_stopping_waits_for_them() -> None:
     sources = [
-        WorkSource(id=n, url=f"http://a{n}/list.htm", browser=False, config=None, backfill=False)
+        WorkSource(
+            id=n,
+            url=f"http://a{n}/list.htm",
+            browser=False,
+            keep_all=False,
+            config=None,
+            backfill=False,
+        )
         for n in (1, 2)
     ]
     calls: list[tuple[str, Any]] = []
@@ -98,7 +105,9 @@ def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
     monkeypatch.setattr("crawler.main.POLL", 0)
-    source = WorkSource(id=1, url="http://a/list.htm", browser=False, config=None, backfill=False)
+    source = WorkSource(
+        id=1, url="http://a/list.htm", browser=False, keep_all=False, config=None, backfill=False
+    )
     calls: list[str] = []
     stopping = asyncio.Event()
     failed_twice = asyncio.Event()
@@ -148,7 +157,12 @@ def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
 
 def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits() -> None:
     source = WorkSource(
-        id=1, url="https://regular.example/list", browser=False, config=None, backfill=False
+        id=1,
+        url="https://regular.example/list",
+        browser=False,
+        keep_all=False,
+        config=None,
+        backfill=False,
     )
     probes = [
         WorkProbe(id=46, url="https://probe.example/list", browser=False, config=None),

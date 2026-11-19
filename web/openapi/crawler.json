@@ -52,6 +52,10 @@
           "browser": {
             "type": "boolean"
           },
+          "keep_all": {
+            "type": "boolean",
+            "description": "全收：每条新通知都送去抽取，不看初筛的分数"
+          },
           "config": {
             "anyOf": [
               {
@@ -71,6 +75,7 @@
           "id",
           "url",
           "browser",
+          "keep_all",
           "config",
           "backfill"
         ]

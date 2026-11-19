@@ -10,11 +10,12 @@ from crawler.screening.screen import CONCURRENCY, THRESHOLD, Screen
 from crawler.screening.system_one import SystemOne
 
 
-def source() -> WorkSource:
+def source(keep_all: bool = False) -> WorkSource:
     return WorkSource(
         id=7,
         url="https://example.edu.cn",
         browser=False,
+        keep_all=keep_all,
         config=None,
         backfill=False,
     )
@@ -71,6 +72,20 @@ def test_batch_preserves_notice_mapping_threshold_boundary_and_usage() -> None:
     assert sum(u.input_tokens for u in usage) == 40
     assert sum(u.output_tokens for u in usage) == 2
     assert {u.model for u in usage} == {"ecnu-decision"}
+
+
+def test_a_keep_all_source_keeps_a_low_score_and_still_records_it() -> None:
+    async def run() -> list[ScreeningResult]:
+        provider = SystemOne("local-test", httpx.MockTransport(lambda _: response(0.01)))
+        notice = PendingNotice(
+            id=11, url="https://example.edu.cn/11", title="t", published_on=None, step="screen"
+        )
+        try:
+            return await Screen(provider)(source(keep_all=True), [notice], [])
+        finally:
+            await provider.close()
+
+    assert asyncio.run(run()) == [ScreeningResult(notice_id=11, score=0.01, screened_in=True)]
 
 
 def test_provider_failure_fails_the_screening_and_keeps_what_it_cost_so_far() -> None:

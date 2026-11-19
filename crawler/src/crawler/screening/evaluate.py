@@ -403,6 +403,8 @@ def main() -> int:
     parser.add_argument("--keywords-only", action="store_true")
     parser.add_argument("--reuse-only", action="store_true")
     parser.add_argument("--retry-errors", action="store_true")
+    # Lists marked keep-all send every notice to extraction, so the threshold is set without them.
+    parser.add_argument("--keep-all", nargs="+", default=[], metavar="URL")
     args = parser.parse_args()
     key = None
     if not args.keywords_only and not args.reuse_only:
@@ -410,6 +412,9 @@ def main() -> int:
         if not key:
             parser.error("SYSTEM_ONE_API_KEY is required")
     samples = read_samples(args.data)
+    if unknown := set(args.keep_all) - {sample.source_url for sample in samples}:
+        parser.error(f"--keep-all lists not in the data: {' '.join(sorted(unknown))}")
+    samples = [sample for sample in samples if sample.source_url not in args.keep_all]
     args.output.mkdir(parents=True, exist_ok=True)
     metrics = keyword_metrics(samples)
     runs: list[dict[str, object]] = []

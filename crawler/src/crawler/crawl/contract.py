@@ -182,6 +182,7 @@ class WorkSource(BaseModel):
     id: Annotated[int, Field(ge=-2147483648, le=2147483647)]
     url: str
     browser: bool
+    keep_all: Annotated[bool, Field(description="全收：每条新通知都送去抽取，不看初筛的分数")]
     config: Config | None
     backfill: Annotated[bool, Field(description="第一次抓：往回翻页，补上前两年的通知")]
 

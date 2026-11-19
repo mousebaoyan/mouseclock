@@ -100,6 +100,9 @@ const Work = z
           id: Int,
           url: z.string(),
           browser: z.boolean(),
+          keep_all: z
+            .boolean()
+            .openapi({ description: "全收：每条新通知都送去抽取，不看初筛的分数" }),
           config: z.union([Config, z.null()]),
           backfill: z.boolean().openapi({ description: "第一次抓：往回翻页，补上前两年的通知" }),
         })
