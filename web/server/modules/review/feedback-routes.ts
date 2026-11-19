@@ -9,6 +9,7 @@ import {
 } from "../../platform/http.ts";
 import {
   acceptFeedback,
+  AGENT_FEEDBACK_PER_DAY,
   getFeedback,
   giveFeedback,
   listDisputes,
@@ -61,12 +62,15 @@ export const feedbackRoutes = createRouter()
         ...readErrors,
         403: errorResponse("账号已冻结或禁言中"),
         404: errorResponse("项目不存在"),
+        429: errorResponse(
+          `通过 Agent 一天内已经提了 ${AGENT_FEEDBACK_PER_DAY} 条（\`agent_feedback_limit\`）`,
+        ),
       },
     }),
     async (c) => {
-      const { id } = authorize(c, "contribute");
+      const { id, via } = authorize(c, "contribute", "personal");
       const result = await giveFeedback(
-        { user_id: id, via: "web" },
+        { user_id: id, via },
         c.req.valid("param").id,
         c.req.valid("json"),
       );
@@ -119,7 +123,7 @@ export const feedbackRoutes = createRouter()
       },
     }),
     async (c) => {
-      const { id } = authorize(c, "read");
+      const { id } = authorize(c, "read", "personal");
       await withdrawFeedback(id, c.req.valid("param").id);
       return c.body(null, 204);
     },

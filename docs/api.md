@@ -4,12 +4,12 @@
 
 ## 1. 约定
 
-- 前缀 `/api/v1`，请求和返回都是 JSON，字段用 snake_case，时间用 Unix 秒，和鼠洞一样。
+- 前缀 `/api/v1`，请求和返回都是 JSON（下载的文件除外），字段用 snake_case，时间用 Unix 秒，和鼠洞一样。
 - 错误统一返回 `{ "error": { "code": "...", "message": "..." } }`：`code` 是英文，给程序判断；`message` 是中文，给人看。
-- **认证**：网页用会话 Cookie；Agent 和脚本用个人令牌，`Authorization: Bearer <令牌>`；抓取节点用抓取节点令牌（第 6 节）。带 `Authorization: Bearer` 的请求只按令牌认人，不看会话 Cookie。
-- **令牌的权限范围**：`read` 只能查询；`personal` 还能订阅、关注、记报名、提交反馈和修改申请。直接修改、审核和管理的接口只认网页会话，带令牌调用返回 `403`。
+- **认证**：网页用会话 Cookie；Agent 和脚本用个人令牌，`Authorization: Bearer <令牌>`；抓取节点用抓取节点令牌（第 6 节）。带 `Authorization: Bearer` 的请求只按令牌认人，不看会话 Cookie；令牌不对、作废了或者 90 天没用过的返回 `401 invalid_token`。
+- **令牌的权限范围**：`read` 只能查询；`personal` 还能订阅、关注、记报名、提交反馈和修改申请，`read` 的令牌调这些返回 `403 token_scope`。直接修改、审核、管理和管令牌的接口只认网页会话，带令牌调用返回 `403 web_only`。通过令牌提的反馈记成「通过 Agent」，每人 24 小时内最多 10 条，超了返回 `429 agent_feedback_limit`。
 - **权限**（[总体设计 §6.2](design.md#62-权限)）：访客调总表 `GET /programs` 只拿到预览，清单里写着「不用登录」的谁都能调，调别的接口返回 `401 login_required`；冻结的按访客算，返回 `403 member_frozen`；禁言中的做不了的返回 `403 muted`，等级不够的 `403 level_required`，修改权限被收回的 `403 edit_revoked`，不是管理员或站长的 `403 forbidden`。
-- **频率限制**：按会话和令牌分别限制，每个令牌每分钟最多 60 次，超了返回 `429`。
+- **频率限制**：每个令牌每分钟最多 60 次，超了返回 `429 rate_limited`，`Retry-After` 是要等的秒数。
 - **分页**：列表用 `page` 和 `per_page`（20、50 或 100，默认 20），返回这一页的 `items` 和全部的条数 `total`。
 
 ## 2. 鼠洞登录
@@ -26,7 +26,7 @@
 - **自动登录**：没有会话的浏览器打开页面（`Sec-Fetch-Mode: navigate`、`Sec-Fetch-Dest: document`）时，直接走第 1 步，带 `prompt=none`。没登录鼠洞的，鼠洞带着 `error=login_required` 跳回，按访客显示。一个浏览器会话里只自动试一次，退出后也不再自动登录；搜索引擎和脚本不带这两个请求头，不跳。
 - **点「登录」**：`GET /login`，不带 `prompt=none`，没登录鼠洞的先在鼠洞登录。
 - **会话**：Cookie `mouseclock_session`，HttpOnly、SameSite=Lax，90 天有效，超过一小时没用过的会话在下次使用时续期。名字带前缀，本地开发时不和同在 `localhost` 的鼠洞的 `session` 混在一起。
-- **刷新**：令牌存在 `users` 里，每小时用它调一次鼠洞的 `/me` 更新资料；鼠洞返回 `401 invalid_token`（被封禁或撤销了授权）时，删掉这个人的所有会话。
+- **刷新**：令牌存在 `users` 里，每小时用它调一次鼠洞的 `/me` 更新资料，登录着的、有订阅或关注的、有个人令牌的都刷新；鼠洞返回 `401 invalid_token`（被封禁或撤销了授权）时，删掉这个人的所有会话，作废这个人的个人令牌。
 - **退出**：`POST /auth/logout`，只退出鼠钟，鼠洞的登录不受影响。
 - **CSRF**：网页的写请求校验 Origin，和鼠洞一样；带令牌的请求不受影响。
 
@@ -79,8 +79,8 @@
 | | `PATCH /admin/inclusion-requests/{id}`、`POST /admin/inclusion-requests/{id}/merge` | 管理员改进度和原因、对上清单里的学校和学院；把一条并进另一条（`{ into }`），同求合在一起；对上了学院的不能并进没对上的（`409 merge_into_matched`）。都记进操作日志 |
 | 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
 | 我的 | `GET`、`PATCH /me/email-settings` | 每类消息发不发邮件：站长定成不发的不列，没动过的带站长的默认；也说能不能收邮件，没有 QQ 号的收不到（[总体设计 §11.2](design.md#112-邮件)）。`PATCH` 只改给出的几类 |
-| | `GET`、`POST /me/tokens`，`DELETE /me/tokens/{id}` | 个人令牌，只认网页会话：生成时返回的令牌只出现这一次，每人最多 10 个（[总体设计 §13](design.md#13-agent-接入)） |
-| 数据下载 | `GET /export?cohort=&format=` | 一届的全部项目，`csv` 或 `json`，登录后可用（[总体设计 §13](design.md#13-agent-接入)） |
+| | `GET`、`POST /me/tokens`，`DELETE /me/tokens/{id}` | 个人令牌，只认网页会话：列出还能用的；生成时返回的令牌只出现这一次，每人最多 10 个（[总体设计 §13](design.md#13-agent-接入)） |
+| 数据下载 | `GET /export?cohort=&format=` | 一届的全部项目，`csv` 或 `json`，作为文件下载，登录后可用；和总表一样带 ETag（[总体设计 §13](design.md#13-agent-接入)） |
 | 群汇总 | `GET /bot/summary` | `{ text }`：写好的整段汇总，没什么可发时为 `null`（[总体设计 §11.5](design.md#115-群汇总)）。不用登录 |
 | 管理 | `GET`、`POST /admin/schools`，`GET`、`PATCH /admin/schools/{id}` | 管理员查询、新增、修改学校 |
 | | `PUT`、`DELETE /admin/schools/{id}/logo` | 管理员上传、更换或移除校徽：请求体就是图片本身，PNG、JPEG、WebP 或 SVG，不超过 16 KB |

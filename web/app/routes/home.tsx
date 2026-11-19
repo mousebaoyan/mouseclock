@@ -5,6 +5,7 @@ import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { ProgramCard, ProgramCards, ProgramPlace } from "~/components/program";
 import { Subscribe } from "~/components/subscribe";
+import { Downloads } from "~/components/downloads";
 import { PROGRAM_KINDS, StageTag } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
@@ -83,6 +84,7 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           {!preview && <Pagination total={total} page={page} perPage={filters.perPage} />}
         </div>
       )}
+      {!preview && <Downloads cohort={cohort} className="mt-6" />}
     </Page>
   );
 }

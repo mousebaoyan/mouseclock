@@ -1,7 +1,7 @@
 import { OpenAPIHono, z } from "@hono/zod-openapi";
 import type { Context, Env } from "hono";
 import { HTTPException } from "hono/http-exception";
-import { checkPermission, type Capability, type Viewer } from "./access.ts";
+import { checkPermission, type Capability, type Scope, type Viewer } from "./access.ts";
 import { AppError } from "./errors.ts";
 import { log } from "./log.ts";
 import { PER_PAGE } from "./paging.ts";
@@ -50,8 +50,15 @@ function fieldMessage(title: string, issue: z.core.$ZodRawIssue) {
   }
 }
 
-// What every request carries once the session is looked up (modules/accounts/routes.ts).
-export type AppEnv = { Variables: { viewer: Viewer | null; sessionId: number | null } };
+// What every request carries once its session or personal token is looked up
+// (modules/accounts/routes.ts).
+export type AppEnv = {
+  Variables: {
+    viewer: Viewer | null;
+    sessionId: number | null;
+    token: { id: number; scope: Scope } | null;
+  };
+};
 
 export const ErrorSchema = z
   .object({
@@ -82,12 +89,23 @@ export function handleError(error: Error, c: Context) {
 }
 
 export function bearerToken(c: Context) {
-  return c.req.header("authorization")?.match(/^Bearer (\S+)$/)?.[1];
+  return c.req.header("authorization")?.match(/^Bearer +(\S+)$/i)?.[1];
 }
 
-// The viewer, once they may do what the route needs; see access.ts for the rules.
-export function authorize(c: Context<AppEnv>, need: Capability) {
-  return checkPermission(c.var.viewer, need);
+// The viewer, once they may do what the route needs (access.ts), and whether it came by the web or
+// an Agent's token. A token also takes the route's scope: reading a member's due needs `read`,
+// a personal operation passes `personal`; anything else is only for the web, as editing,
+// reviewing, managing and the tokens themselves are (api.md §1).
+export function authorize(c: Context<AppEnv>, need: Capability, scope?: Scope | "web") {
+  const { viewer, token } = c.var;
+  if (token) {
+    const takes = scope ?? (need === "read" && c.req.method === "GET" ? "read" : "web");
+    if (takes === "web") throw new AppError(403, "web_only", "只能本人在网页上操作");
+    if (takes === "personal" && token.scope !== "personal") {
+      throw new AppError(403, "token_scope", "这个令牌只能查询，不能做个人操作");
+    }
+  }
+  return { ...checkPermission(viewer, need), via: token ? ("agent" as const) : ("web" as const) };
 }
 
 // Set by the reverse proxy in front of the site.

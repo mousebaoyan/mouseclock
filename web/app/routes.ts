@@ -21,6 +21,7 @@ export default [
     route("follows", "routes/me-follows.tsx"),
     route("applications", "routes/me-applications.tsx"),
     route("feedback", "routes/me-feedback.tsx"),
+    route("agent", "routes/me-agent.tsx"),
     route("email", "routes/me-email.tsx"),
   ]),
   route("logout", "routes/logout.ts"),

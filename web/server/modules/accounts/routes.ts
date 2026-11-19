@@ -18,7 +18,15 @@ import {
 import { log } from "../../platform/log.ts";
 import { newToken } from "../../platform/tokens.ts";
 import { authorizeUrl, exchangeCode, fetchProfile } from "./mousehole.ts";
-import { endSession, login, profileOf, resolveSession, SESSION_TTL_MS } from "./service.ts";
+import {
+  endSession,
+  login,
+  profileOf,
+  resolveApiToken,
+  resolveSession,
+  SESSION_TTL_MS,
+  TOKEN_REQUESTS_PER_MINUTE,
+} from "./service.ts";
 
 // Prefixed: in development mousehole's `session` sits on the same localhost (api.md §2).
 const SESSION_COOKIE = "mouseclock_session";
@@ -77,20 +85,57 @@ export function asVisitor(request: Request, visitor: Visitor) {
   return request;
 }
 
+// Each personal token's requests this minute (api.md §1). The site is one process, so memory
+// keeps them, and a new minute starts them afresh.
+let minute = 0;
+const requests = new Map<number, number>();
+
+function countRequest(c: Context, tokenId: number) {
+  const now = Date.now();
+  if (Math.floor(now / 60_000) !== minute) {
+    minute = Math.floor(now / 60_000);
+    requests.clear();
+  }
+  const count = (requests.get(tokenId) ?? 0) + 1;
+  requests.set(tokenId, count);
+  if (count <= TOKEN_REQUESTS_PER_MINUTE) return;
+  c.header("Retry-After", String(Math.ceil(((minute + 1) * 60_000 - now) / 1000)));
+  throw new AppError(
+    429,
+    "rate_limited",
+    `每个令牌每分钟最多 ${TOKEN_REQUESTS_PER_MINUTE} 次请求，请稍后再试`,
+  );
+}
+
 // Runs for every request, pages included.
 export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
   const known = visitors.get(c.req.raw);
   if (known) {
     c.set("viewer", known.viewer);
     c.set("sessionId", known.sessionId);
+    c.set("token", known.token);
     return next();
   }
   // A request with a bearer token skips the Origin check (app.ts), so its cookie can't speak for
-  // it: it is only who its token says, and personal tokens (design §13) aren't issued yet.
-  const token = bearerToken(c) ? undefined : getCookie(c, SESSION_COOKIE);
+  // it: it is only who its personal token says, and a token that says no one is turned down rather
+  // than taken for a guest. A crawler's token isn't a personal one; its own routes check it.
+  const bearer = bearerToken(c);
+  if (bearer) {
+    const found = await resolveApiToken(bearer);
+    if (found) countRequest(c, found.id);
+    else if (!c.req.path.startsWith("/api/v1/crawler/")) {
+      throw new AppError(401, "invalid_token", "令牌不对、已作废或者太久没用失效了");
+    }
+    c.set("viewer", found?.viewer ?? null);
+    c.set("sessionId", null);
+    c.set("token", found && { id: found.id, scope: found.scope });
+    return next();
+  }
+  const token = getCookie(c, SESSION_COOKIE);
   const found = token ? await resolveSession(token) : null;
   c.set("viewer", found?.viewer ?? null);
   c.set("sessionId", found?.id ?? null);
+  c.set("token", null);
   await next();
 
   // Written after next(): React Router returns its own Response, which drops headers set before.

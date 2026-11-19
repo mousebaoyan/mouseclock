@@ -17,7 +17,7 @@ import type { StoredValue } from "../programs/schemas.ts";
 import type { z } from "@hono/zod-openapi";
 import { ProgramColumns, type ProgramEdit } from "./schemas.ts";
 
-export type Actor = { user_id: number; via: "web" };
+export type Actor = { user_id: number; via: "web" | "agent" };
 
 const COLUMNS = ProgramColumns.keyof().options;
 type FieldEdits = Omit<ProgramEdit, (typeof COLUMNS)[number] | "reason" | "basis">;

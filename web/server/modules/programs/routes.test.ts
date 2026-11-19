@@ -253,6 +253,54 @@ test("a member's browser keeps the table until a version or an admin changes som
   expect(preview.headers.get("etag")).toBeNull();
 });
 
+test("a cohort downloads as the table's columns for a spreadsheet, or as JSON with every field", async () => {
+  const seeded = await college();
+  const quote = [{ quote: "报名时间" }];
+  const id = await program(seeded, {
+    apply: { start: { date: "2026-05-10" }, end: { date: "2026-06-01", time: "17:00" } },
+    notices: [
+      {
+        role: "call",
+        fields: {
+          apply_url: { value: "https://yz.example/apply", evidence: quote, confidence: 1 },
+        },
+      },
+    ],
+  });
+  // What a notice wrote that a spreadsheet would run stays text.
+  await db.updateTable("programs").set({ name: '=1+1,"夏令营"' }).where("id", "=", id).execute();
+  const download = (format: "csv" | "json", headers: Record<string, string> = member.headers) =>
+    api.export.$get({ query: { cohort: "2027", format } }, { headers });
+
+  const csv = await download("csv");
+  expect(csv.status).toBe(200);
+  expect(csv.headers.get("content-disposition")).toBe('attachment; filename="mouseclock-2027.csv"');
+  // Starting with a byte order mark, which decoding takes off.
+  const bytes = new Uint8Array(await csv.arrayBuffer());
+  expect(bytes.slice(0, 3)).toEqual(new Uint8Array([0xef, 0xbb, 0xbf]));
+  expect(new TextDecoder().decode(bytes)).toBe(
+    "学校,学院,类型,名称,报名时间,报名入口,原文链接\r\n" +
+      `测试大学,计算机学院,夏令营,"'=1+1,""夏令营""",5月10日 至 6月1日 17:00,https://yz.example/apply,https://college.example/notices/${id}-0\r\n`,
+  );
+
+  const json = await download("json");
+  expect(await json.json()).toMatchObject({
+    cohort: 2027,
+    programs: [
+      {
+        id,
+        notice: { url: `https://college.example/notices/${id}-0` },
+        fields: { apply_url: { value: "https://yz.example/apply", evidence: quote } },
+      },
+    ],
+  });
+  // Unchanged, it isn't sent again; guests get none.
+  const etag = json.headers.get("etag");
+  if (etag === null) throw new Error("No ETag");
+  expect((await download("json", { ...member.headers, "if-none-match": etag })).status).toBe(304);
+  expect((await download("csv", {})).status).toBe(401);
+});
+
 test("the table carries the college tags that count, and a vote changes its tag", async () => {
   const seeded = await college();
   await program(seeded, { apply: until("2026-06-01") });

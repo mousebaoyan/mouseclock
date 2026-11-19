@@ -16,6 +16,11 @@ export type Viewer = {
 // take L3; admins manage; the owner keeps the system settings.
 export type Capability = "read" | "contribute" | "edit" | "admin" | "owner";
 
+// What a personal token may do besides (design §13): `read` queries what its owner may read, and
+// `personal` also subscribes, follows, records applications and gives feedback.
+export const SCOPES = ["read", "personal"] as const;
+export type Scope = (typeof SCOPES)[number];
+
 const EDIT_LEVEL = 3;
 
 // The viewer, once they may do what `need` takes; otherwise the error api.md §1 lists for it.

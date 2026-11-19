@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import type { ApplyValue, TimeValue } from "../server/modules/programs/schemas.ts";
-import { formatTime, MARKS, PARTS } from "../server/modules/programs/time.ts";
+import type { TimeValue } from "../server/modules/programs/schemas.ts";
+import { MARKS, PARTS } from "../server/modules/programs/time.ts";
 
 // A time as editors type it, as precise as the notice and no more: 2026-06-30 17:00,
 // 2026-06-30, 2026-06-30 前, 2026-06-30 前后, 2026-06 上旬 (中旬, 下旬) or 2026-06.
@@ -28,19 +28,6 @@ export function parseTime(text: string): TimeValue | null {
   if (/^\d{1,2}:\d{2}$/.test(rest)) return { date, time: rest.padStart(5, "0") };
   const mark = (["before", "about"] as const).find((key) => MARKS[key] === rest);
   return mark ? { date, mark } : null;
-}
-
-export function formatWindow(window: { start?: TimeValue; end?: TimeValue }, thisYear: number) {
-  const start = window.start && formatTime(window.start, thisYear);
-  const end = window.end && formatTime(window.end, thisYear);
-  if (start && end) return `${start} 至 ${end}`;
-  return start ? `${start} 起` : end ? `至 ${end}` : "";
-}
-
-export function formatApply(apply: ApplyValue | null, thisYear: number) {
-  const window = apply ? formatWindow(apply, thisYear) : "";
-  if (!apply?.rolling) return window || "未说明";
-  return window ? `${window}（额满即止）` : "额满即止";
 }
 
 // Design §9.1, from the instants the API gives in Unix seconds: closed once applying is over, at

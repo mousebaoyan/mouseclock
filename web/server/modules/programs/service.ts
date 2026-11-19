@@ -17,7 +17,8 @@ import type {
   Role,
   TimeValue,
 } from "./schemas.ts";
-import { closesAt, deadlineOf, startOf } from "./time.ts";
+import { KIND_LABELS } from "./schemas.ts";
+import { closesAt, deadlineOf, formatApply, startOf } from "./time.ts";
 
 // The apply field put back together from its parts, null when the notice gave none or people
 // cleared it. `program` is the column holding the program's id, such as "programs.id".
@@ -151,6 +152,43 @@ export async function listPrograms(cohort: number, preview: boolean) {
     .orderBy("p.id");
   if (preview) query = query.where("p.apply_deadline", ">", new Date()).limit(PREVIEW_SIZE);
   return { preview, programs: (await query.execute()).map(tableProgram) };
+}
+
+// One cohort's programs to download (design §13), as the table orders them.
+export async function exportPrograms(cohort: number) {
+  const rows = await tableQuery()
+    .select(fieldsOf("p.id").as("fields"))
+    .where("p.cohort", "=", cohort)
+    .orderBy("p.apply_deadline", (order) => order.asc().nullsLast())
+    .orderBy("p.id")
+    .execute();
+  return { cohort, programs: rows.map((row) => ({ ...tableProgram(row), fields: row.fields })) };
+}
+
+// The table's columns, for a spreadsheet.
+export function exportCsv(
+  { programs }: Awaited<ReturnType<typeof exportPrograms>>,
+  thisYear: number,
+) {
+  const rows = programs.map((p) => [
+    p.school.name,
+    p.college.name,
+    KIND_LABELS[p.kind],
+    p.name,
+    formatApply(p.apply, thisYear),
+    p.fields.apply_url?.value ?? "",
+    p.notice.url,
+  ]);
+  const header = ["学校", "学院", "类型", "名称", "报名时间", "报名入口", "原文链接"];
+  // A byte order mark, so Excel reads it as UTF-8 (design §13).
+  return `\uFEFF${[header, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n")}\r\n`;
+}
+
+// Quoted when it holds a separator; text from notices that a spreadsheet would take for a formula
+// is kept as text.
+function csvCell(text: string) {
+  const cell = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+  return /[",\r\n]/.test(cell) ? `"${cell.replaceAll('"', '""')}"` : cell;
 }
 
 // These programs as the table lists them, for one's own lists such as one's subscriptions.

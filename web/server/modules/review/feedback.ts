@@ -18,6 +18,8 @@ type Status = (typeof FEEDBACK_STATUSES)[number];
 
 // How many people finding a program wrong make it disputed.
 export const DISPUTE_PEOPLE = 3;
+// How many a person gives through an Agent in a day, to hold back one gone wrong (design §13).
+export const AGENT_FEEDBACK_PER_DAY = 10;
 
 function isColumn(field: string): field is keyof typeof ProgramColumns.shape {
   return Object.hasOwn(ProgramColumns.shape, field);
@@ -27,6 +29,22 @@ function isColumn(field: string): field is keyof typeof ProgramColumns.shape {
 // id: a reviewer deciding the first never passes what they didn't see.
 export async function giveFeedback(actor: Actor, programId: number, input: FeedbackInput) {
   return db.transaction().execute(async (trx) => {
+    if (actor.via === "agent") {
+      const { given } = await trx
+        .selectFrom("feedback")
+        .select((eb) => eb.fn.countAll<number>().as("given"))
+        .where("user_id", "=", actor.user_id)
+        .where("via", "=", "agent")
+        .where("created_at", ">", new Date(Date.now() - 24 * 3600_000))
+        .executeTakeFirstOrThrow();
+      if (given >= AGENT_FEEDBACK_PER_DAY) {
+        throw new AppError(
+          429,
+          "agent_feedback_limit",
+          `通过 Agent 一天内最多提 ${AGENT_FEEDBACK_PER_DAY} 条反馈`,
+        );
+      }
+    }
     const program = await lockProgram(trx, programId);
     const { field } = input;
     // What the part is now, a column or a row of program_fields.

@@ -1,7 +1,6 @@
 import type { StoredValue } from "../server/modules/programs/schemas.ts";
 import { PROGRAM_KINDS } from "./components/tags.tsx";
-import { formatTime } from "../server/modules/programs/time.ts";
-import { formatWindow } from "./time.ts";
+import { formatTime, formatWindow } from "../server/modules/programs/time.ts";
 
 // The fields of design §8.2 and their keys in program_fields, as people say them.
 

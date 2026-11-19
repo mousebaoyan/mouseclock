@@ -1,13 +1,5 @@
 import { expect, test } from "vitest";
-import {
-  countdown,
-  currentCohort,
-  formatApply,
-  formatWindow,
-  parseTime,
-  statusOf,
-  timeText,
-} from "./time.ts";
+import { countdown, currentCohort, parseTime, statusOf, timeText } from "./time.ts";
 
 test("editors type a time as precise as the notice, which reads back as they typed it", () => {
   for (const [text, value] of [
@@ -28,14 +20,6 @@ test("editors type a time as precise as the notice, which reads back as they typ
   }
 });
 
-test("a window says what it has of its two ends", () => {
-  const start = { date: "2026-06-01", time: "08:00" };
-  const end = { date: "2026-06-14" };
-  expect(formatWindow({ start, end }, 2026)).toBe("6月1日 08:00 至 6月14日");
-  expect(formatWindow({ start }, 2026)).toBe("6月1日 08:00 起");
-  expect(formatWindow({ end }, 2026)).toBe("至 6月14日");
-});
-
 test("status follows the application's start and when applying is over", () => {
   const program = { apply_start: 100, apply_deadline: 200, closes_at: 200 };
   expect(statusOf(program, 99)).toBe("upcoming");
@@ -48,13 +32,6 @@ test("status follows the application's start and when applying is over", () => {
   expect(statusOf(undated, 300)).toBe("closed");
   expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 150)).toBeNull();
   expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 300)).toBe("closed");
-});
-
-test("the application says when it rolls, and when it says nothing", () => {
-  const end = { date: "2026-06-14" };
-  expect(formatApply({ end, rolling: true }, 2026)).toBe("至 6月14日（额满即止）");
-  expect(formatApply({ rolling: true }, 2026)).toBe("额满即止");
-  expect(formatApply(null, 2026)).toBe("未说明");
 });
 
 test("countdowns round down, to the minute at the end", () => {

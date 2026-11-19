@@ -1,4 +1,4 @@
-import type { TimeValue } from "./schemas.ts";
+import type { ApplyValue, TimeValue } from "./schemas.ts";
 
 // Beijing has kept UTC+8 all year since 1991.
 function beijing(year: number, month: number, day: number, hour = 0, minute = 0) {
@@ -71,6 +71,19 @@ export function formatTime(value: TimeValue, thisYear: number) {
   const date = `${yearMonth(year, month, thisYear)}${day}日`;
   if ("time" in value) return `${date} ${value.time}`;
   return value.mark ? date + MARKS[value.mark] : date;
+}
+
+export function formatWindow(window: { start?: TimeValue; end?: TimeValue }, thisYear: number) {
+  const start = window.start && formatTime(window.start, thisYear);
+  const end = window.end && formatTime(window.end, thisYear);
+  if (start && end) return `${start} 至 ${end}`;
+  return start ? `${start} 起` : end ? `至 ${end}` : "";
+}
+
+export function formatApply(apply: ApplyValue | null, thisYear: number) {
+  const window = apply ? formatWindow(apply, thisYear) : "";
+  if (!apply?.rolling) return window || "未说明";
+  return window ? `${window}（额满即止）` : "额满即止";
 }
 
 // When applying is over, for the status (design §9.1): at the deadline; without one, when the
