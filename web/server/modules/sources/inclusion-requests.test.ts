@@ -229,6 +229,8 @@ test("admins match asks to the list and merge the same college asked twice", asy
   if (listed.id === null) throw new Error("Ask failed");
   expect((await patch(admin, named.id, { college_id: collegeId })).status).toBe(409);
   expect((await patch(admin, listed.id, { school_id: school })).status).toBe(409);
+  // Its followers count by the college it is matched to.
+  expect((await merge(listed.id, named.id)).status).toBe(409);
 
   // Matched to a college crawled already: done.
   const crawled = await college("软件学院");

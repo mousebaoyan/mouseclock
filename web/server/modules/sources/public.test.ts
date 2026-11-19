@@ -236,6 +236,8 @@ test("detail exposes source summaries and failure reasons without crawler config
       },
     ],
     programs: [],
+    followers: 0,
+    following: false,
   });
 });
 

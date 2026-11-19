@@ -7,6 +7,7 @@ import { unix } from "../../platform/http.ts";
 import type { Evidence, ExtractedFields, Kind, Role, StoredValue } from "../programs/schemas.ts";
 import { currentFields, deleteProgram, lockProgram, setFields } from "../programs/service.ts";
 import { recordAudit } from "../../platform/audit.ts";
+import { announceNews } from "../reminders/follows.ts";
 import { programGone } from "../reminders/subscriptions.ts";
 import {
   docsOf,
@@ -303,6 +304,7 @@ async function noticeOf(trx: Transaction<DB>, item: Item) {
     .innerJoin("notices", "notices.id", "snapshots.notice_id")
     .select([
       sql<ExtractedProgram>`review_items.payload`.as("payload"),
+      "notices.id as notice_id",
       "notices.source_id",
       "notices.published_on",
     ])
@@ -326,7 +328,7 @@ async function hasVersion(trx: Transaction<DB>, programId: number, snapshotId: n
 
 // A program the extraction couldn't place goes where the reviewer says, merged as ingest does.
 async function placeProgram(trx: Transaction<DB>, item: Item, decision: Decision) {
-  const { payload, published_on, colleges, programs } = await noticeOf(trx, item);
+  const { payload, notice_id, published_on, colleges, programs } = await noticeOf(trx, item);
   let program: ExtractedProgram;
   if (decision.program_id !== undefined) {
     if (!programs.some((p) => p.id === decision.program_id)) {
@@ -352,6 +354,9 @@ async function placeProgram(trx: Transaction<DB>, item: Item, decision: Decision
     trx,
     await mergeProgram(trx, item.snapshot_id, published_on, docs, programs, program),
   );
+  // Its college's followers hear of it now (design §11.4); the rest of a round still being
+  // crawled wait for the round.
+  await announceNews(trx, { notice_id });
 }
 
 // A duplicate's versions go on the original in their order, as if its notices had named it, and

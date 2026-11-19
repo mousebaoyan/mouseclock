@@ -23,6 +23,11 @@ export type JsonValue = JsonArray | JsonObject | JsonPrimitive;
 
 export type Timestamp = ColumnType<Date, Date | string, Date | string>;
 
+export interface AnnouncedNotices {
+  college_id: number;
+  notice_id: number;
+}
+
 export interface Applications {
   note: Generated<string>;
   program_id: number;
@@ -137,6 +142,12 @@ export interface Emails {
 export interface EmailSettings {
   enabled: boolean;
   kind: string;
+  user_id: number;
+}
+
+export interface Follows {
+  college_id: number;
+  created_at: Generated<Timestamp>;
   user_id: number;
 }
 
@@ -349,6 +360,7 @@ export interface Users {
 }
 
 export interface DB {
+  announced_notices: AnnouncedNotices;
   applications: Applications;
   attachments: Attachments;
   audit_log: AuditLog;
@@ -361,6 +373,7 @@ export interface DB {
   email_rules: EmailRules;
   email_settings: EmailSettings;
   emails: Emails;
+  follows: Follows;
   inclusion_requests: InclusionRequests;
   inclusion_votes: InclusionVotes;
   mail_accounts: MailAccounts;

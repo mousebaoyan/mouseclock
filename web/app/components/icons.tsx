@@ -47,6 +47,7 @@ export const ExternalLink = icon(lucide.ExternalLink);
 export const Filter = icon(lucide.SlidersHorizontal);
 export const LogOut = icon(lucide.LogOut);
 export const Menu = icon(lucide.Menu);
+export const Plus = icon(lucide.Plus);
 export const Quote = icon(lucide.TextQuote);
 export const Search = icon(lucide.Search);
 export const User = icon(lucide.UserRound);

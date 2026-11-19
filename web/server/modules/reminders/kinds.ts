@@ -4,10 +4,11 @@
 export const MESSAGE_KINDS = {
   deadline_soon: { label: "快截止了", email: "default_on", why: "你订阅了这个项目" },
   deadline_changed: { label: "截止变了", email: "default_on", why: "你订阅了这个项目" },
+  college_news: { label: "学院有新通知", email: "default_on", why: "你关注了这个学院" },
   inclusion_result: {
     label: "求收录有结果",
     email: "default_on",
-    why: "你提过或同求过这个学院的求收录",
+    why: "你提过、同求过或关注着这个学院",
   },
 } as const satisfies Record<string, { label: string; email: EmailRule; why: string }>;
 

@@ -10,6 +10,7 @@ import { collegeTagRoutes } from "./modules/programs/college-tag-routes.ts";
 import { programsRoutes } from "./modules/programs/routes.ts";
 import { remindersRoutes } from "./modules/reminders/routes.ts";
 import { reviewRoutes } from "./modules/review/routes.ts";
+import { followRoutes } from "./modules/sources/follow-routes.ts";
 import { inclusionRequestRoutes } from "./modules/sources/inclusion-request-routes.ts";
 import { sourcesRoutes } from "./modules/sources/routes.ts";
 import { db } from "./platform/db.ts";
@@ -28,7 +29,8 @@ const api = createRouter()
   .route("/", reviewRoutes)
   .route("/", remindersRoutes)
   .route("/", sourcesRoutes)
-  .route("/", inclusionRequestRoutes);
+  .route("/", inclusionRequestRoutes)
+  .route("/", followRoutes);
 
 export type ApiType = typeof api;
 

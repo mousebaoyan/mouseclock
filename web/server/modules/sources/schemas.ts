@@ -177,6 +177,8 @@ export const PublicCollegeDetail = z.object({
   tag_counts: z
     .array(CollegeTagCount)
     .openapi({ description: "全部预设：几个人贴了，自己贴了没有" }),
+  followers: Int.openapi({ description: "关注人数" }),
+  following: z.boolean().openapi({ description: "自己关注了没有" }),
   sources: z.array(PublicSource),
   programs: z.array(PublicProgramCohort),
 });
@@ -228,7 +230,10 @@ export const InclusionRequest = z
     status: RequestStatus,
     reason: z.string().nullable(),
     votes: Int.openapi({ description: "同求的人数，提的人也算" }),
-    mine: z.boolean().openapi({ description: "自己同求了没有" }),
+    mine: z.boolean().openapi({ description: "自己同求了没有，关注了这个学院也算" }),
+    following: z
+      .boolean()
+      .openapi({ description: "自己关注了这个学院没有；关注算的同求，取消关注才撤" }),
     created_at: UnixSeconds,
   })
   .openapi("InclusionRequest");
