@@ -1,6 +1,6 @@
 # 数据表
 
-> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期和三期的表除了已经建好的消息、邮件和订阅，都还没建，先列关键字段，做的时候照周围的写法补全。
+> 数据库是服务器上的 PostgreSQL 18（[总体设计 §5](design.md#5-技术选型)）。一期的表已经建好，以 `web/db/migrations/` 里的迁移为准，这里写每张表管什么、由哪个模块写；二期和三期的表，有迁移的就是已经建好的，其余的先列关键字段，做的时候照周围的写法补全。
 
 ## 约定
 
@@ -103,8 +103,8 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `inclusion_requests` | `school_id`、`school_name`、`college_id`、`college_name`、`url_hint`、`note`、`user_id`、`status`、`reason`、`created_at`、`resolved_at` | 求收录（[总体设计 §10.1](design.md#101-求收录)）。清单里没有的学校或学院，`school_id`、`college_id` 为空，只填名字，管理员对上清单后补上。关注了还没收录、也没人提过的学院时，替关注的人建一条。`status` 是排队中 `queued`、接入中 `onboarding`、已收录 `included`、暂时抓不了 `unavailable`（`reason` 写原因） |
-| `inclusion_votes` | `request_id`、`user_id`、`created_at` | 同求，提的人自己也有一行。关注了这个学院的人不存在这里，数人数时和它合在一起，同一个人只算一次 |
+| `inclusion_requests` | `school_id`、`school_name`、`college_id`、`college_name`、`url_hint`、`note`、`user_id`、`status`、`reason`、`created_at`、`resolved_at` | 求收录（[总体设计 §10.1](design.md#101-求收录)）。选了清单里的学院的只有 `college_id`；清单里没有的学院写 `college_name`，学校是清单里的填 `school_id`，不是的写 `school_name`；管理员对上清单后换成编号。每个学院只有一条（`college_id`、`(school_id, college_name)`、`(school_name, college_name)` 各自唯一），再提算同求。关注了还没收录、也没人提过的学院时，替关注的人建一条。`status` 是排队中 `queued`、接入中 `onboarding`、已收录 `included`、暂时抓不了 `unavailable`（`reason` 写原因），后两种有 `resolved_at`，已收录的一定对上了 `college_id`。学院有了在抓的来源（没有 `unavailable_reason`）就算已收录。排队中的没人同求了就删掉，接入中的改回排队中时也是 |
+| `inclusion_votes` | `request_id`、`user_id`、`created_at` | 同求，提的人自己也有一行；合并时挪到留下的那条，同一个人只留一行。关注了这个学院的人不存在这里，数人数时和它合在一起，同一个人只算一次 |
 
 ### Agent 接入（`accounts`）
 

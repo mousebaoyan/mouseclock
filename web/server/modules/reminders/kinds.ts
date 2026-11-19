@@ -4,6 +4,11 @@
 export const MESSAGE_KINDS = {
   deadline_soon: { label: "快截止了", email: "default_on", why: "你订阅了这个项目" },
   deadline_changed: { label: "截止变了", email: "default_on", why: "你订阅了这个项目" },
+  inclusion_result: {
+    label: "求收录有结果",
+    email: "default_on",
+    why: "你提过或同求过这个学院的求收录",
+  },
 } as const satisfies Record<string, { label: string; email: EmailRule; why: string }>;
 
 export type MessageKind = keyof typeof MESSAGE_KINDS;

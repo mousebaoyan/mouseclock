@@ -4,6 +4,7 @@ export default [
   index("routes/home.tsx"),
   route("colleges", "routes/colleges.tsx"),
   route("colleges/:id", "routes/college-detail.tsx"),
+  route("requests", "routes/requests.tsx"),
   route("programs/:id", "routes/program-detail.tsx"),
   route("programs/:id/subscription", "routes/program-subscription.ts"),
   route("programs/:id/application", "routes/program-application.ts"),

@@ -140,6 +140,27 @@ export interface EmailSettings {
   user_id: number;
 }
 
+export interface InclusionRequests {
+  college_id: number | null;
+  college_name: string | null;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  note: Generated<string>;
+  reason: string | null;
+  resolved_at: Timestamp | null;
+  school_id: number | null;
+  school_name: string | null;
+  status: Generated<string>;
+  url_hint: string | null;
+  user_id: number;
+}
+
+export interface InclusionVotes {
+  created_at: Generated<Timestamp>;
+  request_id: number;
+  user_id: number;
+}
+
 export interface MailAccounts {
   host: string;
   id: Generated<number>;
@@ -340,6 +361,8 @@ export interface DB {
   email_rules: EmailRules;
   email_settings: EmailSettings;
   emails: Emails;
+  inclusion_requests: InclusionRequests;
+  inclusion_votes: InclusionVotes;
   mail_accounts: MailAccounts;
   messages: Messages;
   model_calls: ModelCalls;
