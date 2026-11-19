@@ -104,9 +104,20 @@ export interface CrawlRuns {
   useful_count: number;
 }
 
+export interface Disputes {
+  id: Generated<number>;
+  note: string | null;
+  opened_at: Generated<Timestamp>;
+  program_id: number;
+  resolved_at: Timestamp | null;
+  resolved_by: number | null;
+  result: string | null;
+}
+
 export interface Edits {
   basis: string | null;
   created_at: Generated<Timestamp>;
+  feedback_id: number | null;
   field: string;
   id: Generated<number>;
   new_value: Json | null;
@@ -143,6 +154,24 @@ export interface EmailSettings {
   enabled: boolean;
   kind: string;
   user_id: number;
+}
+
+export interface Feedback {
+  basis: string | null;
+  created_at: Generated<Timestamp>;
+  field: string | null;
+  id: Generated<number>;
+  kind: string;
+  old_value: Json | null;
+  program_id: number;
+  proposed_value: Json | null;
+  reason: string;
+  review_note: string | null;
+  reviewed_at: Timestamp | null;
+  reviewed_by: number | null;
+  status: Generated<string>;
+  user_id: number;
+  via: string;
 }
 
 export interface Follows {
@@ -369,10 +398,12 @@ export interface DB {
   colleges: Colleges;
   crawl_runs: CrawlRuns;
   crawler_tokens: CrawlerTokens;
+  disputes: Disputes;
   edits: Edits;
   email_rules: EmailRules;
   email_settings: EmailSettings;
   emails: Emails;
+  feedback: Feedback;
   follows: Follows;
   inclusion_requests: InclusionRequests;
   inclusion_votes: InclusionVotes;

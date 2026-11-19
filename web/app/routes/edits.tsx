@@ -61,6 +61,11 @@ export default function RecentEdits({ loaderData }: Route.ComponentProps) {
                   </span>
                   <span className="mx-1.5 text-subtle-foreground">→</span>
                   {formatValue(edit.field, edit.new_value, thisYear)}
+                  {edit.feedback_id !== null && (
+                    <Link to={`/feedback/${edit.feedback_id}`} className="link ml-3">
+                      照修改申请 #{edit.feedback_id}
+                    </Link>
+                  )}
                   {edit.reason !== null && (
                     <span className="ml-3 text-muted-foreground">理由：{edit.reason}</span>
                   )}

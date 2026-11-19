@@ -123,6 +123,8 @@ export async function programGone(trx: Transaction<DB>, id: number, keptId: numb
   await trx.deleteFrom("subscriptions").where("program_id", "=", id).execute();
 }
 
+const DISPUTED = "；有争议，请以原文为准";
+
 // Each minute: deadlines changed since their subscribers heard of them, then the reminders due.
 export async function sendDeadlineMessages() {
   const now = new Date();
@@ -153,6 +155,10 @@ function subscriptionsWithPrograms(trx: Transaction<DB>) {
         select from program_fields
         where program_id = p.id and key = 'apply:rolling' and value = 'true'
       )`.as("rolling"),
+      // Reminders still go: the deadline may be right, and missing it costs more (design §12.3).
+      sql<boolean>`exists(
+        select from disputes where program_id = p.id and resolved_at is null
+      )`.as("disputed"),
     ])
     .forUpdate("s");
 }
@@ -210,7 +216,7 @@ async function tellChanges(trx: Transaction<DB>, now: Date) {
     messages.push({
       user_id: row.user_id,
       title: `${row.program}报名截止变了`,
-      body: `${after}，${before}；${by}${due && row.rolling ? "；额满即止，尽早报名" : ""}`,
+      body: `${after}，${before}；${by}${due && row.rolling ? "；额满即止，尽早报名" : ""}${row.disputed ? DISPUTED : ""}`,
       link: `/programs/${row.program_id}`,
     });
   }
@@ -246,7 +252,7 @@ async function remind(
     due.map((s) => ({
       user_id: s.user_id,
       title: `${s.program}快截止了`,
-      body: `${formatTime(s.deadline, beijingYear(now))} 截止，${left(s.deadline, now)}${s.rolling ? "，额满即止，尽早报名" : ""}`,
+      body: `${formatTime(s.deadline, beijingYear(now))} 截止，${left(s.deadline, now)}${s.rolling ? "，额满即止，尽早报名" : ""}${s.disputed ? DISPUTED : ""}`,
       link: `/programs/${s.program_id}`,
       links: [
         { label: "通知原文", url: s.notice_url },

@@ -58,7 +58,7 @@
 | 学院标签 | `PUT`、`DELETE /colleges/{id}/tags/{tag}` | 贴标签、撤回（[总体设计 §9.3](design.md#93-学院标签)） |
 | | `GET /colleges/{id}/tags/{tag}/votes` | 谁、什么时候贴的，管理员 |
 | | `DELETE /admin/tag-votes/{id}`、`DELETE /admin/colleges/{id}/tags/{tag}` | 管理员删一票、清空这个学院的这个标签；记进操作日志 |
-| 反馈和修改 | `POST /programs/{id}/feedback` | 反馈或修改申请（[总体设计 §12.1](design.md#121-反馈)）：`kind` 是只说有问题 `problem` 还是修改申请 `edit`，说的是哪一处（`field`，为空是整个项目），修改申请再带改成什么（`null` 是清空），以及理由和依据；这个人对这一处已有待处理的，改那一条 |
+| 反馈和修改 | `POST /programs/{id}/feedback` | 反馈或修改申请（[总体设计 §12.1](design.md#121-反馈)）：`kind` 是只说有问题 `problem` 还是修改申请 `edit`，说的是哪一处（`field`，为空是整个项目，只有 `problem` 能为空），修改申请再带改成什么（`value`，`null` 是清空，名称、届、类型不能清空），以及理由和依据（修改申请必填）；这个人对这一处已有待处理的，换掉那一条，返回新的编号 |
 | | `GET /programs/{id}/feedback` | 这个项目待处理的反馈 |
 | | `GET /feedback/{id}` | 一条反馈和它的处理结果，修改记录里链接到的申请用它打开；成员都能看 |
 | | `DELETE /feedback/{id}` | 撤回自己待处理的反馈 |
@@ -68,11 +68,11 @@
 | | `GET /edits` | 全站最近的修改，「修改记录」页用，分页 |
 | 审核 | `GET /review-items?reason=` | 抽取拿不准的字段和归并，一次列一种，带各种的条数；L3 以上，只认网页会话 |
 | | `POST /review-items/{id}/accept`、`POST /review-items/{id}/reject` | 通过或驳回，效果见[总体设计 §12.2](design.md#122-审核)；通过时，对不上的项目要从这所学校里选好放到哪，可能重复的选出原来的那个；用不上的选择返回 400 |
-| | `GET /feedback?status=pending` | 待处理的反馈，先提的在前，审核页用；L3 以上，只认网页会话 |
+| | `GET /feedback` | 待处理的反馈，先提的在前，分页，审核页用：每条带这一处现在的值和来源（`current_version`），提了以后又变过的标出来（`changed`）。L3 以上，只认网页会话 |
 | | `POST /feedback/{id}/accept`、`POST /feedback/{id}/reject` | 处理反馈（[总体设计 §12.2](design.md#122-审核)）：修改申请通过就照申请改，只说有问题的是「已改正」；驳回和「没问题」要带 `{ note }`。L3 以上，只认网页会话；处理自己提的返回 `403 own_feedback` |
 | | `POST /programs/{id}/verify` | 标记已核对，L3 以上，只认网页会话 |
-| | `GET /disputes` | 有争议的项目和它们的反馈，审核页用；管理员 |
-| | `POST /programs/{id}/resolve-dispute` | 复核争议，管理员，只认网页会话：带 `{ result, note }`，`result` 是改正了 `corrected` 还是确认没错 `confirmed`；这个项目待处理的反馈照它一起关掉（[总体设计 §12.3](design.md#123-争议)） |
+| | `GET /disputes` | 有争议的项目和上次复核以后的反馈，各带现在的状态，审核页用；管理员 |
+| | `POST /disputes/{id}/resolve` | 复核这条争议，管理员，只认网页会话：带 `{ result, note }`，`result` 是改正了 `corrected` 还是确认没错 `confirmed`；这个项目待处理的反馈照它一起关掉（[总体设计 §12.3](design.md#123-争议)）。已经复核过的返回 `409 already_resolved` |
 | | `DELETE /programs/{id}` | 删除项目，管理员，只认网页会话：带 `{ reason }`，理由必填。软删除，版本、快照和记录都留着，它待审的条目一起关掉，记进操作日志 |
 | 求收录 | `GET /inclusion-requests?status=`、`POST /inclusion-requests` | 列表、提交（[总体设计 §10.1](design.md#101-求收录)）：学院已收录的返回 `409 already_included`；有人提过、还没收录的算同求，返回那一条。列表里关注着这个学院的也算同求：`votes` 每人算一次，`mine` 是自己同求了或关注着，`following` 是关注着 |
 | | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回；撤回只撤自己点的那一票，关注算的那一票取消关注才撤 |

@@ -960,8 +960,30 @@ test("a duplicate is merged into the original and deleted", async () => {
     .executeTakeFirstOrThrow();
   const revert = v1.edits[":id"].revert.$post({ param: { id: String(edit.id) } }, editor);
   expect((await revert).status).toBe(200);
+  // Feedback goes along; of one person's on the same place of both, the later stands.
+  for (const [id, reason] of [
+    [original.id, "先提的"],
+    [duplicate.id, "后提的"],
+  ] as const) {
+    const json = { kind: "problem", field: "quota", reason } as const;
+    const given = await v1.programs[":id"].feedback.$post(
+      { param: { id: String(id) }, json },
+      member,
+    );
+    expect(given.status).toBe(201);
+  }
   expect((await accept(flagged.id, { program_id: original.id })).status).toBe(204);
   expect(await programsOf(cs)).toHaveLength(2);
+  const feedback = await db
+    .selectFrom("feedback")
+    .select(["program_id", "reason", "status"])
+    .where("program_id", "in", [original.id, duplicate.id])
+    .orderBy("id")
+    .execute();
+  expect(feedback).toEqual([
+    { program_id: original.id, reason: "先提的", status: "withdrawn" },
+    { program_id: original.id, reason: "后提的", status: "pending" },
+  ]);
   const gone = await db
     .selectFrom("programs")
     .select("deleted_at")

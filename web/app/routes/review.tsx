@@ -1,11 +1,13 @@
 import type { InferResponseType } from "hono/client";
-import { useEffect, useState, type ReactNode, type SubmitEvent } from "react";
-import { data, Link, useFetcher } from "react-router";
+import { useState, type ReactNode } from "react";
+import { data, Link } from "react-router";
 import { cn } from "~/cn";
 import { FormMessage } from "~/components/form";
 import { ExternalLink } from "~/components/icons";
 import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
+import { DisputeCard, FeedbackCard } from "~/components/feedback-review";
+import { Deciding, useDecision, type Decide } from "~/components/review-decision";
 import { KindTag, PROGRAM_KINDS, type TagColor } from "~/components/tags";
 import { Button, buttonVariants } from "~/components/ui/button";
 import { Select } from "~/components/ui/select";
@@ -22,7 +24,8 @@ type Items = InferResponseType<Api["review-items"]["$get"], 200>;
 type Item = Items["items"][number];
 type Reason = Items["reason"];
 type Extracted = NonNullable<Item["extracted"]>;
-type Decide = (event: SubmitEvent<HTMLFormElement>) => void;
+type FeedbackQueue = InferResponseType<Api["feedback"]["$get"], 200>;
+type Disputes = InferResponseType<Api["disputes"]["$get"], 200>;
 
 // What each kind of item asks of a reviewer (design §8.3, §8.4), in the order the API lists them.
 const REASONS: Record<Reason, { label: string; color: TagColor; guide: string }> = {
@@ -87,6 +90,22 @@ const REASONS: Record<Reason, { label: string; color: TagColor; guide: string }>
   },
 };
 
+// What people asked of the review page (design §12.2, §12.3), ahead of what extraction left.
+const OTHERS = {
+  disputes: {
+    label: "争议",
+    color: "red",
+    guide:
+      "这些项目有 3 人以上反馈有问题。看过反馈和修改记录后，到项目页改正，或者确认没错，写上说明再提交；待处理的反馈会一起关掉，说明就是处理结果。",
+  },
+  feedback: {
+    label: "反馈",
+    color: "orange",
+    guide:
+      "成员说项目哪里不对，或者申请改成什么。修改申请核对依据后通过就照申请改；只说有问题的，到项目页改好后点「已改正」，没问题的写明为什么。提了以后这一处又变过的会标出来。",
+  },
+} satisfies Record<string, { label: string; color: TagColor; guide: string }>;
+
 const DOTS: Record<TagColor, string> = {
   red: "bg-tag-red",
   orange: "bg-tag-orange",
@@ -111,21 +130,48 @@ export function meta() {
 export async function loader({ request, context }: Route.LoaderArgs) {
   const api = context.get(apiContext);
   const params = new URL(request.url).searchParams;
-  const paging = {
-    page: params.get("page") ?? undefined,
-    per_page: params.get("per_page") ?? undefined,
+  // Feedback pages apart from the items, so its pages stay its own however it came to be shown.
+  const paging = (prefix: string) => ({
+    page: params.get(`${prefix}page`) ?? undefined,
+    per_page: params.get(`${prefix}per_page`) ?? undefined,
+  });
+  const asked = params.get("reason");
+  const [items, feedback, disputes] = await Promise.all([
+    api["review-items"]
+      .$get({ query: { reason: isReason(asked) ? asked : undefined, ...paging("") } })
+      .then(readApi<Items>),
+    api.feedback.$get({ query: paging("feedback_") }).then(readApi<FeedbackQueue>),
+    // Only admins review disputes (design §12.3).
+    api.disputes
+      .$get()
+      .then(async (res) => (res.status === 403 ? null : (await readApi<Disputes>(res)).disputes)),
+  ]);
+  // Disputes first, then feedback, then what extraction left (design §12.2).
+  const shown =
+    asked === "disputes" && disputes
+      ? "disputes"
+      : asked === "feedback"
+        ? "feedback"
+        : isReason(asked)
+          ? asked
+          : disputes?.length
+            ? "disputes"
+            : feedback.total > 0
+              ? "feedback"
+              : items.reason;
+  // Only the list shown goes to the page; of the others, how many they have.
+  return {
+    shown,
+    counts: { disputes: disputes?.length ?? null, feedback: feedback.total, items: items.counts },
+    disputes: shown === "disputes" ? disputes : null,
+    feedback: shown === "feedback" ? feedback : null,
+    items: shown === "disputes" || shown === "feedback" ? null : items,
+    thisYear: beijingYear(new Date()),
   };
-  const reason = params.get("reason");
-  const items = await readApi<Items>(
-    await api["review-items"].$get({
-      query: { reason: isReason(reason) ? reason : undefined, ...paging },
-    }),
-  );
-  return { items, thisYear: beijingYear(new Date()) };
 }
 
 export async function action({ request, context }: Route.ActionArgs) {
-  const api = context.get(apiContext)["review-items"][":id"];
+  const api = context.get(apiContext);
   const form = await request.formData();
   const intent = formText(form, "intent");
   const param = { id: formText(form, "id") };
@@ -142,116 +188,128 @@ export async function action({ request, context }: Route.ActionArgs) {
           cohort: number("cohort"),
           kind: KINDS.find((kind) => kind === formText(form, "kind")),
         };
-  if (intent !== "accept" && intent !== "reject") throw data("不支持的操作", { status: 400 });
+  const note = formText(form, "note");
+  const result = (["corrected", "confirmed"] as const).find((r) => r === formText(form, "result"));
   const res =
     intent === "accept"
-      ? await api.accept.$post({ param, json: decision })
-      : await api.reject.$post({ param });
+      ? await api["review-items"][":id"].accept.$post({ param, json: decision })
+      : intent === "reject"
+        ? await api["review-items"][":id"].reject.$post({ param })
+        : intent === "feedback_accept"
+          ? await api.feedback[":id"].accept.$post({ param })
+          : intent === "feedback_reject"
+            ? await api.feedback[":id"].reject.$post({ param, json: { note } })
+            : intent === "resolve_dispute" && result
+              ? await api.disputes[":id"].resolve.$post({ param, json: { result, note } })
+              : null;
+  if (res === null) throw data("不支持的操作", { status: 400 });
   if (res.status === 204) return null;
   return data({ error: (await res.json()).error.message }, res.status);
 }
 
 export default function Review({ loaderData }: Route.ComponentProps) {
+  const { shown, counts, items, feedback, disputes, thisYear } = loaderData;
+  const kinds = [
+    ...(counts.disputes === null
+      ? []
+      : [{ key: "disputes", ...OTHERS.disputes, count: counts.disputes }]),
+    { key: "feedback", ...OTHERS.feedback, count: counts.feedback },
+    ...Object.entries(REASONS).map(([reason, kind]) => ({
+      key: reason,
+      ...kind,
+      count: counts.items[reason] ?? 0,
+    })),
+  ];
+  const waiting = kinds.filter((kind) => kind.count > 0);
+  const current = kinds.find((kind) => kind.key === shown) ?? kinds[0];
   return (
     <Page title="审核" hideTitle>
-      <Queue items={loaderData.items} thisYear={loaderData.thisYear} />
+      {waiting.length === 0 ? (
+        <Empty>没有待审核的条目</Empty>
+      ) : (
+        <div className="grid items-start gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
+          <nav
+            aria-label="待审核的类别"
+            className="flex flex-wrap gap-2 lg:sticky lg:top-20 lg:flex-col lg:gap-0.5 lg:rounded-xl lg:border lg:bg-card lg:p-1.5 lg:shadow-card"
+          >
+            {waiting.map((kind) => {
+              const on = kind.key === current.key;
+              return (
+                <Link
+                  key={kind.key}
+                  to={`?reason=${kind.key}`}
+                  aria-current={on ? "page" : undefined}
+                  className={cn(
+                    "flex h-9 items-center gap-2 rounded-md border px-3 text-[13px] whitespace-nowrap lg:border-transparent",
+                    on
+                      ? "border-primary/40 bg-primary-soft font-medium text-primary"
+                      : "bg-card text-foreground/85 hover:bg-accent lg:bg-transparent",
+                  )}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={cn("size-1.5 rounded-full", DOTS[kind.color])}
+                  />
+                  <span className="flex-1">{kind.label}</span>
+                  <span
+                    className={cn(
+                      "text-xs tabular-nums",
+                      on ? "text-primary" : "text-muted-foreground",
+                    )}
+                  >
+                    {kind.count}
+                  </span>
+                </Link>
+              );
+            })}
+          </nav>
+          {current.count === 0 ? (
+            <Empty>「{current.label}」已全部处理</Empty>
+          ) : (
+            <section aria-label={current.label} className="min-w-0 space-y-3">
+              <p className="rounded-xl border border-primary/15 bg-primary-soft px-4 py-3 text-[13px] leading-relaxed text-pretty sm:px-5">
+                {current.guide}
+              </p>
+              <ol className="space-y-3">
+                {disputes?.map((dispute) => (
+                  <li key={dispute.id}>
+                    <DisputeCard dispute={dispute} thisYear={thisYear} />
+                  </li>
+                ))}
+                {feedback?.items.map((item) => (
+                  <li key={item.id}>
+                    <FeedbackCard item={item} thisYear={thisYear} />
+                  </li>
+                ))}
+                {items?.items.map((item) => (
+                  <li key={item.id}>
+                    <Card item={item} reason={items.reason} thisYear={thisYear} />
+                  </li>
+                ))}
+              </ol>
+              {feedback && (
+                <Pagination
+                  total={feedback.total}
+                  page={feedback.page}
+                  perPage={feedback.per_page}
+                  prefix="feedback_"
+                />
+              )}
+              {items && (
+                <Pagination total={items.total} page={items.page} perPage={items.per_page} />
+              )}
+            </section>
+          )}
+        </div>
+      )}
     </Page>
   );
 }
 
-// The kinds that have items, and the items of one kind, each a question to answer in place.
-function Queue({ items, thisYear }: { items: Items; thisYear: number }) {
-  const waiting = Object.entries(REASONS).filter(([reason]) => items.counts[reason]);
-  if (waiting.length === 0) return <Empty>没有待审核的条目</Empty>;
-  const { label, guide } = REASONS[items.reason];
-  return (
-    <div className="grid items-start gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
-      <nav
-        aria-label="待审核的类别"
-        className="flex flex-wrap gap-2 lg:sticky lg:top-20 lg:flex-col lg:gap-0.5 lg:rounded-xl lg:border lg:bg-card lg:p-1.5 lg:shadow-card"
-      >
-        {waiting.map(([reason, kind]) => {
-          const on = reason === items.reason;
-          return (
-            <Link
-              key={reason}
-              to={`?reason=${reason}`}
-              aria-current={on ? "page" : undefined}
-              className={cn(
-                "flex h-9 items-center gap-2 rounded-md border px-3 text-[13px] whitespace-nowrap lg:border-transparent",
-                on
-                  ? "border-primary/40 bg-primary-soft font-medium text-primary"
-                  : "bg-card text-foreground/85 hover:bg-accent lg:bg-transparent",
-              )}
-            >
-              <span aria-hidden="true" className={cn("size-1.5 rounded-full", DOTS[kind.color])} />
-              <span className="flex-1">{kind.label}</span>
-              <span
-                className={cn(
-                  "text-xs tabular-nums",
-                  on ? "text-primary" : "text-muted-foreground",
-                )}
-              >
-                {items.counts[reason]}
-              </span>
-            </Link>
-          );
-        })}
-      </nav>
-      {items.total === 0 ? (
-        <Empty>「{label}」已全部处理</Empty>
-      ) : (
-        <section aria-label={label} className="min-w-0 space-y-3">
-          <p className="rounded-xl border border-primary/15 bg-primary-soft px-4 py-3 text-[13px] leading-relaxed text-pretty sm:px-5">
-            {guide}
-          </p>
-          <ol className="space-y-3">
-            {items.items.map((item) => (
-              <li key={item.id}>
-                <Card item={item} reason={items.reason} thisYear={thisYear} />
-              </li>
-            ))}
-          </ol>
-          <Pagination total={items.total} page={items.page} perPage={items.per_page} />
-        </section>
-      )}
-    </div>
-  );
-}
-
-// How long a decision waits before it is sent, for a slip to be taken back (design §12.2).
-const UNDO_SECONDS = 5;
-
 // One item: which program and notice it is about, what to decide and the buttons that decide it.
-// Each sends on its own, so the rest of the list stays as it is while it does.
 function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear: number }) {
-  const fetcher = useFetcher<typeof action>();
-  const { submit } = fetcher;
-  // The button clicked and the form it sends, until it is sent or taken back. Leaving the page
-  // first drops it, and the item still waits.
-  const [decision, setDecision] = useState<{
-    form: FormData;
-    choice: string;
-    sent: boolean;
-  } | null>(null);
-  useEffect(() => {
-    if (!decision || decision.sent) return undefined;
-    const timer = setTimeout(() => {
-      void submit(decision.form, { method: "post" });
-      setDecision({ ...decision, sent: true });
-    }, UNDO_SECONDS * 1000);
-    return () => clearTimeout(timer);
-  }, [decision, submit]);
-  const decide: Decide = (event) => {
-    event.preventDefault();
-    setDecision({
-      form: new FormData(event.currentTarget, event.submitter),
-      choice: event.submitter?.textContent ?? "",
-      sent: false,
-    });
-  };
-  // A decision sent and answered with an error leaves the question as it was, the error under it.
-  const pending = decision !== null && !(decision.sent && fetcher.state === "idle");
+  const { result, decision, decide, undo } = useDecision<typeof action>();
+  const pending = decision !== null;
   return (
     <article aria-busy={pending} className="rounded-xl border bg-card shadow-card">
       <header className="space-y-0.5 border-b px-4 py-3 sm:px-5">
@@ -279,20 +337,7 @@ function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear
           </a>
         </p>
       </header>
-      {pending && (
-        <output className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">
-          <span className="text-[13px]">
-            {decision.sent
-              ? `正在提交「${decision.choice}」`
-              : `已选「${decision.choice}」，${UNDO_SECONDS} 秒后提交`}
-          </span>
-          {!decision.sent && (
-            <Button variant="outline" size="sm" onClick={() => setDecision(null)}>
-              撤回
-            </Button>
-          )}
-        </output>
-      )}
+      {decision && <Deciding decision={decision} undo={undo} />}
       {/* Hidden rather than gone, so taking a decision back keeps what was picked. */}
       <div hidden={pending} className="space-y-4 px-4 py-4 sm:px-5">
         {item.field ? (
@@ -314,7 +359,7 @@ function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear
             />
           )
         )}
-        <FormMessage error={fetcher.data?.error} />
+        <FormMessage error={result?.error} />
       </div>
     </article>
   );

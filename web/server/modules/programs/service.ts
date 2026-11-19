@@ -75,6 +75,13 @@ function subscribersOf(program: string) {
   return sql<number>`(select count(*)::int from subscriptions where program_id = ${sql.ref(program)})`;
 }
 
+// Whether a program is disputed (design §12.3), until an admin reviews it.
+function disputedOf(program: string) {
+  return sql<boolean>`exists (
+    select from disputes where program_id = ${sql.ref(program)} and resolved_at is null
+  )`;
+}
+
 // The programs as the table lists them (design §10).
 function tableQuery() {
   return db
@@ -92,6 +99,7 @@ function tableQuery() {
       sql<Kind>`p.kind`.as("kind"),
       applyOf("p.id").as("apply"),
       subscribersOf("p.id").as("subscribers"),
+      disputedOf("p.id").as("disputed"),
       "s.name as school_name",
       "s.short_names as school_short_names",
       "s.tier as school_tier",
@@ -130,6 +138,7 @@ function tableProgram(row: Awaited<ReturnType<ReturnType<typeof tableQuery>["exe
     apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
     closes_at: unix(closesAt(row.apply_deadline, row.event_end, row.cohort)),
     subscribers: row.subscribers,
+    disputed: row.disputed,
     notice: { url: row.notice_url, published_on: row.notice_published_on },
   };
 }
@@ -244,6 +253,7 @@ export async function getProgram(id: number) {
       "c.name as college_name",
       "c.region as college_region",
       subscribersOf("p.id").as("subscribers"),
+      disputedOf("p.id").as("disputed"),
       "u.display_name as verified_by",
       "notice.title as notice_title",
       "notice.url as notice_url",
@@ -265,6 +275,7 @@ export async function getProgram(id: number) {
     apply_deadline: row.apply_deadline ? unix(row.apply_deadline) : null,
     closes_at: unix(closesAt(row.apply_deadline, row.event_end, row.cohort)),
     subscribers: row.subscribers,
+    disputed: row.disputed,
     verified:
       row.verified_at && row.verified_by
         ? { by: row.verified_by, at: unix(row.verified_at) }
@@ -403,7 +414,9 @@ export async function tableVersion() {
       (select count(*) from subscriptions), '-',
       (select floor(extract(epoch from max(created_at)) * 1000)::bigint from subscriptions), '-',
       (select count(*) from college_tag_votes), '-',
-      (select floor(extract(epoch from max(created_at)) * 1000)::bigint from college_tag_votes)
+      (select floor(extract(epoch from max(created_at)) * 1000)::bigint from college_tag_votes), '-',
+      (select count(*) from disputes), '-',
+      (select count(*) from disputes where resolved_at is null)
     ) as version
   `.execute(db);
   return rows[0].version;
