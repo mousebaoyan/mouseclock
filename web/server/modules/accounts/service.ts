@@ -1,6 +1,6 @@
-import { sql, type Transaction } from "kysely";
-import type { DB } from "../../../db/types.ts";
-import { editRevoked, type Viewer } from "../../platform/access.ts";
+import { sql, type Kysely, type Selectable, type Transaction } from "kysely";
+import type { DB, Users } from "../../../db/types.ts";
+import { editRevoked, type Scope, type Viewer } from "../../platform/access.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { env } from "../../platform/env.ts";
@@ -60,21 +60,39 @@ export async function login(
   return token;
 }
 
+// Who a session or a personal token is: the columns of users that make a Viewer.
+export const viewerColumns = [
+  "users.id as user_id",
+  "users.level",
+  "users.role",
+  "users.frozen",
+  "users.muted",
+  "users.muted_until",
+  "users.edit_revoked_at",
+] as const;
+
+export function toViewer(
+  row: Pick<
+    Selectable<Users>,
+    "level" | "role" | "frozen" | "muted" | "muted_until" | "edit_revoked_at"
+  > & { user_id: number },
+): Viewer {
+  return {
+    id: row.user_id,
+    level: row.level,
+    role: row.role,
+    frozen: row.frozen,
+    // A mute that ran out before the next refresh no longer counts.
+    muted: row.muted && (row.muted_until === null || row.muted_until > new Date()),
+    edit_revoked: row.edit_revoked_at !== null,
+  };
+}
+
 export async function resolveSession(token: string) {
   const row = await db
     .selectFrom("sessions")
     .innerJoin("users", "users.id", "sessions.user_id")
-    .select([
-      "sessions.id",
-      "sessions.last_seen_at",
-      "users.id as user_id",
-      "users.level",
-      "users.role",
-      "users.frozen",
-      "users.muted",
-      "users.muted_until",
-      "users.edit_revoked_at",
-    ])
+    .select(["sessions.id", "sessions.last_seen_at", ...viewerColumns])
     .where("sessions.token_hash", "=", hashToken(token))
     .where("sessions.expires_at", ">", new Date())
     .executeTakeFirst();
@@ -88,16 +106,104 @@ export async function resolveSession(token: string) {
       .where("id", "=", row.id)
       .execute();
   }
-  const viewer: Viewer = {
-    id: row.user_id,
-    level: row.level,
-    role: row.role,
-    frozen: row.frozen,
-    // A mute that ran out before the next refresh no longer counts.
-    muted: row.muted && (row.muted_until === null || row.muted_until > new Date()),
-    edit_revoked: row.edit_revoked_at !== null,
-  };
-  return { id: row.id, viewer, renewed };
+  return { id: row.id, viewer: toViewer(row), renewed };
+}
+
+// Personal tokens for one's own Agent (design §13): up to TOKENS_EACH a person, and one unused for
+// TOKEN_UNUSED_DAYS no longer works.
+export const TOKENS_EACH = 10;
+export const TOKEN_UNUSED_DAYS = 90;
+export const TOKEN_REQUESTS_PER_MINUTE = 60;
+
+// Not revoked, and used, or made, within TOKEN_UNUSED_DAYS.
+function liveTokens(from: Kysely<DB> = db) {
+  return from
+    .selectFrom("api_tokens")
+    .where("api_tokens.revoked_at", "is", null)
+    .where(
+      sql`coalesce(api_tokens.last_used_at, api_tokens.created_at)`,
+      ">",
+      new Date(Date.now() - TOKEN_UNUSED_DAYS * 24 * 3600_000),
+    );
+}
+
+// Returns the token, which only this once is seen whole.
+export async function createApiToken(
+  userId: number,
+  { name, scope }: { name: string; scope: Scope },
+) {
+  return db.transaction().execute(async (trx) => {
+    // One person's at a time, so two made at once don't both pass the limit.
+    await trx
+      .selectFrom("users")
+      .select("id")
+      .where("id", "=", userId)
+      .forNoKeyUpdate()
+      .executeTakeFirstOrThrow();
+    const { count } = await liveTokens(trx)
+      .select((eb) => eb.fn.countAll<number>().as("count"))
+      .where("api_tokens.user_id", "=", userId)
+      .executeTakeFirstOrThrow();
+    if (count >= TOKENS_EACH) {
+      throw new AppError(409, "too_many_tokens", `每人最多 ${TOKENS_EACH} 个令牌，先作废不用的`);
+    }
+    const token = newToken();
+    await trx
+      .insertInto("api_tokens")
+      .values({ user_id: userId, name, scope, token_hash: hashToken(token) })
+      .execute();
+    return token;
+  });
+}
+
+export async function listApiTokens(userId: number) {
+  const rows = await liveTokens()
+    .select(["id", "name", sql<Scope>`scope`.as("scope"), "created_at", "last_used_at"])
+    .where("user_id", "=", userId)
+    .orderBy("id", "desc")
+    .execute();
+  return rows.map((row) => ({
+    ...row,
+    created_at: unix(row.created_at),
+    last_used_at: row.last_used_at && unix(row.last_used_at),
+  }));
+}
+
+export async function revokeApiToken(userId: number, id: number) {
+  const row = await db
+    .updateTable("api_tokens")
+    .set({ revoked_at: new Date() })
+    .where("id", "=", id)
+    .where("user_id", "=", userId)
+    .where("revoked_at", "is", null)
+    .returning("id")
+    .executeTakeFirst();
+  if (!row) throw new AppError(404, "not_found", "没有这个令牌，或者已经作废了");
+}
+
+// Who a live token is, and what it may do; its last use is written at most hourly. One whose
+// owner mousehole turned down is no one, though made in the moment before the refresh revoked it.
+export async function resolveApiToken(token: string) {
+  const row = await liveTokens()
+    .innerJoin("users", "users.id", "api_tokens.user_id")
+    .select([
+      "api_tokens.id",
+      sql<Scope>`api_tokens.scope`.as("scope"),
+      "api_tokens.last_used_at",
+      ...viewerColumns,
+    ])
+    .where("api_tokens.token_hash", "=", hashToken(token))
+    .where("users.token_refused_at", "is", null)
+    .executeTakeFirst();
+  if (!row) return null;
+  if (!row.last_used_at || Date.now() - row.last_used_at.getTime() > RENEW_AFTER_MS) {
+    await db
+      .updateTable("api_tokens")
+      .set({ last_used_at: new Date() })
+      .where("id", "=", row.id)
+      .execute();
+  }
+  return { id: row.id, scope: row.scope, viewer: toViewer(row) };
 }
 
 export async function endSession(sessionId: number) {
@@ -119,8 +225,9 @@ export async function profileOf(userId: number) {
 }
 
 // Every person logged in, or who uses the site without opening it, an hour after their last
-// refresh (design §6.1): a subscription or a follow sends them messages, so a ban or leaving the
-// group must reach here. One at a time: mousehole's server is busy enough.
+// refresh (design §6.1): a subscription or a follow sends them messages and a personal token lets
+// their Agent in, so a ban or leaving the group must reach here. One at a time: mousehole's server
+// is busy enough.
 export async function refreshUsers() {
   const due = await db
     .selectFrom("users")
@@ -148,6 +255,7 @@ export async function refreshUsers() {
             .select("follows.user_id")
             .whereRef("follows.user_id", "=", "users.id"),
         ),
+        eb("users.id", "in", liveTokens().select("api_tokens.user_id")),
       ]),
     )
     .orderBy("synced_at")
@@ -163,7 +271,8 @@ export async function refreshUsers() {
         .where("mousehole_token", "=", user.mousehole_token)
         .execute();
     } else {
-      // Banned, or the access taken back: logged out, and no messages until they log in again.
+      // Banned, or the access taken back: logged out, their tokens revoked (design §13), and no
+      // messages until they log in again.
       await db.transaction().execute(async (trx) => {
         const refused = await trx
           .updateTable("users")
@@ -173,6 +282,12 @@ export async function refreshUsers() {
           .executeTakeFirst();
         if (refused.numUpdatedRows === 0n) return;
         await trx.deleteFrom("sessions").where("user_id", "=", user.id).execute();
+        await trx
+          .updateTable("api_tokens")
+          .set({ revoked_at: new Date() })
+          .where("user_id", "=", user.id)
+          .where("revoked_at", "is", null)
+          .execute();
       });
     }
   }

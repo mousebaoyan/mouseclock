@@ -28,8 +28,8 @@ import { DEGREES, fieldLabel, MODES } from "../fields.ts";
 import { editValues, feedbackValue, FormError } from "../program-edit.server.ts";
 import type { loader as rootLoader } from "../root.tsx";
 import { applicationsOf, subscribedTo } from "../table-cache.ts";
-import { formatApply, formatWindow, useNow } from "../time.ts";
-import { beijingYear } from "../../server/modules/programs/time.ts";
+import { useNow } from "../time.ts";
+import { beijingYear, formatApply, formatWindow } from "../../server/modules/programs/time.ts";
 import type { Route } from "./+types/program-detail.ts";
 
 type ProgramApi = ReturnType<typeof createApi>["programs"][":id"];

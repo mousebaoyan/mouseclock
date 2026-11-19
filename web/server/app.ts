@@ -2,6 +2,8 @@ import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { sql } from "kysely";
 import { accountsRoutes, authenticate, autoLogin, loginRoutes } from "./modules/accounts/routes.ts";
+import { apiTokenRoutes } from "./modules/accounts/token-routes.ts";
+import { agentRoutes } from "./modules/agents/routes.ts";
 import { dashboardRoutes } from "./modules/ingest/dashboard-routes.ts";
 import { reviewItemsRoutes } from "./modules/ingest/review-routes.ts";
 import { tokenRoutes } from "./modules/ingest/token-routes.ts";
@@ -21,6 +23,7 @@ import { SITE_NAME } from "./platform/site.ts";
 
 const api = createRouter()
   .route("/", accountsRoutes)
+  .route("/", apiTokenRoutes)
   .route("/", ingestRoutes)
   .route("/", dashboardRoutes)
   .route("/", reviewItemsRoutes)
@@ -36,7 +39,12 @@ const api = createRouter()
 
 export type ApiType = typeof api;
 
-api.doc31("/openapi.json", { openapi: "3.1.0", info: { title: SITE_NAME, version: "1" } });
+api.doc31("/openapi.json", {
+  openapi: "3.1.0",
+  info: { title: SITE_NAME, version: "1" },
+  // A personal token, or for what anyone may read, none.
+  security: [{ personalToken: [] }, {}],
+});
 
 api.all("*", (c) => c.json({ error: { code: "not_found", message: "接口不存在" } }, 404));
 
@@ -52,5 +60,6 @@ export const app = new Hono<AppEnv>()
   .use((c, next) => (bearerToken(c) ? next() : checkOrigin(c, next)))
   .use(authenticate, autoLogin)
   .route("/", loginRoutes)
+  .route("/", agentRoutes)
   .route("/api/v1", api)
   .onError(handleError);

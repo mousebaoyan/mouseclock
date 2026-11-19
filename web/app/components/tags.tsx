@@ -2,7 +2,12 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
 import { Check } from "~/components/icons";
-import type { Kind, Role, Stage } from "../../server/modules/programs/schemas.ts";
+import {
+  KIND_LABELS,
+  type Kind,
+  type Role,
+  type Stage,
+} from "../../server/modules/programs/schemas.ts";
 import type { RequestStatus } from "../../server/modules/sources/schemas.ts";
 import { TIERS } from "../tiers.ts";
 import type { Status } from "../time.ts";
@@ -118,10 +123,10 @@ export const COLLEGE_KINDS: Partial<Record<string, string>> = {
 };
 
 export const PROGRAM_KINDS: Record<Kind, { label: string; color: TagColor }> = {
-  winter_camp: { label: "冬令营", color: "sky" },
-  summer_camp: { label: "夏令营", color: "orange" },
-  pre_recommendation: { label: "预推免", color: "pink" },
-  september_round: { label: "九推", color: "amber" },
+  winter_camp: { label: KIND_LABELS.winter_camp, color: "sky" },
+  summer_camp: { label: KIND_LABELS.summer_camp, color: "orange" },
+  pre_recommendation: { label: KIND_LABELS.pre_recommendation, color: "pink" },
+  september_round: { label: KIND_LABELS.september_round, color: "amber" },
 };
 
 export function KindTag({ kind }: { kind: Kind }) {

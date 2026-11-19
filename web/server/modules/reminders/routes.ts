@@ -168,7 +168,7 @@ export const remindersRoutes = createRouter()
       },
     }),
     async (c) => {
-      const { id } = authorize(c, "read");
+      const { id } = authorize(c, "read", "personal");
       await subscribe(id, c.req.valid("param").id);
       return c.body(null, 204);
     },
@@ -186,7 +186,7 @@ export const remindersRoutes = createRouter()
       },
     }),
     async (c) => {
-      const { id } = authorize(c, "read");
+      const { id } = authorize(c, "read", "personal");
       await unsubscribe(id, c.req.valid("param").id);
       return c.body(null, 204);
     },

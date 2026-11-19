@@ -5,5 +5,6 @@ export const ME_TABS = [
   { to: "/me/follows", label: "关注" },
   { to: "/me/applications", label: "报名" },
   { to: "/me/feedback", label: "反馈" },
+  { to: "/me/agent", label: "Agent" },
   { to: "/me/email", label: "邮件提醒" },
 ] as const;

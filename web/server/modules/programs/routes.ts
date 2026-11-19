@@ -11,10 +11,13 @@ import {
   type AppEnv,
 } from "../../platform/http.ts";
 import { clearApplication, listApplications, setApplication } from "./applications.ts";
+import { beijingYear } from "./time.ts";
 import {
   ApplicationInput,
   Applications,
+  ExportQuery,
   ProgramDetail,
+  ProgramExport,
   ProgramTable,
   ProgramTableQuery,
   ProgramVersions,
@@ -22,6 +25,8 @@ import {
   Stage,
 } from "./schemas.ts";
 import {
+  exportCsv,
+  exportPrograms,
   getAttachmentFile,
   getProgram,
   getSnapshot,
@@ -78,6 +83,41 @@ export const programsRoutes = createRouter()
     async (c) => {
       const { cohort } = c.req.valid("query");
       return c.json(await listPrograms(cohort, !can(c.var.viewer, "read")), 200);
+    },
+  )
+  .openapi(
+    createRoute({
+      method: "get",
+      path: "/export",
+      summary: "下载一届的项目",
+      description:
+        "作为文件下载。和总表一样带 ETag，数据没变时用 If-None-Match 请求会返回 304（总体设计 §13）。",
+      request: { query: ExportQuery },
+      responses: {
+        200: {
+          description: "项目",
+          content: {
+            "text/csv": { schema: z.string() },
+            "application/json": { schema: ProgramExport },
+          },
+        },
+        ...errors,
+        400: errorResponse("届或格式不对"),
+      },
+    }),
+    async (c) => {
+      authorize(c, "read");
+      const { cohort, format } = c.req.valid("query");
+      // The CSV writes dates without this year's number, so the year is part of the tag too.
+      const thisYear = beijingYear(new Date());
+      const etag = `"${STARTED}-${cohort}-${format}-${thisYear}-${await tableVersion()}"`;
+      c.header("ETag", etag);
+      c.header("Cache-Control", "private, no-cache");
+      if (c.req.header("if-none-match") === etag) return c.body(null, 304);
+      c.header("Content-Disposition", `attachment; filename="mouseclock-${cohort}.${format}"`);
+      const data = await exportPrograms(cohort);
+      if (format === "json") return c.json(data, 200);
+      return c.body(exportCsv(data, thisYear), 200, { "Content-Type": "text/csv; charset=utf-8" });
     },
   )
   .openapi(
@@ -160,7 +200,7 @@ export const programsRoutes = createRouter()
       },
     }),
     async (c) => {
-      const { id } = authorize(c, "read");
+      const { id } = authorize(c, "read", "personal");
       await setApplication(id, c.req.valid("param").id, c.req.valid("json"));
       return c.body(null, 204);
     },
@@ -177,7 +217,7 @@ export const programsRoutes = createRouter()
       },
     }),
     async (c) => {
-      const { id } = authorize(c, "read");
+      const { id } = authorize(c, "read", "personal");
       await clearApplication(id, c.req.valid("param").id);
       return c.body(null, 204);
     },

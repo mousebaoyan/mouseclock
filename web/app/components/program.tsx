@@ -4,8 +4,8 @@ import { ExternalLink } from "./icons.tsx";
 import { SchoolLogo } from "./school-logo.tsx";
 import { KindTag, STATUS_COLORS, Tag, TierTag } from "./tags.tsx";
 import type { ApplyValue, Kind } from "../../server/modules/programs/schemas.ts";
-import { formatTime } from "../../server/modules/programs/time.ts";
-import { countdown, formatApply, STATUS_LABELS, statusOf } from "../time.ts";
+import { formatApply, formatTime } from "../../server/modules/programs/time.ts";
+import { countdown, STATUS_LABELS, statusOf } from "../time.ts";
 
 // A program's application dates and status, the same wherever programs are listed.
 

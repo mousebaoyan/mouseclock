@@ -19,6 +19,13 @@ export const ClosesAt = UnixSeconds.openapi({
 });
 export type Kind = z.infer<typeof Kind>;
 
+export const KIND_LABELS: Record<Kind, string> = {
+  winter_camp: "冬令营",
+  summer_camp: "夏令营",
+  pre_recommendation: "预推免",
+  september_round: "九推",
+};
+
 export const ROLES = ["call", "update", "result"] as const;
 export const Role = z.enum(ROLES);
 export type Role = z.infer<typeof Role>;
@@ -283,6 +290,22 @@ export const ProgramFields = z
   })
   .openapi("ProgramFields");
 export type ProgramFields = z.infer<typeof ProgramFields>;
+
+// A cohort to download (design §13): each program as the table has it, with every field, its
+// evidence and the notice it came from.
+export const ProgramExport = z
+  .object({
+    cohort: Int,
+    programs: z.array(TableProgram.extend({ fields: ProgramFields })),
+  })
+  .openapi("ProgramExport");
+
+export const ExportQuery = ProgramTableQuery.extend({
+  format: z.enum(["csv", "json"]).openapi({
+    description:
+      "`csv` 只带总表那几列，UTF-8 加 BOM，Excel 直接打开；`json` 带全部字段、证据和原文链接",
+  }),
+});
 
 export const ProgramDetail = z
   .object({

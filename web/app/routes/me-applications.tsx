@@ -6,9 +6,9 @@ import { ProgramPlace, ProgramStatus } from "~/components/program";
 import { Chip, KindTag, STAGES } from "~/components/tags";
 import { DateTime } from "~/components/time";
 import { Stage } from "../../server/modules/programs/schemas.ts";
-import { beijingYear } from "../../server/modules/programs/time.ts";
+import { beijingYear, formatApply } from "../../server/modules/programs/time.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { formatApply, useNow } from "../time.ts";
+import { useNow } from "../time.ts";
 import type { Route } from "./+types/me-applications.ts";
 
 type Applications = InferResponseType<

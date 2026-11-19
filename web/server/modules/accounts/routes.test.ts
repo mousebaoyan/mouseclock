@@ -183,12 +183,21 @@ test("what changes on mousehole shows within the hour, and a dead token logs the
     can: { edit: false },
   });
 
+  // A ban logs them out and revokes their Agent's token too.
+  const made = await api.me.tokens.$post(
+    { json: { name: "我的 Codex", scope: "read" } },
+    { headers: { cookie: cookieHeader(jar), origin: env.PUBLIC_URL } },
+  );
+  if (made.status !== 201) throw new Error(`status ${made.status}`);
+  const agent = { headers: { authorization: `Bearer ${(await made.json()).token}` } };
+  expect((await api.me.$get({}, agent)).status).toBe(200);
   revoked.add(newcomer.id);
   await lastHour();
   await refreshUsers();
   const res = await visit(jar, "/api/v1/me");
   expect(res.status).toBe(401);
   expect(jar.has("mouseclock_session")).toBe(false);
+  expect((await api.me.$get({}, agent)).status).toBe(401);
 });
 
 test("logging out ends the session, and the next page doesn't log straight back in", async () => {

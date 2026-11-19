@@ -47,7 +47,7 @@ export const followRoutes = createRouter()
       responses: { 204: { description: "已关注" }, ...members, 404: errorResponse("学院不存在") },
     }),
     async (c) => {
-      const { id: userId } = authorize(c, "read");
+      const { id: userId } = authorize(c, "read", "personal");
       await followCollege(userId, c.req.valid("param").id);
       return c.body(null, 204);
     },
@@ -62,7 +62,7 @@ export const followRoutes = createRouter()
       responses: { 204: { description: "已取消，没关注过的也一样" }, ...members },
     }),
     async (c) => {
-      const { id: userId } = authorize(c, "read");
+      const { id: userId } = authorize(c, "read", "personal");
       await unfollowCollege(userId, c.req.valid("param").id);
       return c.body(null, 204);
     },

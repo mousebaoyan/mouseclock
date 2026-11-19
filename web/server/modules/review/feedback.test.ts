@@ -325,3 +325,36 @@ test("a deleted program's feedback waiting closes, and what was withdrawn stays 
   ]);
   expect(await messages()).toEqual([["仓鼠", "你对「夏令营」的反馈已处理", "项目已删除"]]);
 });
+
+test("feedback through an Agent says so, and is ten a day", async () => {
+  const made = await api.me.tokens.$post(
+    { json: { name: "我的 Codex", scope: "personal" } },
+    member,
+  );
+  if (made.status !== 201) throw new Error("Make failed");
+  const agent = { headers: { authorization: `Bearer ${(await made.json()).token}` } };
+  const places = [
+    "apply:start",
+    "apply:end",
+    "apply_url",
+    "event:start",
+    "event:end",
+    "event:mode",
+    "event:place",
+    "degrees",
+    "majors",
+    "requirements",
+  ];
+  for (const field of places) {
+    expect((await give(agent, { kind: "problem", field, reason: "不对" })).status).toBe(201);
+  }
+  expect((await give(agent, { kind: "problem", field: "materials", reason: "不对" })).status).toBe(
+    429,
+  );
+  // On the web, as many as one likes.
+  expect((await give(member, { kind: "problem", field: "materials", reason: "不对" })).status).toBe(
+    201,
+  );
+  const given = await db.selectFrom("feedback").select("via").orderBy("id").execute();
+  expect(given.map((f) => f.via)).toEqual([...places.map(() => "agent"), "web"]);
+});

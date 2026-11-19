@@ -28,6 +28,17 @@ export interface AnnouncedNotices {
   notice_id: number;
 }
 
+export interface ApiTokens {
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  last_used_at: Timestamp | null;
+  name: string;
+  revoked_at: Timestamp | null;
+  scope: string;
+  token_hash: Buffer;
+  user_id: number;
+}
+
 export interface Applications {
   note: Generated<string>;
   program_id: number;
@@ -390,6 +401,7 @@ export interface Users {
 
 export interface DB {
   announced_notices: AnnouncedNotices;
+  api_tokens: ApiTokens;
   applications: Applications;
   attachments: Attachments;
   audit_log: AuditLog;

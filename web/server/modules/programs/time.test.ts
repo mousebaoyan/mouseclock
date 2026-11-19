@@ -1,5 +1,14 @@
 import { expect, test } from "vitest";
-import { beijingYear, closesAt, deadlineDay, deadlineOf, formatTime, startOf } from "./time.ts";
+import {
+  beijingYear,
+  closesAt,
+  deadlineDay,
+  deadlineOf,
+  formatApply,
+  formatTime,
+  formatWindow,
+  startOf,
+} from "./time.ts";
 
 const iso = (date: Date) => date.toISOString();
 
@@ -56,4 +65,19 @@ test("applying is over at the deadline, or else when the event or the cohort's r
   expect(closesAt(deadline, { date: "2026-09-20" }, 2027)).toBe(deadline);
   expect(iso(closesAt(null, { date: "2025-09-18" }, 2026))).toBe("2025-09-18T16:00:00.000Z");
   expect(iso(closesAt(null, null, 2027))).toBe("2026-10-31T16:00:00.000Z");
+});
+
+test("a window says what it has of its two ends", () => {
+  const start = { date: "2026-06-01", time: "08:00" };
+  const end = { date: "2026-06-14" };
+  expect(formatWindow({ start, end }, 2026)).toBe("6月1日 08:00 至 6月14日");
+  expect(formatWindow({ start }, 2026)).toBe("6月1日 08:00 起");
+  expect(formatWindow({ end }, 2026)).toBe("至 6月14日");
+});
+
+test("the application says when it rolls, and when it says nothing", () => {
+  const end = { date: "2026-06-14" };
+  expect(formatApply({ end, rolling: true }, 2026)).toBe("至 6月14日（额满即止）");
+  expect(formatApply({ rolling: true }, 2026)).toBe("额满即止");
+  expect(formatApply(null, 2026)).toBe("未说明");
 });

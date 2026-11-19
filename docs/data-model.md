@@ -111,7 +111,7 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `api_tokens` | `user_id`、`name`、`token_hash`、`scopes`、`created_at`、`last_used_at`、`revoked_at` | 个人令牌（[总体设计 §13](design.md#13-agent-接入)），只存 SHA-256；`scopes` 是 `read`，或者 `read` 加 `personal` |
+| `api_tokens` | `user_id`、`name`、`token_hash`、`scope`、`created_at`、`last_used_at`、`revoked_at` | 个人令牌（[总体设计 §13](design.md#13-agent-接入)），只存 SHA-256；`scope` 是只能查询的 `read`，或者还能做个人操作的 `personal`。`last_used_at` 一小时内只写一次；没作废、最后一次用（没用过的按生成）在 90 天内的才能用，每人最多 10 个这样的；在鼠洞被封禁的，刷新时全部作废 |
 
 ## 热点查询
 
