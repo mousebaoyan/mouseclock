@@ -62,6 +62,21 @@ export interface Colleges {
   school_id: number;
 }
 
+export interface CollegeTags {
+  description: string;
+  id: Generated<number>;
+  name: string;
+  sort: number;
+}
+
+export interface CollegeTagVotes {
+  college_id: number;
+  created_at: Generated<Timestamp>;
+  id: Generated<number>;
+  tag_id: number;
+  user_id: number;
+}
+
 export interface CrawlerTokens {
   created_at: Generated<Timestamp>;
   id: Generated<number>;
@@ -316,6 +331,8 @@ export interface DB {
   applications: Applications;
   attachments: Attachments;
   audit_log: AuditLog;
+  college_tag_votes: CollegeTagVotes;
+  college_tags: CollegeTags;
   colleges: Colleges;
   crawl_runs: CrawlRuns;
   crawler_tokens: CrawlerTokens;

@@ -1,6 +1,6 @@
 import { z } from "@hono/zod-openapi";
 import { Int, IntParam, named, PageParams, UnixSeconds, Url } from "../../platform/http.ts";
-import { ApplyValue, ClosesAt, IsoDate, Kind } from "../programs/schemas.ts";
+import { ApplyValue, ClosesAt, CollegeTagCount, IsoDate, Kind } from "../programs/schemas.ts";
 
 export const PageQuery = PageParams.extend({ q: z.string().trim().max(200).default("") });
 export const CollegeQuery = PageQuery.extend({ school_id: IntParam.positive().optional() });
@@ -129,12 +129,14 @@ export const SourceProbe = z
   .openapi("SourceProbe");
 // Public college pages keep the school grouping and the original application window visible.
 // The computed instants are included for status and countdowns; pages still display `apply`.
+const CountedTags = z.array(z.string()).openapi({ description: "算数的学院标签：3 人以上贴的" });
 export const PublicCollege = z.object({
   id: Int,
   name: z.string(),
   kind: z.string(),
   region: z.string(),
   directions: z.array(z.string()),
+  tags: CountedTags,
 });
 export const PublicSchool = z.object({
   id: Int,
@@ -171,6 +173,10 @@ export const PublicCollegeDetail = z.object({
   kind: z.string(),
   region: z.string(),
   directions: z.array(z.string()),
+  tags: CountedTags,
+  tag_counts: z
+    .array(CollegeTagCount)
+    .openapi({ description: "全部预设：几个人贴了，自己贴了没有" }),
   sources: z.array(PublicSource),
   programs: z.array(PublicProgramCohort),
 });

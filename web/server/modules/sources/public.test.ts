@@ -187,6 +187,7 @@ test("the list groups all colleges, including those without sources, beyond the 
     kind: "college",
     region: "北京",
     directions: ["计算机"],
+    tags: [],
   });
   expect(body.schools.find((item) => item.id === extraSchool.id)?.colleges).toHaveLength(1);
 });
@@ -204,8 +205,10 @@ test("detail exposes source summaries and failure reasons without crawler config
     .returning("id")
     .executeTakeFirstOrThrow();
   const res = await api.colleges[":id"].$get({ param: { id: String(seeded.collegeId) } }, member);
-  expect(res.status).toBe(200);
-  expect(await res.json()).toEqual({
+  if (res.status !== 200) throw new Error("College failed");
+  // What the presets are and their counts: college-tags.test.ts.
+  const { tag_counts: _, ...detail } = await res.json();
+  expect(detail).toEqual({
     id: seeded.collegeId,
     school: {
       id: seeded.schoolId,
@@ -217,6 +220,7 @@ test("detail exposes source summaries and failure reasons without crawler config
     kind: "college",
     region: "北京",
     directions: ["计算机"],
+    tags: [],
     sources: [
       {
         id: seeded.sourceId,

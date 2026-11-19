@@ -6,7 +6,7 @@ import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { SchoolLogo } from "~/components/school-logo";
 import { Missing } from "~/components/program";
-import { COLLEGE_KINDS, TierTag } from "~/components/tags";
+import { COLLEGE_KINDS, CollegeTags, TierTag } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { MultiSelect, Select } from "~/components/ui/select";
 import { Table, Td, Tr } from "~/components/ui/table";
@@ -29,11 +29,16 @@ export async function loader({ request, context }: Route.LoaderArgs) {
 }
 
 export default function Colleges({ loaderData }: Route.ComponentProps) {
-  const { schools, total, colleges, page, perPage, filters, counts, regions, directions } =
+  const { schools, total, colleges, page, perPage, filters, counts, regions, directions, tags } =
     loaderData;
   const { search } = useLocation();
   const { set } = useFilters();
-  const active = filters.tiers.length + filters.regions.length + filters.directions.length > 0;
+  const active =
+    filters.tiers.length +
+      filters.regions.length +
+      filters.directions.length +
+      filters.tags.length >
+    0;
   const filtered = active || Boolean(filters.q);
   return (
     <Page title="院校清单" hideTitle>
@@ -59,6 +64,14 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
                 label: d,
                 count: counts.direction[d] ?? 0,
               }))}
+              className="sm:w-36"
+            />
+            <MultiSelect
+              aria-label="学院标签"
+              all="全部标签"
+              picked={filters.tags}
+              onPickedChange={(values) => set("tag", values)}
+              options={tags.map((t) => ({ value: t, label: t, count: counts.tag[t] ?? 0 }))}
               className="sm:w-36"
             />
             <Select
@@ -135,9 +148,12 @@ function SchoolTable({ schools }: { schools: School[] }) {
               </Td>
             )}
             <Td>
-              <Link to={`/colleges/${college.id}`} className="hover:text-primary">
-                {college.name}
-              </Link>
+              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <Link to={`/colleges/${college.id}`} className="hover:text-primary">
+                  {college.name}
+                </Link>
+                <CollegeTags tags={college.tags} />
+              </span>
             </Td>
             <Td nowrap>{COLLEGE_KINDS[college.kind] ?? college.kind}</Td>
             <Td nowrap>{college.region}</Td>
@@ -162,12 +178,15 @@ function Schools({ schools }: { schools: School[] }) {
               <Row
                 key={college.id}
                 title={
-                  <Link
-                    to={`/colleges/${college.id}`}
-                    className="text-[15px] font-medium after:absolute after:inset-0 hover:text-primary"
-                  >
-                    {college.name}
-                  </Link>
+                  <>
+                    <Link
+                      to={`/colleges/${college.id}`}
+                      className="text-[15px] font-medium after:absolute after:inset-0 hover:text-primary"
+                    >
+                      {college.name}
+                    </Link>
+                    <CollegeTags tags={college.tags} />
+                  </>
                 }
                 meta={
                   // Only what sets a college apart: most are colleges, in their school's one city.

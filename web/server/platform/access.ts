@@ -11,9 +11,10 @@ export type Viewer = {
   edit_revoked: boolean;
 };
 
-// What a route needs (design §6.2): members read everything; editing directly, reviewing and
-// marking programs verified take L3; admins manage; the owner keeps the system settings.
-export type Capability = "read" | "edit" | "admin" | "owner";
+// What a route needs (design §6.2): members read everything, and those not muted tag colleges,
+// give feedback and ask for colleges; editing directly, reviewing and marking programs verified
+// take L3; admins manage; the owner keeps the system settings.
+export type Capability = "read" | "contribute" | "edit" | "admin" | "owner";
 
 const EDIT_LEVEL = 3;
 
@@ -24,6 +25,7 @@ export function checkPermission(viewer: Viewer | null, need: Capability) {
   if (viewer.frozen) throw new AppError(403, "member_frozen", "账号已冻结，只能看预览");
   if (need === "read") return viewer;
   if (viewer.muted) throw new AppError(403, "muted", "禁言中，只能看、订阅和记报名");
+  if (need === "contribute") return viewer;
   const admin = viewer.role === "admin" || viewer.role === "owner";
   if (need === "edit") {
     if (viewer.edit_revoked) throw editRevoked();

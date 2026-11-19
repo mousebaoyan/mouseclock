@@ -1,5 +1,5 @@
 import { PER_PAGE } from "../server/platform/paging.ts";
-import { anyOf, choices, tally } from "./facets.ts";
+import { allOf, anyOf, choices, tally } from "./facets.ts";
 import { TIERS } from "./tiers.ts";
 
 // 院校清单's search, filters, sorting and pages (design §10), read from the address. The whole
@@ -9,7 +9,7 @@ type School = {
   name: string;
   short_names: string[];
   tier: string | null;
-  colleges: { name: string; region: string; directions: string[] }[];
+  colleges: { name: string; region: string; directions: string[]; tags: string[] }[];
 };
 
 export const SORTS = [
@@ -36,6 +36,7 @@ export function collegeView<S extends School>(schools: S[], params: URLSearchPar
   const tiers = params.getAll("tier");
   const regions = params.getAll("region");
   const directions = params.getAll("direction");
+  const tags = params.getAll("tag");
   const sort = SORTS.find((item) => item.value === params.get("sort"))?.value ?? "";
   const perPage = PER_PAGE.find((n) => String(n) === params.get("per_page")) ?? PER_PAGE[0];
   // The schools, each with its colleges, that every filter but `skip` lets through. The short
@@ -50,6 +51,7 @@ export function collegeView<S extends School>(schools: S[], params: URLSearchPar
           (college) =>
             (skip === "region" || anyOf(regions, [college.region])) &&
             (skip === "direction" || anyOf(directions, college.directions)) &&
+            allOf(tags, college.tags) &&
             (named || college.name.toLowerCase().includes(q)),
         );
         return { ...school, colleges };
@@ -72,7 +74,7 @@ export function collegeView<S extends School>(schools: S[], params: URLSearchPar
     colleges: matched.reduce((sum, school) => sum + school.colleges.length, 0),
     page,
     perPage,
-    filters: { q: params.get("q") ?? "", tiers, regions, directions, sort },
+    filters: { q: params.get("q") ?? "", tiers, regions, directions, tags, sort },
     // A tier counts schools, a region or direction colleges: what each belongs to.
     counts: {
       tier: tally(narrowed("tier").map((school) => school.tier ?? "other")),
@@ -80,8 +82,11 @@ export function collegeView<S extends School>(schools: S[], params: URLSearchPar
       direction: tally(
         narrowed("direction").flatMap((school) => school.colleges.flatMap((c) => c.directions)),
       ),
+      // Picking a tag narrows, so each counts among what the picked ones leave.
+      tag: tally(matched.flatMap((school) => school.colleges.flatMap((c) => c.tags))),
     },
     regions: choices(all.map((college) => college.region)),
     directions: choices(all.flatMap((college) => college.directions)),
+    tags: choices(all.flatMap((college) => college.tags)),
   };
 }
