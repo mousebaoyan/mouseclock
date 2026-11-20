@@ -8,6 +8,7 @@ import {
   IdParam,
   Int,
   IntParam,
+  param,
   type AppEnv,
 } from "../../platform/http.ts";
 import { clearApplication, listApplications, setApplication } from "./applications.ts";
@@ -265,7 +266,7 @@ export const programsRoutes = createRouter()
       path: "/snapshots/{id}/attachments/{position}",
       summary: "下载附件",
       description: "总是作为下载返回，不在浏览器里直接打开：附件来自外部网站，不可信。",
-      request: { params: z.object({ id: IntParam, position: IntParam }) },
+      request: { params: z.object({ id: IntParam, position: param(Int.min(0)) }) },
       responses: {
         200: {
           description: "附件的文件",

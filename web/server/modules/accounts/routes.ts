@@ -157,6 +157,7 @@ export const autoLogin = createMiddleware<AppEnv>(async (c, next) => {
     c.req.header("sec-fetch-mode") !== "navigate" ||
     c.req.header("sec-fetch-dest") !== "document" ||
     c.req.path.startsWith("/api/") ||
+    c.req.path === "/mcp" ||
     c.req.path.startsWith("/login")
   ) {
     return next();

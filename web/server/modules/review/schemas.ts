@@ -36,7 +36,7 @@ const Basis = z
   .trim()
   .min(1)
   .max(2000)
-  .openapi({ description: "原文链接，或截图的链接" });
+  .openapi({ description: "原文或截图的链接，或者一句说明" });
 
 // A direct edit (design §12.4): what it changes, the fields as extraction gives them, and why.
 export const ProgramEdit = z

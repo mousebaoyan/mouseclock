@@ -4,7 +4,7 @@ import { SITE_DESCRIPTION, SITE_NAME } from "../../platform/site.ts";
 import { TOKEN_REQUESTS_PER_MINUTE } from "../accounts/service.ts";
 import { AGENT_FEEDBACK_PER_DAY } from "../review/feedback.ts";
 
-// What an Agent reads first (design §13, api.md §5): what the site is, its pages and its API.
+// What an Agent reads first (design §13, api.md §5): what the site is, its pages, MCP and the API.
 
 const site = env.PUBLIC_URL;
 
@@ -19,6 +19,11 @@ const LLMS_TXT = `# ${SITE_NAME}
 - [院校清单](${site}/colleges)：收录了哪些学校和学院
 - [抓取看板](${site}/crawl)：每个来源最近抓得怎么样
 - [修改记录](${site}/edits)：大家改了什么
+
+## MCP
+
+- 地址 \`${site}/mcp\`，Streamable HTTP，请求带 \`Authorization: Bearer <令牌>\`；令牌由本人在[「我的 · Agent」](${site}/me/agent)生成，那里也有接 Codex、Claude Code 的命令
+- 工具和下面的接口一一对应，权限、限额都一样
 
 ## 接口
 

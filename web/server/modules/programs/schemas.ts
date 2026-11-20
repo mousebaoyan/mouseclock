@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { Int, named, UnixSeconds } from "../../platform/http.ts";
+import { Int, named, param, UnixSeconds } from "../../platform/http.ts";
 
 // The shapes of programs and their fields (design §8.2): what extraction submits, what the
 // database stores in program_fields and program_versions, and what pages show. Keys left out
@@ -173,7 +173,7 @@ export const Cohort = z
 
 // The cohort as a query string gives it.
 export const ProgramTableQuery = z.object({
-  cohort: z.coerce.number().int().min(COHORTS.min).max(COHORTS.max).openapi({ description: "届" }),
+  cohort: param(Int.min(COHORTS.min).max(COHORTS.max)).openapi({ description: "届" }),
 });
 
 // A row of the table (design §10): only what the table shows, filters and sorts by. `apply` is

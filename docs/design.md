@@ -81,6 +81,7 @@
 | 网站 | 和鼠洞同一套：TypeScript 7、Node 26、React Router 8、Hono 和 `@hono/zod-openapi`、Kysely、Tailwind CSS 和 shadcn/ui；pnpm、oxlint、Prettier、Vitest、Playwright | 登录、邮件、界面风格和写法都能照搬。选型依据和框架的实测见[鼠洞的总体设计 §5.2](https://github.com/mousebaoyan/mousehole/blob/main/docs/design.md#52-选型依据) |
 | 数据库 | 服务器上 1Panel 的 PostgreSQL 18 | 和鼠洞共用实例，不加新服务 |
 | 发邮件 | nodemailer，只在 `reminders` 里用 | 和鼠洞一样，SMTP 的主流库 |
+| MCP | 官方的 `@modelcontextprotocol/server`（v2），只在 `agents` 里用 | 官方 SDK，只依赖 zod；自带标准的 `fetch` 处理函数，直接挂在 Hono 上 |
 | 抓取节点 | Python 3.14，uv 管依赖；Ruff 做 lint 和格式化，Pyright 的严格模式做类型检查，pytest 做测试 | 浏览器抓取、正文提取、PDF 和 Office 解析，Python 的库最全，代价是多一套工具链。Pyright 和 VS Code 的 Pylance 是同一个引擎，编辑器里看到的错误和 CI 一致 |
 | 抓取 | httpx（异步）请求网页，Playwright 驱动浏览器（Chromium 的无头精简版），lxml 按 CSS 或 XPath 取出列表 | 各自领域的主流库 |
 | 正文和附件 | 正文按建站系统的模板用 lxml 取；pypdf 读 PDF，python-docx 读 `.docx`，legacy-doc 读老的 `.doc`，openpyxl 读 `.xlsx`，xlrd 读 `.xls`；图片和扫描的 PDF 交给 LLM 读，扫描的 PDF 由 pypdf 取出每页的图片，Pillow 把长图切成小块 | 都关在 `parse` 模块里，换了不影响别处。正文和附件用真实的通知和附件比较后定，结果见第 5.2 节。不用 AGPL 许可的 PyMuPDF |

@@ -1513,14 +1513,11 @@
         "parameters": [
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "minimum": -2147483648,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "id",
             "in": "path"
           }
@@ -1579,14 +1576,11 @@
         "parameters": [
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "minimum": -2147483648,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "id",
             "in": "path"
           }
@@ -1638,14 +1632,11 @@
         "parameters": [
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "minimum": -2147483648,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "id",
             "in": "path"
           }
@@ -1704,27 +1695,21 @@
         "parameters": [
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "minimum": -2147483648,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "id",
             "in": "path"
           },
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
-              "minimum": -2147483648,
+              "type": "integer",
+              "minimum": 0,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "position",
             "in": "path"
           }
@@ -1788,14 +1773,11 @@
         "parameters": [
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "minimum": -2147483648,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "id",
             "in": "path"
           }
@@ -1847,14 +1829,11 @@
         "parameters": [
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "minimum": -2147483648,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "id",
             "in": "path"
           }
@@ -1941,14 +1920,11 @@
         "parameters": [
           {
             "schema": {
-              "type": [
-                "integer",
-                "null"
-              ],
+              "type": "integer",
               "minimum": -2147483648,
               "maximum": 2147483647
             },
-            "required": false,
+            "required": true,
             "name": "id",
             "in": "path"
           }

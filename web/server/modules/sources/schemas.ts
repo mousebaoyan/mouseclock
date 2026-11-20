@@ -1,11 +1,11 @@
 import { z } from "@hono/zod-openapi";
-import { Int, IntParam, named, Page, PageParams, UnixSeconds, Url } from "../../platform/http.ts";
+import { Int, named, Page, PageParams, param, UnixSeconds, Url } from "../../platform/http.ts";
 import { ApplyValue, ClosesAt, CollegeTagCount, IsoDate, Kind } from "../programs/schemas.ts";
 
 export const PageQuery = PageParams.extend({ q: z.string().trim().max(200).default("") });
-export const CollegeQuery = PageQuery.extend({ school_id: IntParam.positive().optional() });
+export const CollegeQuery = PageQuery.extend({ school_id: param(Int.positive()).optional() });
 export const SourceQuery = PageQuery.extend({
-  college_id: IntParam.positive().optional(),
+  college_id: param(Int.positive()).optional(),
   availability: z.enum(["available", "unavailable"]).optional(),
 });
 // Why a fetch failed, as the crawler reports it (api.md §6): a source's list, a notice or a probe.

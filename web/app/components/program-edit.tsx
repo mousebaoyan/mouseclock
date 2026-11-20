@@ -78,7 +78,7 @@ export function EditForm({
             className="field"
           />
         </Field>
-        <Field label="修改依据" hint="原文链接或截图链接">
+        <Field label="修改依据" hint="原文或截图的链接，或者写明在哪看到的">
           <input name="basis" required maxLength={2000} className="field" />
         </Field>
       </div>

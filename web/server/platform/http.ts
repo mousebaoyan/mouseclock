@@ -123,15 +123,24 @@ export function unix(date: Date) {
 const INT = { min: -(2 ** 31), max: 2 ** 31 - 1 };
 const LAST_SECOND = 8.64e12;
 export const Int = z.number().int().min(INT.min).max(INT.max);
-export const IntParam = z.coerce.number().int().min(INT.min).max(INT.max);
+// A number from a path or query string, checked by `schema`. Not z.coerce, which turns null into 0
+// and so has the OpenAPI document call the parameter optional and nullable.
+export function param<T extends z.ZodType<number>>(schema: T) {
+  return z.preprocess(
+    (value) => (typeof value === "string" && value !== "" ? Number(value) : value),
+    schema,
+  );
+}
+export const IntParam = param(Int);
 export const IdParam = z.object({ id: IntParam });
 export const UnixSeconds = z.number().int().min(0).max(LAST_SECOND);
 // A page's address as the crawler reports it.
 export const Url = z.url({ protocol: /^https?$/ }).max(2000);
 
 export const PageParams = z.object({
-  page: IntParam.min(1).max(100_000).default(1),
-  per_page: z.coerce.number().pipe(z.literal(PER_PAGE)).default(PER_PAGE[0]),
+  page: param(Int.min(1).max(100_000)).default(1),
+  // zod-to-openapi documents a literal of several values with the first only.
+  per_page: param(z.literal(PER_PAGE).openapi({ enum: [...PER_PAGE] })).default(PER_PAGE[0]),
 });
 
 export function Page<T extends z.ZodType>(item: T) {
