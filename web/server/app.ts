@@ -1,8 +1,15 @@
 import { Hono } from "hono";
 import { csrf } from "hono/csrf";
 import { sql } from "kysely";
-import { accountsRoutes, authenticate, autoLogin, loginRoutes } from "./modules/accounts/routes.ts";
+import {
+  accountsRoutes,
+  asVisitor,
+  authenticate,
+  autoLogin,
+  loginRoutes,
+} from "./modules/accounts/routes.ts";
 import { apiTokenRoutes } from "./modules/accounts/token-routes.ts";
+import { mcpRoute } from "./modules/agents/mcp.ts";
 import { agentRoutes } from "./modules/agents/routes.ts";
 import { dashboardRoutes } from "./modules/ingest/dashboard-routes.ts";
 import { reviewItemsRoutes } from "./modules/ingest/review-routes.ts";
@@ -39,12 +46,14 @@ const api = createRouter()
 
 export type ApiType = typeof api;
 
-api.doc31("/openapi.json", {
+const document: Parameters<typeof api.getOpenAPI31Document>[0] = {
   openapi: "3.1.0",
   info: { title: SITE_NAME, version: "1" },
   // A personal token, or for what anyone may read, none.
   security: [{ personalToken: [] }, {}],
-});
+};
+
+api.doc31("/openapi.json", document);
 
 api.all("*", (c) => c.json({ error: { code: "not_found", message: "接口不存在" } }, 404));
 
@@ -63,3 +72,12 @@ export const app = new Hono<AppEnv>()
   .route("/", agentRoutes)
   .route("/api/v1", api)
   .onError(handleError);
+
+// Its tools call the API through the app as the caller, as pages do, so it's added once the app
+// is there.
+app.all(
+  "/mcp",
+  mcpRoute(api.getOpenAPI31Document(document), (request, visitor) =>
+    app.fetch(asVisitor(request, visitor)),
+  ),
+);

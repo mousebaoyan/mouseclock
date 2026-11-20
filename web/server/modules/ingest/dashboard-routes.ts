@@ -57,7 +57,10 @@ export const dashboardRoutes = createRouter().openapi(
     description:
       "某天（北京时间，默认今天）抓过的来源和各轮的结果、用量，标红、标黄的在前（总体设计 §7.5）。",
     request: {
-      query: PageParams.extend({ date: IsoDate.optional(), source_id: IntParam.optional() }),
+      query: PageParams.extend({
+        date: IsoDate.optional(),
+        source_id: IntParam.optional(),
+      }),
     },
     responses: {
       200: { description: "这一天的抓取", content: { "application/json": { schema: CrawlDay } } },

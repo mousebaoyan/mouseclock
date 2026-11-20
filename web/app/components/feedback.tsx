@@ -156,7 +156,10 @@ export function FeedbackForm({
             className="field"
           />
         </Field>
-        <Field label={editing ? "依据" : "依据（选填）"} hint="原文链接或截图链接">
+        <Field
+          label={editing ? "依据" : "依据（选填）"}
+          hint="原文或截图的链接，或者写明在哪看到的"
+        >
           <input name="basis" required={editing} maxLength={2000} className="field" />
         </Field>
       </div>

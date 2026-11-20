@@ -67,9 +67,23 @@ export default function Agent({ loaderData, actionData }: Route.ComponentProps) 
   const { tokens, limit, unused_days, revoking, origin, cohort } = loaderData;
   const busy = useNavigation().state !== "idle";
   const made = actionData && "token" in actionData ? actionData : null;
-  const say =
-    made &&
-    `请先读 ${origin}/llms.txt 了解鼠钟。调用它的接口时带上请求头 Authorization: Bearer ${made.token}`;
+  // Connecting an Agent, the token filled in (design §13).
+  const setups = made
+    ? [
+        {
+          label: "Claude Code：在终端里运行",
+          text: `claude mcp add --transport http --scope user mouseclock ${origin}/mcp --header "Authorization: Bearer ${made.token}"`,
+        },
+        {
+          label: "Codex：加到 ~/.codex/config.toml 里",
+          text: `[mcp_servers.mouseclock]\nurl = "${origin}/mcp"\nhttp_headers = { Authorization = "Bearer ${made.token}" }`,
+        },
+        {
+          label: "别的 Agent：把这段话发给它",
+          text: `请先读 ${origin}/llms.txt 了解鼠钟。它的 MCP 地址是 ${origin}/mcp，调用 MCP 和接口时都带上请求头 Authorization: Bearer ${made.token}`,
+        },
+      ]
+    : [];
   return (
     <div className="space-y-5">
       <Panel
@@ -78,7 +92,7 @@ export default function Agent({ loaderData, actionData }: Route.ComponentProps) 
       >
         <div className="space-y-4">
           <FormMessage error={actionData && "error" in actionData ? actionData.error : undefined} />
-          {made && say && (
+          {made && (
             <div className="space-y-2 rounded-md border border-success/25 bg-success/5 p-3 text-[13px]">
               <p className="text-success">
                 已生成「{made.name}」的令牌。令牌只显示这一次，请马上复制
@@ -93,18 +107,22 @@ export default function Agent({ loaderData, actionData }: Route.ComponentProps) 
                 />
                 <CopyButton text={made.token} />
               </div>
-              <p className="text-muted-foreground">把下面这段话发给你的 Agent：</p>
-              <div className="flex items-start gap-2">
-                <textarea
-                  readOnly
-                  rows={3}
-                  value={say}
-                  aria-label="发给 Agent 的话"
-                  onFocus={(event) => event.currentTarget.select()}
-                  className="field h-auto min-w-0 flex-1 resize-none py-2 font-mono text-xs"
-                />
-                <CopyButton text={say} />
-              </div>
+              {setups.map(({ label, text }) => (
+                <div key={label} className="space-y-1.5 pt-1">
+                  <p className="text-muted-foreground">{label}</p>
+                  <div className="flex items-start gap-2">
+                    <textarea
+                      readOnly
+                      rows={3}
+                      value={text}
+                      aria-label={label}
+                      onFocus={(event) => event.currentTarget.select()}
+                      className="field h-auto min-w-0 flex-1 resize-none py-2 font-mono text-xs"
+                    />
+                    <CopyButton text={text} />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
           {/* A new key once a token is made, so the name typed for it is cleared. */}

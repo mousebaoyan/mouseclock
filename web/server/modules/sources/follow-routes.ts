@@ -5,7 +5,7 @@ import {
   errorResponse,
   IdParam,
   Int,
-  IntParam,
+  param,
 } from "../../platform/http.ts";
 import { followCollege, listFollows, unfollowCollege } from "./follows.ts";
 import { RequestStatus } from "./schemas.ts";
@@ -74,7 +74,7 @@ export const followRoutes = createRouter()
       summary: "自己关注的学院",
       description:
         "按学校排；每个带这一届（`cohort`）的项目数、最近一条通知的日期，还没在抓的带求收录的进度。",
-      request: { query: z.object({ cohort: IntParam.min(2000).max(2100) }) },
+      request: { query: z.object({ cohort: param(Int.min(2000).max(2100)) }) },
       responses: {
         200: { description: "关注的学院", content: json(z.object({ follows: z.array(Follow) })) },
         ...members,

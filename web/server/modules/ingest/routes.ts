@@ -9,6 +9,7 @@ import {
   IdParam,
   Int,
   IntParam,
+  param,
   UnixSeconds,
   Url,
 } from "../../platform/http.ts";
@@ -328,7 +329,7 @@ export const ingestRoutes = router
       security,
       middleware: [limit(10 * MB, "文件太大")] as const,
       request: {
-        params: z.object({ id: IntParam, position: IntParam }),
+        params: z.object({ id: IntParam, position: param(Int.min(0)) }),
         body: {
           content: {
             "application/octet-stream": { schema: z.string().openapi({ format: "binary" }) },
