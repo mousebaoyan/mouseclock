@@ -230,7 +230,7 @@ export const InclusionRequest = z
     status: RequestStatus,
     reason: z.string().nullable(),
     votes: Int.openapi({ description: "同求的人数，提的人也算" }),
-    mine: z.boolean().openapi({ description: "自己同求了没有，关注了这个学院也算" }),
+    mine: z.boolean().openapi({ description: "自己同求了没有，关注了这个学院也算（禁言的不算）" }),
     following: z
       .boolean()
       .openapi({ description: "自己关注了这个学院没有；关注算的同求，取消关注才撤" }),

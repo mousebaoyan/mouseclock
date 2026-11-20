@@ -280,15 +280,16 @@ function VoteButton({ item, muted }: { item: Request; muted: boolean }) {
   const on = going ?? item.mine;
   const count = item.votes + (on === item.mine ? 0 : on ? 1 : -1);
   const closed = item.status === "included";
+  // Following the college counts as voting, until one stops following it; not for the muted.
+  const following = item.following && !muted;
   return (
     <fetcher.Form method={on ? "delete" : "put"} className="relative">
       <input type="hidden" name="id" value={item.id} />
       <button
         type="submit"
         aria-pressed={on}
-        // Following the college counts as voting, until one stops following it.
-        disabled={muted || closed || item.following || fetcher.state !== "idle"}
-        title={item.following ? "关注着这个学院，就算同求了" : undefined}
+        disabled={muted || closed || following || fetcher.state !== "idle"}
+        title={following ? "关注着这个学院，就算同求了" : undefined}
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] whitespace-nowrap tabular-nums pointer-coarse:h-9 disabled:cursor-default",
           on
@@ -296,7 +297,7 @@ function VoteButton({ item, muted }: { item: Request; muted: boolean }) {
             : "bg-card text-foreground/80 enabled:hover:border-input enabled:hover:text-foreground",
         )}
       >
-        {closed ? "同求过" : item.following ? "关注着" : "同求"}
+        {closed ? "同求过" : following ? "关注着" : "同求"}
         <span className="text-xs font-normal opacity-60">{count}</span>
       </button>
       {fetcher.state === "idle" && fetcher.data && (
