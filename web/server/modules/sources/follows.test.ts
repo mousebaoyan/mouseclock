@@ -105,6 +105,20 @@ test("following a college not crawled yet asks for it: one vote each, gone with 
   expect(await asks(two)).toEqual([]);
 });
 
+test("the muted follow a college not crawled yet without asking for it or counting as a vote", async () => {
+  const [one, , , , muted] = await Promise.all(fakeUsers.slice(0, 5).map(writer));
+  expect((await follow(muted, waiting)).status).toBe(204);
+  expect(await detail(one, waiting)).toEqual({ followers: 1, following: false });
+  expect(await asks(one)).toEqual([]);
+
+  await follow(one, waiting);
+  expect(await asks(one)).toEqual([["软件学院", 1, true, true]]);
+  expect(await asks(muted)).toEqual([["软件学院", 1, false, true]]);
+  // Nor do they keep the ask on the list.
+  await unfollow(one, waiting);
+  expect(await asks(one)).toEqual([]);
+});
+
 test("my follows go by school, those not crawled with how their ask goes; included tells them", async () => {
   const [one, , admin] = await Promise.all(fakeUsers.slice(0, 3).map(writer));
   await follow(one, waiting);

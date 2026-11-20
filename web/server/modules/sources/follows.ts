@@ -1,4 +1,5 @@
 import { sql } from "kysely";
+import type { Viewer } from "../../platform/access.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { logoOf } from "../programs/service.ts";
@@ -8,9 +9,9 @@ import type { RequestStatus } from "./schemas.ts";
 
 // 关注学院 (design §11.4) as a college's page and 院校清单 see it. The follows are reminders',
 // which tells followers of new notices; following a college not crawled yet also asks for it
-// (design §10.1): someone who follows counts as voting.
+// (design §10.1): someone who follows counts as voting, unless muted.
 
-export async function followCollege(userId: number, collegeId: number) {
+export async function followCollege(viewer: Viewer, collegeId: number) {
   await db.transaction().execute(async (trx) => {
     const college = await trx
       .selectFrom("colleges")
@@ -18,7 +19,9 @@ export async function followCollege(userId: number, collegeId: number) {
       .where("id", "=", collegeId)
       .executeTakeFirst();
     if (!college) throw new AppError(404, "not_found", "学院不存在");
-    await follow(trx, userId, collegeId);
+    await follow(trx, viewer.id, collegeId);
+    // The muted follow, but may not ask.
+    if (viewer.muted) return;
     // Locked, so the last vote withdrawn meanwhile can't drop the ask without seeing this follow.
     const asked = await trx
       .selectFrom("inclusion_requests")
@@ -30,7 +33,7 @@ export async function followCollege(userId: number, collegeId: number) {
     // No one asked yet: this one does.
     await trx
       .insertInto("inclusion_requests")
-      .values({ college_id: collegeId, user_id: userId, note: "" })
+      .values({ college_id: collegeId, user_id: viewer.id, note: "" })
       .onConflict((oc) => oc.column("college_id").doNothing())
       .execute();
   });

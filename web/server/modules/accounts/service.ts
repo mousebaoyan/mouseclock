@@ -88,6 +88,11 @@ export function toViewer(
   };
 }
 
+// The same, for a query with `users` in it.
+export const mutedNow = sql<boolean>`(
+  users.muted and (users.muted_until is null or users.muted_until > now())
+)`;
+
 export async function resolveSession(token: string) {
   const row = await db
     .selectFrom("sessions")

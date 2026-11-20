@@ -42,13 +42,13 @@ export const followRoutes = createRouter()
       method: "put",
       path: "/colleges/{id}/follow",
       summary: "关注学院",
-      description: "关注过的照样返回 204。还没在抓的学院，关注就算替它求收录：没人提过的新建一条。",
+      description:
+        "关注过的照样返回 204。还没在抓的学院，关注就算替它求收录：没人提过的新建一条。禁言的能关注，但不算求收录。",
       request: { params: IdParam },
       responses: { 204: { description: "已关注" }, ...members, 404: errorResponse("学院不存在") },
     }),
     async (c) => {
-      const { id: userId } = authorize(c, "read", "personal");
-      await followCollege(userId, c.req.valid("param").id);
+      await followCollege(authorize(c, "read", "personal"), c.req.valid("param").id);
       return c.body(null, 204);
     },
   )

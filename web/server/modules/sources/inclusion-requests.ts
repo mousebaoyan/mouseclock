@@ -2,10 +2,12 @@ import { sql, type Kysely, type Transaction } from "kysely";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
+import type { Viewer } from "../../platform/access.ts";
 import { recordAudit } from "../../platform/audit.ts";
 import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
+import { mutedNow } from "../accounts/service.ts";
 import { sendMessages } from "../reminders/messages.ts";
 import {
   REQUEST_STATUSES,
@@ -46,7 +48,7 @@ function named(executor: Kysely<DB>) {
 
 // One column of the list; queued ones by votes, the most first, then the earliest asked.
 export async function listRequests(
-  userId: number,
+  viewer: Viewer,
   { status, ...paging }: z.infer<typeof RequestQuery>,
 ) {
   let query = named(db)
@@ -59,16 +61,17 @@ export async function listRequests(
         select count(*) from (
           select user_id from inclusion_votes where request_id = inclusion_requests.id
           union
-          select user_id from follows where college_id = inclusion_requests.college_id
+          select follows.user_id from follows join users on users.id = follows.user_id
+          where follows.college_id = inclusion_requests.college_id and not ${mutedNow}
         ) as voters
       )`.as("votes"),
       sql<boolean>`exists (
         select from inclusion_votes as v
-        where v.request_id = inclusion_requests.id and v.user_id = ${userId}
+        where v.request_id = inclusion_requests.id and v.user_id = ${viewer.id}
       )`.as("voted"),
       sql<boolean>`exists (
         select from follows as f
-        where f.college_id = inclusion_requests.college_id and f.user_id = ${userId}
+        where f.college_id = inclusion_requests.college_id and f.user_id = ${viewer.id}
       )`.as("following"),
     ])
     .where("inclusion_requests.status", "=", status);
@@ -97,7 +100,7 @@ export async function listRequests(
       status: row.status,
       reason: row.reason,
       votes: row.votes,
-      mine: row.voted || row.following,
+      mine: row.voted || (row.following && !viewer.muted),
       following: row.following,
       created_at: unix(row.created_at),
     })),
@@ -205,7 +208,7 @@ export async function withdrawVote(userId: number, requestId: number) {
 }
 
 // A queued ask no one votes for or follows the college of any more leaves the list; the others
-// stay (design §10.1).
+// stay (design §10.1). The muted's follows don't count.
 export async function dropUnwanted(trx: Transaction<DB>, requestId: number) {
   await trx
     .deleteFrom("inclusion_requests")
@@ -226,8 +229,10 @@ export async function dropUnwanted(trx: Transaction<DB>, requestId: number) {
         eb.exists(
           eb
             .selectFrom("follows")
+            .innerJoin("users", "users.id", "follows.user_id")
             .whereRef("follows.college_id", "=", "inclusion_requests.college_id")
-            .select("user_id"),
+            .where(sql<boolean>`not ${mutedNow}`)
+            .select("follows.user_id"),
         ),
       ),
     )

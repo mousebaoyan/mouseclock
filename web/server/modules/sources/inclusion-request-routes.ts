@@ -49,8 +49,7 @@ export const inclusionRequestRoutes = createRouter()
       },
     }),
     async (c) => {
-      const { id } = authorize(c, "read");
-      return c.json(await listRequests(id, c.req.valid("query")), 200);
+      return c.json(await listRequests(authorize(c, "read"), c.req.valid("query")), 200);
     },
   )
   .openapi(
