@@ -1,9 +1,11 @@
 import { testClient } from "hono/testing";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
+import { z } from "zod";
 import { fakeUsers, revoked, type FakeUser } from "../../../test/fake-mousehole.ts";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
+import { fetchProfile } from "./mousehole.ts";
 import { refreshUsers } from "./service.ts";
 
 const api = testClient(app).api.v1;
@@ -198,6 +200,57 @@ test("what changes on mousehole shows within the hour, and a dead token logs the
   expect(res.status).toBe(401);
   expect(jar.has("mouseclock_session")).toBe(false);
   expect((await api.me.$get({}, agent)).status).toBe(401);
+});
+
+test("one whose profile mousehole can't give doesn't hold up the others' refresh", async () => {
+  const first: FakeUser = { ...fakeUsers[0], id: 101, display_name: "坏鼠", qq: 10101 };
+  const second: FakeUser = { ...fakeUsers[0], id: 102, display_name: "好鼠", qq: 10102 };
+  fakeUsers.push(first, second);
+  for (const [user, ago] of [
+    [first, 2],
+    [second, 1.5],
+  ] as const) {
+    const jar: Jar = new Map();
+    await roundTrip(jar, await visit(jar, "/login"), null, user.id);
+    await db
+      .updateTable("users")
+      .set({ synced_at: new Date(Date.now() - ago * 3600_000) })
+      .where("mousehole_id", "=", user.id)
+      .execute();
+  }
+  // Out of mousehole's range, so its profile doesn't parse; the first in line, being the oldest.
+  first.level = 9;
+  second.level = 4;
+  const logged = vi.spyOn(console, "log").mockImplementation(() => {});
+  await refreshUsers();
+  // Only the kind of failure: mousehole's answer stays out of the log.
+  const entries = logged.mock.calls.map(([line]) =>
+    z.record(z.string(), z.unknown()).parse(JSON.parse(String(line))),
+  );
+  logged.mockRestore();
+  expect(entries.map((entry) => Object.keys(entry).sort())).toEqual([
+    ["failure", "level", "msg", "time", "user_id"],
+  ]);
+  expect(entries[0].failure).toBe("invalid_response");
+  const levels = await db
+    .selectFrom("users")
+    .select(["mousehole_id", "level"])
+    .where("mousehole_id", "in", [first.id, second.id])
+    .orderBy("mousehole_id")
+    .execute();
+  expect(levels).toEqual([
+    { mousehole_id: 101, level: 1 },
+    { mousehole_id: 102, level: 4 },
+  ]);
+});
+
+test("mousehole timing out partway through its answer isn't taken for a wrong answer", async () => {
+  const stalled = new ReadableStream({
+    pull: (controller) => controller.error(new DOMException("timed out", "TimeoutError")),
+  });
+  const fetched = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(new Response(stalled));
+  await expect(fetchProfile("token")).rejects.toMatchObject({ name: "TimeoutError" });
+  fetched.mockRestore();
 });
 
 test("logging out ends the session, and the next page doesn't log straight back in", async () => {

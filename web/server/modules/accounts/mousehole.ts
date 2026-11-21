@@ -23,6 +23,27 @@ export function authorizeUrl(state: string, verifier: string, silent: boolean) {
   return `${env.MOUSEHOLE_URL}/oauth/authorize?${params}`;
 }
 
+// Mousehole's answer turned down or unreadable, said by kind alone: an answer can hold a member's
+// data or a token, which stay out of the logs (development.md §4).
+export class MouseholeError extends Error {
+  override name = "MouseholeError";
+}
+
+async function answer<T>(res: Response, schema: z.ZodType<T>) {
+  if (!res.ok) throw new MouseholeError(`http_${res.status}`);
+  // Reading it may time out, which isn't mousehole's answer being wrong.
+  const text = await res.text();
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    throw new MouseholeError("invalid_response");
+  }
+  const parsed = schema.safeParse(body);
+  if (!parsed.success) throw new MouseholeError("invalid_response");
+  return parsed.data;
+}
+
 const Token = z.object({ access_token: z.string().min(1) });
 
 export async function exchangeCode(code: string, verifier: string) {
@@ -38,8 +59,7 @@ export async function exchangeCode(code: string, verifier: string) {
     }),
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  if (!res.ok) throw new Error(`Mousehole's token endpoint answered ${res.status}`);
-  return Token.parse(await res.json()).access_token;
+  return (await answer(res, Token)).access_token;
 }
 
 const Profile = z.object({
@@ -64,6 +84,5 @@ export async function fetchProfile(token: string) {
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   if (res.status === 401) return null;
-  if (!res.ok) throw new Error(`Mousehole's /me answered ${res.status}`);
-  return Profile.parse(await res.json());
+  return answer(res, Profile);
 }
