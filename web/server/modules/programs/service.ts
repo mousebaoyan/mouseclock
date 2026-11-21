@@ -529,6 +529,36 @@ export async function createProgram(
   return id;
 }
 
+// A program made before its call was read, from a list or an update, is named after that notice;
+// the call names it, unless a person has (design §8.4).
+export async function nameAfterCall(trx: Transaction<DB>, programId: number, name: string) {
+  await trx
+    .updateTable("programs")
+    .set({ name })
+    .where("id", "=", programId)
+    .where((eb) =>
+      eb.not(
+        eb.or([
+          eb.exists(
+            eb
+              .selectFrom("program_versions")
+              .select("id")
+              .where("program_id", "=", programId)
+              .where("role", "=", "call"),
+          ),
+          eb.exists(
+            eb
+              .selectFrom("edits")
+              .select("id")
+              .where("program_id", "=", programId)
+              .where("field", "=", "name"),
+          ),
+        ]),
+      ),
+    )
+    .execute();
+}
+
 // Puts what a version says on its program, unless a person set the field: those come back as
 // conflicts for the review page (design §8.4). A value the field has already is from this version
 // now, the latest to state it, so an earlier notice read after doesn't change it. Returns the
