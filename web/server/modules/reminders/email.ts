@@ -1,4 +1,5 @@
 import { setTimeout } from "node:timers/promises";
+import type { Actor } from "../../platform/access.ts";
 import { html } from "hono/html";
 import { sql, type Kysely, type Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
@@ -41,10 +42,7 @@ async function ruleOf(kind: MessageKind, executor: Kysely<DB> = db) {
   return row?.rule ?? MESSAGE_KINDS[kind].email;
 }
 
-export async function saveEmailRules(
-  owner: { user_id: number; via: "web" },
-  rules: Partial<Record<MessageKind, EmailRule>>,
-) {
+export async function saveEmailRules(owner: Actor, rules: Partial<Record<MessageKind, EmailRule>>) {
   const rows = Object.entries(rules).map(([kind, rule]) => ({ kind, rule }));
   if (rows.length === 0) return;
   await db.transaction().execute(async (trx) => {

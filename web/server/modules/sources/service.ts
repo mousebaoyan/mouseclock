@@ -1,4 +1,5 @@
 import { sql, type Transaction } from "kysely";
+import type { Actor } from "../../platform/access.ts";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
@@ -27,8 +28,6 @@ import {
 } from "./schemas.ts";
 import type { LogoType } from "./logo-files.ts";
 import { includeCollege } from "./inclusion-requests.ts";
-
-export type Actor = { user_id: number; via: "web" | "seed" };
 
 // Keep constraint failures useful even if two admins save the same name concurrently.
 async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {

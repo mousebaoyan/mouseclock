@@ -6,7 +6,8 @@ import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
 import { login, resolveSession } from "../accounts/service.ts";
 import { createCrawlerToken, recordRun, takeWork } from "../ingest/service.ts";
-import { createCollege, createSchool, createSource, updateSchool, type Actor } from "./service.ts";
+import type { Actor } from "../../platform/access.ts";
+import { createCollege, createSchool, createSource, updateSchool } from "./service.ts";
 import { LOGO_MAX_BYTES } from "./logo-files.ts";
 
 const api = testClient(app).api.v1;

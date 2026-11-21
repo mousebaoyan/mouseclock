@@ -30,6 +30,7 @@ export const ListedItem = z
     published_on: IsoDate.optional(),
   })
   .openapi("ListedItem");
+export type ListedItem = z.infer<typeof ListedItem>;
 export const Config = z.record(z.string(), z.unknown(), { error: "抓取配置要是 JSON 对象" });
 // Lists count each item once: the filters count a college once for each of its directions.
 const unique = (items: string[]) => new Set(items).size === items.length;

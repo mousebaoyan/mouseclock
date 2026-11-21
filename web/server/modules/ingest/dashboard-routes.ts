@@ -12,7 +12,7 @@ import {
 import { IsoDate } from "../programs/schemas.ts";
 import { crawlDay } from "./dashboard.ts";
 import { RunSummary } from "../sources/schemas.ts";
-import { NoticeFailure } from "./routes.ts";
+import { NoticeFailure } from "./schemas.ts";
 import { PURPOSES } from "./service.ts";
 
 // The crawl dashboard (design §7.5), for members.

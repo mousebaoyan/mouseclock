@@ -1,11 +1,12 @@
 import { sql, type Kysely, type Transaction } from "kysely";
+import type { Actor } from "../../platform/access.ts";
 import type { DB, Json, JsonObject } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import type { Evidence, ExtractedFields, Kind, Role } from "../programs/schemas.ts";
-import type { UnresolvedDate } from "./schemas.ts";
+import type { Evidence, Kind, Role } from "../programs/schemas.ts";
+import type { AttachmentInfo, ExtractedProgram, Usage } from "./schemas.ts";
 import {
   applyOf,
   applyStored,
@@ -14,7 +15,7 @@ import {
   type StoredField,
 } from "../programs/service.ts";
 import { deadlineOf, startOf } from "../programs/time.ts";
-import type { Failure } from "../sources/schemas.ts";
+import type { Failure, ListedItem } from "../sources/schemas.ts";
 import { announceNews } from "../reminders/follows.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
 import { recordAudit } from "../../platform/audit.ts";
@@ -31,17 +32,13 @@ const UNDATED_RECHECK_MS = 90 * 24 * 3600_000;
 const MAX_SOURCES = 50;
 const MAX_PROBES = 5;
 
-type Owner = { user_id: number; via: "web" };
-
-export type Usage = { model: string; input_tokens: number; output_tokens: number };
 export const PURPOSES = ["screening", "extraction", "probe"] as const;
 export type Purpose = (typeof PURPOSES)[number];
-export type ListedItem = { url: string; title: string; published_on?: string };
 
 // Made by the owner in the system settings (design §6.2), or for a local crawler with
 // `pnpm crawler-token`, which no one logs in for. The token is shown once: only its SHA-256 is
 // kept.
-export async function createCrawlerToken(name: string, owner?: Owner) {
+export async function createCrawlerToken(name: string, owner?: Actor) {
   const token = newToken();
   await db.transaction().execute(async (trx) => {
     const { id } = await trx
@@ -77,7 +74,7 @@ export async function listCrawlerTokens() {
 }
 
 // A revoked token stops working at once: every request looks it up (crawlerTokenId).
-export async function revokeCrawlerToken(owner: Owner, id: number) {
+export async function revokeCrawlerToken(owner: Actor, id: number) {
   await db.transaction().execute(async (trx) => {
     const token = await trx
       .selectFrom("crawler_tokens")
@@ -264,18 +261,10 @@ export async function recordScreening(
   });
 }
 
-type AttachmentSubmission = {
-  name: string;
-  url: string;
-  content_type: string;
-  text: string;
-  read_from_pictures: boolean;
-};
-
 // A new snapshot only when the words changed, the attachments' included (design §7.4).
 export async function recordSnapshot(
   noticeId: number,
-  submission: { fetched_at: Date; html: string; text: string; attachments: AttachmentSubmission[] },
+  submission: { fetched_at: Date; html: string; text: string; attachments: AttachmentInfo[] },
 ) {
   return db.transaction().execute(async (trx) => {
     const notice = await trx
@@ -487,18 +476,6 @@ export async function recordProbe(
 // Fields less sure than this wait on the review page (design §8.3); the extraction experiments
 // will settle the number (design §8.5).
 const CONFIDENT = 0.7;
-
-export type ExtractedProgram = {
-  program_id?: number;
-  college_id: number;
-  cohort: number;
-  kind: Kind;
-  name: string;
-  role: Role;
-  fields: ExtractedFields;
-  unresolved_dates?: UnresolvedDate[];
-  checked?: ("no_deadline" | "new")[];
-};
 
 // Why something waits on the review page instead of going on the table (design §8.3, §8.4).
 // Deciding on it means merging and versioning, so the items belong here rather than to review.

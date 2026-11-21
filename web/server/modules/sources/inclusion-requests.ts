@@ -2,7 +2,7 @@ import { sql, type Kysely, type Transaction } from "kysely";
 import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
-import type { Viewer } from "../../platform/access.ts";
+import type { Actor, Viewer } from "../../platform/access.ts";
 import { recordAudit } from "../../platform/audit.ts";
 import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
@@ -19,8 +19,6 @@ import {
 
 // 求收录 (design §10.1): members ask for colleges to be crawled and vote for others' asks; admins
 // move them along. A college is included once it has a source that is crawled.
-
-type Actor = { user_id: number; via: "web" };
 
 // Each ask with its school's and college's names: from the list once matched, or as asked.
 function named(executor: Kysely<DB>) {

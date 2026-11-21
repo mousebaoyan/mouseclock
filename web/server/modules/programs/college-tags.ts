@@ -1,4 +1,5 @@
 import type { z } from "@hono/zod-openapi";
+import type { Actor } from "../../platform/access.ts";
 import { sql, type Transaction } from "kysely";
 import { DatabaseError } from "pg";
 import type { DB } from "../../../db/types.ts";
@@ -10,8 +11,6 @@ import type { TagInput, TagPatch } from "./schemas.ts";
 
 // 学院标签 (design §9.3): members put the admins' presets on colleges, one vote each; a tag counts
 // as the college's once enough of them did.
-
-type Actor = { user_id: number; via: "web" };
 
 // One member's view isn't the members' impression.
 export const TAG_THRESHOLD = 3;

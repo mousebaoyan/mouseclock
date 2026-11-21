@@ -2,6 +2,7 @@ import { sql } from "kysely";
 import { db, pageOf } from "../../platform/db.ts";
 import { unix } from "../../platform/http.ts";
 import type { Failure } from "../sources/schemas.ts";
+import type { NoticeFailure } from "./schemas.ts";
 import { BUSY_MONTHS, type Purpose } from "./service.ts";
 
 // The crawl dashboard (design §7.5): how each source's rounds went on a day, Beijing time.
@@ -14,8 +15,6 @@ const STALE_MS = 30 * DAY_MS;
 // A round can report thousands of notices it couldn't fetch, mostly for one reason; the first
 // few show it.
 const NOTICE_FAILURES_SHOWN = 20;
-
-type NoticeFailure = { url: string; failure: Failure; detail?: string };
 
 function beijingToday(now: Date) {
   return new Date(now.getTime() + 8 * 3600_000).toISOString().slice(0, 10);

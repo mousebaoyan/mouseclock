@@ -17,7 +17,8 @@ import {
   rejectReviewItem,
   removeProgram,
 } from "./review-items.ts";
-import { ExtractedProgram, ExtractionContext } from "./routes.ts";
+import { ExtractionContext } from "./routes.ts";
+import { ExtractedProgram } from "./schemas.ts";
 
 // The review page's half that is about extractions (design §12.2, development.md §1); recent
 // edits come from review.

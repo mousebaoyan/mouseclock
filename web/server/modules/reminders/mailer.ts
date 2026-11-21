@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import type { Actor } from "../../platform/access.ts";
 import { createTransport } from "nodemailer";
 import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
@@ -55,7 +56,7 @@ async function mailAccounts(): Promise<MailAccount[]> {
 // The whole list, in order. One given without a password keeps the one it had: pages never get
 // the passwords back to send them again.
 export async function saveMailAccounts(
-  owner: { user_id: number; via: "web" },
+  owner: Actor,
   accounts: (Omit<MailAccount, "password"> & { password?: string })[],
 ) {
   await db.transaction().execute(async (trx) => {

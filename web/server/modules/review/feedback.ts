@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import type { Actor, Via } from "../../platform/access.ts";
 import { sql, type Transaction } from "kysely";
 import type { DB, Json } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
@@ -8,13 +9,11 @@ import { holdEditing } from "../accounts/service.ts";
 import { currentFields, lockProgram } from "../programs/service.ts";
 import type { StoredValue } from "../programs/schemas.ts";
 import { sendMessages } from "../reminders/messages.ts";
-import type { FEEDBACK_STATUSES, FeedbackInput } from "./schemas.ts";
+import type { DisputeResult, FeedbackInput, FeedbackKind, FeedbackStatus } from "./schemas.ts";
 import { ProgramColumns } from "./schemas.ts";
-import { changedColumns, changedFields, writeEdit, type Actor } from "./service.ts";
+import { changedColumns, changedFields, writeEdit } from "./service.ts";
 
 // Feedback and edit requests (design §12.1, §12.2) and disputes (§12.3).
-
-type Status = (typeof FEEDBACK_STATUSES)[number];
 
 // How many people finding a program wrong make it disputed.
 export const DISPUTE_PEOPLE = 3;
@@ -153,14 +152,14 @@ function feedbackQuery() {
       "programs.name as program_name",
       "schools.name as school",
       "colleges.name as college",
-      sql<"problem" | "edit">`feedback.kind`.as("kind"),
+      sql<FeedbackKind>`feedback.kind`.as("kind"),
       "feedback.field",
       sql<StoredValue | null>`feedback.old_value`.as("old_value"),
       sql<StoredValue | null>`feedback.proposed_value`.as("proposed_value"),
       "feedback.reason",
       "feedback.basis",
-      sql<Status>`feedback.status`.as("status"),
-      sql<"web" | "agent">`feedback.via`.as("via"),
+      sql<FeedbackStatus>`feedback.status`.as("status"),
+      sql<Via>`feedback.via`.as("via"),
       "users.id as user_id",
       "users.display_name",
       "feedback.created_at",
@@ -287,7 +286,7 @@ async function pending(trx: Transaction<DB>, reviewer: Actor, id: number) {
       "id",
       "program_id",
       "user_id",
-      sql<"problem" | "edit">`kind`.as("kind"),
+      sql<FeedbackKind>`kind`.as("kind"),
       "field",
       sql<StoredValue | null>`proposed_value`.as("proposed_value"),
       "reason",
@@ -371,11 +370,7 @@ async function closeFeedback(
     .where("feedback.id", "in", ids)
     // Withdrawn or decided meanwhile, it stays so.
     .where("feedback.status", "=", "pending")
-    .returning([
-      "feedback.user_id",
-      sql<"problem" | "edit">`feedback.kind`.as("kind"),
-      "programs.name",
-    ])
+    .returning(["feedback.user_id", sql<FeedbackKind>`feedback.kind`.as("kind"), "programs.name"])
     .execute();
   await sendMessages(
     trx,
@@ -477,7 +472,7 @@ export async function listDisputes() {
 export async function resolveDispute(
   admin: Actor,
   id: number,
-  { result, note }: { result: "corrected" | "confirmed"; note: string },
+  { result, note }: { result: DisputeResult; note: string },
 ) {
   await db.transaction().execute(async (trx) => {
     const found = await trx

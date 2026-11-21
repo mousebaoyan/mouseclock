@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import type { Actor } from "../../platform/access.ts";
 import { sql, type Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
@@ -17,13 +18,11 @@ import {
   holdForReview,
   mergeProgram,
   outdated,
-  type ExtractedProgram,
   type ReviewReason,
 } from "./service.ts";
+import type { ExtractedProgram } from "./schemas.ts";
 
 // What people decide on the review page about extractions (design §12.2).
-
-type Reviewer = { user_id: number; via: "web" };
 
 // How an item is accepted: for a program that couldn't be placed, the school's program to merge it
 // into, or the college, cohort and kind of a new one; for a possible duplicate, the one it
@@ -216,7 +215,7 @@ type Item = Awaited<ReturnType<typeof pendingItem>>;
 
 async function resolve(
   trx: Transaction<DB>,
-  reviewer: Reviewer,
+  reviewer: Actor,
   item: Item,
   status: "accepted" | "rejected",
   decision: Decision,
@@ -236,7 +235,7 @@ async function resolve(
 }
 
 // Rejecting closes the item and changes nothing else (design §12.2).
-export async function rejectReviewItem(reviewer: Reviewer, id: number) {
+export async function rejectReviewItem(reviewer: Actor, id: number) {
   await db.transaction().execute(async (trx) => {
     await resolve(trx, reviewer, await pendingItem(trx, id), "rejected", {});
   });
@@ -244,7 +243,7 @@ export async function rejectReviewItem(reviewer: Reviewer, id: number) {
 
 // What accepting does depends on why the item waits (design §12.2). A decision the item has no
 // use for is refused, not ignored, as the audit log keeps it.
-export async function acceptReviewItem(reviewer: Reviewer, id: number, decision: Decision) {
+export async function acceptReviewItem(reviewer: Actor, id: number, decision: Decision) {
   await db.transaction().execute(async (trx) => {
     const item = await pendingItem(trx, id);
     const { program_id: programId, ...created } = decision;
@@ -362,12 +361,7 @@ async function placeProgram(trx: Transaction<DB>, item: Item, decision: Decision
 
 // A duplicate's versions go on the original in their order, as if its notices had named it, and
 // the duplicate is deleted. What else waited on it is merged anew, so its items close.
-async function mergeDuplicate(
-  trx: Transaction<DB>,
-  reviewer: Reviewer,
-  item: Item,
-  targetId: number,
-) {
+async function mergeDuplicate(trx: Transaction<DB>, reviewer: Actor, item: Item, targetId: number) {
   const duplicateId = item.program_id;
   if (duplicateId === null) throw new Error(`Review item ${item.id} has no program`);
   if (targetId === duplicateId) {
@@ -491,7 +485,7 @@ async function mergeDuplicate(
 // set afterwards as it is. Its subscriptions and feedback go, or go with it to the one kept.
 async function dropProgram(
   trx: Transaction<DB>,
-  reviewer: Reviewer,
+  reviewer: Actor,
   id: number,
   keptId: number | null,
 ) {
@@ -508,7 +502,7 @@ async function dropProgram(
 
 // An admin deletes a program that shouldn't be there, such as one made from a notice that isn't
 // about admissions; its versions, snapshots and records stay (data-model.md).
-export async function removeProgram(admin: Reviewer, id: number, reason: string) {
+export async function removeProgram(admin: Actor, id: number, reason: string) {
   await db.transaction().execute(async (trx) => {
     // Items before their program, as when they are decided.
     await trx
