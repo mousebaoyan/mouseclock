@@ -125,7 +125,7 @@ export default function Colleges({ loaderData }: Route.ComponentProps) {
       />
       {schools.length === 0 ? (
         <Empty>
-          {filtered ? "没有符合条件的院校。" : "尚未收录院校。"}
+          {filtered ? "没有符合条件的院校" : "尚未收录院校"}
           <Link to="/requests?new" className="text-primary hover:underline">
             没找到想要的学院？求收录
           </Link>
