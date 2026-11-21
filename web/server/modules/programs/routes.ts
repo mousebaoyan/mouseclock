@@ -21,6 +21,7 @@ import {
   ProgramExport,
   ProgramFilterQuery,
   ProgramTable,
+  ProgramTableQuery,
   ProgramVersions,
   SnapshotDetail,
   Stage,
@@ -42,16 +43,16 @@ import {
 const STARTED = Date.now().toString(36);
 
 // A member's browser keeps the table and asks again with its ETag; while nothing changed, the
-// answer is an empty 304 (design §14). Previews change with the clock, as programs close, and
-// aren't tagged; nor are filtered tables, which `closed` changes with the clock too and which
-// pages don't ask for, nor a request the route will turn down. The version is taken before the
-// rows: if they change in between, the tag is older than the data, and the next request downloads
-// them again rather than keep stale ones.
+// answer is an empty 304 (design §14). Only a cohort asked for as pages ask, by itself and once,
+// is tagged: previews change with the clock, as programs close, and so do tables filtered by
+// `closed`; and as this runs before the route checks the query, anything else may be a request
+// the route turns down. The version is taken before the rows: if they change in between, the tag
+// is older than the data, and the next request downloads them again rather than keep stale ones.
 const unlessUnchanged = createMiddleware<AppEnv>(async (c, next) => {
-  const query = ProgramFilterQuery.safeParse(c.req.query());
-  if (!query.success || !can(c.var.viewer, "read")) return next();
-  const { q, kind, closed } = query.data;
-  if (q !== "" || kind !== undefined || closed !== undefined) return next();
+  const { cohort, ...others } = c.req.queries();
+  const query = ProgramTableQuery.safeParse(c.req.query());
+  if (!query.success || cohort.length > 1 || Object.keys(others).length > 0) return next();
+  if (!can(c.var.viewer, "read")) return next();
   const etag = `"${STARTED}-${query.data.cohort}-${await tableVersion()}"`;
   c.header("ETag", etag);
   c.header("Cache-Control", "private, no-cache");
@@ -81,7 +82,7 @@ export const programsRoutes = createRouter()
       request: { query: ProgramFilterQuery },
       responses: {
         200: { description: "项目", content: json(ProgramTable) },
-        400: errorResponse("届的格式有误"),
+        400: errorResponse("届或筛选的格式有误"),
       },
     }),
     async (c) => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { TimeValue } from "../server/modules/programs/schemas.ts";
-import { MARKS, PARTS } from "../server/modules/programs/time.ts";
+import { MARKS, PARTS, type Status } from "../server/modules/programs/time.ts";
 
 // A time as editors type it, as precise as the notice and no more: 2026-06-30 17:00,
 // 2026-06-30, 2026-06-30 前, 2026-06-30 前后, 2026-06 上旬 (中旬, 下旬) or 2026-06.
@@ -30,24 +30,11 @@ export function parseTime(text: string): TimeValue | null {
   return mark ? { date, mark } : null;
 }
 
-// Design §9.1, from the instants the API gives in Unix seconds: closed once applying is over, at
-// the deadline or, without one, when the event or the cohort's recommendation ends. With no start
-// or deadline the notice gave no times, and until then the page says so rather than guess.
-export type Status = "upcoming" | "open" | "closed";
 export const STATUS_LABELS: Record<Status, string> = {
   upcoming: "未开始",
   open: "报名中",
   closed: "已截止",
 };
-
-export function statusOf(
-  program: { apply_start: number | null; apply_deadline: number | null; closes_at: number },
-  now: number,
-): Status | null {
-  if (program.closes_at <= now) return "closed";
-  if (program.apply_start !== null && program.apply_start > now) return "upcoming";
-  return program.apply_start === null && program.apply_deadline === null ? null : "open";
-}
 
 // The day an instant falls on in Beijing, as the crawl dashboard counts days.
 export function beijingDate(seconds: number) {

@@ -10,6 +10,8 @@ export function matchesSearch(
   q: string,
 ) {
   const query = q.toLowerCase();
+  // Most often empty, and the page asks this of every program several times on each change.
+  if (query === "") return true;
   return [
     program.school.name,
     ...program.school.short_names,

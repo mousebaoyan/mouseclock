@@ -20,7 +20,7 @@ import type {
   TimeValue,
 } from "./schemas.ts";
 import { KIND_LABELS } from "./schemas.ts";
-import { closesAt, deadlineOf, formatApply, startOf } from "./time.ts";
+import { closesAt, deadlineOf, formatApply, startOf, statusOf } from "./time.ts";
 
 // The apply field put back together from its parts, null when the notice gave none or people
 // cleared it. `program` is the column holding the program's id, such as "programs.id".
@@ -161,7 +161,7 @@ export async function listPrograms({ cohort, q, kind, closed }: ProgramFilters, 
       (p) =>
         matchesSearch(p, q) &&
         (kind === undefined || p.kind === kind) &&
-        (closed === undefined || p.closes_at <= now === closed),
+        (closed === undefined || (statusOf(p, now) === "closed") === closed),
     );
   return { preview, programs };
 }

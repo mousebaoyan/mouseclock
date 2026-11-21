@@ -218,12 +218,16 @@ test("the table narrows by keyword, kind and whether it's closed; a preview only
     { collegeId: other.id, sourceId: source.id },
     { apply: until("2026-06-01") },
   );
+  // No deadline, but the event is over.
+  const event = { value: { end: { date: "2026-05-10" } }, evidence: [], confidence: 1 };
+  const ended = await program(seeded, { notices: [{ role: "call", fields: { event } }] });
 
   expect(await picked({ q: "pku" })).toEqual([later]);
-  expect(await picked({ q: "计算机" })).toEqual([closed, ...soon]);
+  expect(await picked({ q: " " })).toEqual([closed, ...soon, later, ended]);
+  expect(await picked({ q: "计算机" })).toEqual([closed, ...soon, ended]);
   expect(await picked({ q: "预推" })).toEqual([soon[0]]);
   expect(await picked({ kind: "pre_recommendation" })).toEqual([soon[0]]);
-  expect(await picked({ closed: "true" })).toEqual([closed]);
+  expect(await picked({ closed: "true" })).toEqual([closed, ended]);
   expect(await picked({ closed: "false", kind: "summer_camp" })).toEqual([...soon.slice(1), later]);
   // Nothing past the five a guest sees.
   expect(await picked({ q: "pku" }, {})).toEqual([]);
@@ -280,6 +284,12 @@ test("a member's browser keeps the table until a version or an admin changes som
   const unchanged = await ask(etag);
   expect(unchanged.status).toBe(304);
   expect(await unchanged.text()).toBe("");
+  // Only as pages ask: a cohort given twice is turned down, not taken for the one kept.
+  const twice = await app.request(`${url}&cohort=2027`, {
+    headers: { ...member.headers, "if-none-match": etag },
+  });
+  expect(twice.status).toBe(400);
+  expect(twice.headers.get("etag")).toBeNull();
 
   await program(seeded, { apply: until("2026-06-02") });
   const versioned = await ask(etag);

@@ -8,6 +8,7 @@ import {
   formatTime,
   formatWindow,
   startOf,
+  statusOf,
 } from "./time.ts";
 
 const iso = (date: Date) => date.toISOString();
@@ -80,4 +81,18 @@ test("the application says when it rolls, and when it says nothing", () => {
   expect(formatApply({ end, rolling: true }, 2026)).toBe("至 6月14日（额满即止）");
   expect(formatApply({ rolling: true }, 2026)).toBe("额满即止");
   expect(formatApply(null, 2026)).toBe("未说明");
+});
+
+test("status follows the application's start and when applying is over", () => {
+  const program = { apply_start: 100, apply_deadline: 200, closes_at: 200 };
+  expect(statusOf(program, 99)).toBe("upcoming");
+  expect(statusOf(program, 100)).toBe("open");
+  expect(statusOf(program, 200)).toBe("closed");
+  expect(statusOf({ apply_start: null, apply_deadline: 200, closes_at: 200 }, 150)).toBe("open");
+  // Without a deadline, open until the event or the cohort's recommendation is over.
+  const undated = { apply_start: 100, apply_deadline: null, closes_at: 300 };
+  expect(statusOf(undated, 150)).toBe("open");
+  expect(statusOf(undated, 300)).toBe("closed");
+  expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 150)).toBeNull();
+  expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 300)).toBe("closed");
 });

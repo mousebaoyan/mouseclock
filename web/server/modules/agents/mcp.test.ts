@@ -95,7 +95,7 @@ test("the tools are api.md §4's, described and with parameters as the API docum
   expect(tool("search_programs")?.description).toMatch(/^总表。一届的项目/);
   expect(tool("search_programs")).toMatchObject({
     inputSchema: {
-      properties: { cohort: { type: "integer", description: "届" } },
+      properties: { cohort: { type: "integer", description: "届" }, closed: { type: "boolean" } },
       required: ["cohort"],
     },
     annotations: { readOnlyHint: true },

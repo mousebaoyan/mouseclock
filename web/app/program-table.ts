@@ -1,9 +1,9 @@
 import type { Kind } from "../server/modules/programs/schemas.ts";
 import { allOf, anyOf, choices, tally } from "./facets.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
-import { currentCohort, statusOf, type Status } from "./time.ts";
+import { currentCohort } from "./time.ts";
 import { matchesSearch } from "../server/modules/programs/search.ts";
-import { beijingYear } from "../server/modules/programs/time.ts";
+import { beijingYear, statusOf, type Status } from "../server/modules/programs/time.ts";
 
 // The table's filters, sorting and pages (design §10), read from the address so a link shares
 // them. The server works out the first page it renders, and the browser every one after from

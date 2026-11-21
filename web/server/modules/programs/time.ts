@@ -91,3 +91,17 @@ export function formatApply(apply: ApplyValue | null, thisYear: number) {
 export function closesAt(deadline: Date | null, event: TimeValue | null, cohort: number) {
   return deadline ?? (event ? deadlineOf(event) : beijing(cohort - 1, 11, 1));
 }
+
+// Design §9.1, from the table's instants in Unix seconds: closed once applying is over, at the
+// deadline or, without one, when the event or the cohort's recommendation ends. With no start or
+// deadline the notice gave no times, and until then pages say so rather than guess.
+export type Status = "upcoming" | "open" | "closed";
+
+export function statusOf(
+  program: { apply_start: number | null; apply_deadline: number | null; closes_at: number },
+  now: number,
+): Status | null {
+  if (program.closes_at <= now) return "closed";
+  if (program.apply_start !== null && program.apply_start > now) return "upcoming";
+  return program.apply_start === null && program.apply_deadline === null ? null : "open";
+}
