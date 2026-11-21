@@ -1,10 +1,9 @@
 import { sql, type Kysely, type Transaction } from "kysely";
-import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
 import type { Actor, Viewer } from "../../platform/access.ts";
 import { recordAudit } from "../../platform/audit.ts";
-import { db, pageOf } from "../../platform/db.ts";
+import { db, pageOf, explainConflict } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { mutedNow } from "../accounts/service.ts";
@@ -113,13 +112,15 @@ async function writeRequests<T>(operation: (trx: Transaction<DB>) => Promise<T>)
   try {
     return await db.transaction().execute(operation);
   } catch (error) {
-    if (error instanceof DatabaseError && error.code === "23503") {
-      throw new AppError(404, "not_found", "学校、学院或求收录不存在", error);
-    }
-    if (error instanceof DatabaseError && error.code === "23505") {
-      throw new AppError(409, "duplicate", "这个学院已经有人提过了，把这条并进那一条", error);
-    }
-    throw error;
+    const asked = [409, "duplicate", "这个学院已经有人提过了，把这条并进那一条"] as const;
+    throw explainConflict(error, {
+      inclusion_requests_school_id_fkey: [404, "not_found", "学校不存在"],
+      inclusion_requests_college_id_fkey: [404, "not_found", "学院不存在"],
+      inclusion_votes_request_id_fkey: [404, "not_found", "求收录不存在"],
+      inclusion_requests_college_id_key: [...asked],
+      inclusion_requests_school_id_college_name_key: [...asked],
+      inclusion_requests_school_name_college_name_key: [...asked],
+    });
   }
 }
 
