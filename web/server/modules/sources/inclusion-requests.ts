@@ -62,7 +62,7 @@ export async function listRequests(
           select user_id from inclusion_votes where request_id = inclusion_requests.id
           union
           select follows.user_id from follows join users on users.id = follows.user_id
-          where follows.college_id = inclusion_requests.college_id and not ${mutedNow}
+          where follows.college_id = inclusion_requests.college_id and not ${mutedNow()}
         ) as voters
       )`.as("votes"),
       sql<boolean>`exists (
@@ -231,7 +231,7 @@ export async function dropUnwanted(trx: Transaction<DB>, requestId: number) {
             .selectFrom("follows")
             .innerJoin("users", "users.id", "follows.user_id")
             .whereRef("follows.college_id", "=", "inclusion_requests.college_id")
-            .where(sql<boolean>`not ${mutedNow}`)
+            .where(sql<boolean>`not ${mutedNow()}`)
             .select("follows.user_id"),
         ),
       ),

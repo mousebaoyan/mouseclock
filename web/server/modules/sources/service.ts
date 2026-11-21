@@ -74,7 +74,7 @@ export async function setLogo(
       .insertInto("school_logos")
       .values({ school_id: schoolId, ...logo })
       .onConflict((conflict) =>
-        conflict.column("school_id").doUpdateSet({ ...logo, updated_at: sql`now()` }),
+        conflict.column("school_id").doUpdateSet({ ...logo, updated_at: new Date() }),
       )
       .execute();
     await recordAudit(trx, {

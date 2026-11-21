@@ -1,4 +1,4 @@
-import { sql, type Transaction } from "kysely";
+import type { Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
 import { unix } from "../../platform/http.ts";
@@ -75,7 +75,7 @@ export async function listMessages(userId: number, paging: { page: number; per_p
 export async function markSeen(userId: number, upTo: number) {
   await db
     .updateTable("messages")
-    .set({ seen_at: sql<Date>`now()` })
+    .set({ seen_at: new Date() })
     .where("user_id", "=", userId)
     .where("id", "<=", upTo)
     .where("seen_at", "is", null)

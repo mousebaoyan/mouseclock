@@ -89,9 +89,11 @@ export function toViewer(
 }
 
 // The same, for a query with `users` in it.
-export const mutedNow = sql<boolean>`(
-  users.muted and (users.muted_until is null or users.muted_until > now())
-)`;
+export function mutedNow() {
+  return sql<boolean>`(
+    users.muted and (users.muted_until is null or users.muted_until > ${new Date()})
+  )`;
+}
 
 export async function resolveSession(token: string) {
   const row = await db

@@ -417,12 +417,10 @@ export async function storeAttachmentFile(snapshotId: number, position: number, 
 }
 
 export async function markRemoved(noticeId: number) {
+  const now = new Date();
   const result = await db
     .updateTable("notices")
-    .set((eb) => ({
-      removed_at: eb.fn.coalesce("removed_at", sql<Date>`now()`),
-      checked_at: new Date(),
-    }))
+    .set((eb) => ({ removed_at: eb.fn.coalesce("removed_at", eb.val(now)), checked_at: now }))
     .where("id", "=", noticeId)
     .executeTakeFirst();
   if (result.numUpdatedRows === 0n) throw new AppError(404, "not_found", "通知不存在");
