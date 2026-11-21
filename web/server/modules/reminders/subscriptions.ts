@@ -5,7 +5,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import type { TimeValue } from "../programs/schemas.ts";
 import { applyOf, inDeadlineOrder, originalNotice, programCards } from "../programs/service.ts";
-import { beijingYear, deadlineDay, formatTime } from "../programs/time.ts";
+import { beijingDay, beijingYear, deadlineDay, formatTime } from "../programs/time.ts";
 import { sendMessages, type Message } from "./messages.ts";
 
 // Subscriptions and deadline reminders (design §11.3). Programs don't tell this module what
@@ -270,7 +270,7 @@ function remindAt(value: TimeValue) {
 
 // How long until the day the deadline falls on, counted in days in Beijing.
 function left(value: TimeValue, now: Date) {
-  const today = new Date(now.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+  const today = beijingDay(now);
   const days = (Date.parse(deadlineDay(value)) - Date.parse(today)) / 86_400_000;
   return days === 0 ? "就在今天" : `还剩 ${days} 天`;
 }

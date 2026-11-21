@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { TimeValue } from "../server/modules/programs/schemas.ts";
-import { MARKS, PARTS, type Status } from "../server/modules/programs/time.ts";
+import { beijingDay, MARKS, PARTS, type Status } from "../server/modules/programs/time.ts";
 
 // A time as editors type it, as precise as the notice and no more: 2026-06-30 17:00,
 // 2026-06-30, 2026-06-30 前, 2026-06-30 前后, 2026-06 上旬 (中旬, 下旬) or 2026-06.
@@ -38,7 +38,7 @@ export const STATUS_LABELS: Record<Status, string> = {
 
 // The day an instant falls on in Beijing, as the crawl dashboard counts days.
 export function beijingDate(seconds: number) {
-  return new Date((seconds + 8 * 3600) * 1000).toISOString().slice(0, 10);
+  return beijingDay(new Date(seconds * 1000));
 }
 
 // How long until a program opens or closes, rounded down so it never reads as more time than
@@ -67,8 +67,8 @@ function span(seconds: number) {
 // The cohort applying now (design §10): from November the winter camps are for the cohort after
 // the one that just had its September round.
 export function currentCohort(now: Date) {
-  const beijing = new Date(now.getTime() + 8 * 3600_000);
-  return beijing.getUTCFullYear() + (beijing.getUTCMonth() >= 10 ? 2 : 1);
+  const [year, month] = beijingDay(now).split("-").map(Number);
+  return year + (month >= 11 ? 2 : 1);
 }
 
 // Now in Unix seconds, starting from the server's so the first render matches it, then each

@@ -8,6 +8,7 @@ import {
 import type { ExtractedProgram } from "../server/modules/ingest/schemas.ts";
 import type { ExtractedFields, Kind } from "../server/modules/programs/schemas.ts";
 import type { Actor } from "../server/platform/access.ts";
+import { beijingDay } from "../server/modules/programs/time.ts";
 import { db } from "../server/platform/db.ts";
 import { endSession, login, resolveSession } from "../server/modules/accounts/service.ts";
 import {
@@ -30,7 +31,7 @@ const USAGE = [{ model: "seed", input_tokens: 0, output_tokens: 0 }];
 
 // A Beijing calendar day `days` from today, as YYYY-MM-DD.
 function day(days: number) {
-  return new Date(Date.now() + 8 * 3600_000 + days * DAY_MS).toISOString().slice(0, 10);
+  return beijingDay(new Date(Date.now() + days * DAY_MS));
 }
 
 function chinese(date: string) {

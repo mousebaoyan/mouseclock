@@ -15,7 +15,7 @@ import {
   toStoredFields,
   type StoredField,
 } from "../programs/service.ts";
-import { deadlineOf, startOf } from "../programs/time.ts";
+import { beijingYear, deadlineOf, startOf } from "../programs/time.ts";
 import type { Failure, ListedItem } from "../sources/schemas.ts";
 import { announceNews } from "../reminders/follows.ts";
 import { finishProbe, finishSourceCrawl, leaseProbes, leaseSources } from "../sources/service.ts";
@@ -355,7 +355,7 @@ export async function recordSnapshot(
 // The cohorts a notice can be about run from the year it was published to two years on
 // (design §8.3); a notice listed without a date counts as published today.
 function noticeYear(publishedOn: string | null) {
-  return Number((publishedOn ?? new Date(Date.now() + 8 * 3600_000).toISOString()).slice(0, 4));
+  return publishedOn === null ? beijingYear(new Date()) : Number(publishedOn.slice(0, 4));
 }
 
 export async function extractionContext(

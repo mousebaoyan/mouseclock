@@ -1,6 +1,7 @@
 import { sql } from "kysely";
 import { db, pageOf } from "../../platform/db.ts";
 import { unix } from "../../platform/http.ts";
+import { beijingDay } from "../programs/time.ts";
 import type { Failure } from "../sources/schemas.ts";
 import type { NoticeFailure } from "./schemas.ts";
 import { BUSY_MONTHS, type Purpose } from "./service.ts";
@@ -16,17 +17,13 @@ const STALE_MS = 30 * DAY_MS;
 // few show it.
 const NOTICE_FAILURES_SHOWN = 20;
 
-function beijingToday(now: Date) {
-  return new Date(now.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
-}
-
 export async function crawlDay(query: {
   date?: string;
   source_id?: number;
   page: number;
   per_page: number;
 }) {
-  const date = query.date ?? beijingToday(new Date());
+  const date = query.date ?? beijingDay(new Date());
   const start = new Date(`${date}T00:00:00+08:00`);
   const end = new Date(start.getTime() + DAY_MS);
 
