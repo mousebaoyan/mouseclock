@@ -486,3 +486,16 @@ ingestRoutes.openAPIRegistry.registerComponent("securitySchemes", "crawlerToken"
   type: "http",
   scheme: "bearer",
 });
+
+// The crawler's half of the API, from which the crawler generates its types (api.md §6).
+export function crawlerApiDocument() {
+  return `${JSON.stringify(
+    ingestRoutes.getOpenAPI31Document({
+      openapi: "3.1.0",
+      info: { title: "鼠钟抓取节点接口", version: "1" },
+      servers: [{ url: "/api/v1" }],
+    }),
+    null,
+    2,
+  )}\n`;
+}

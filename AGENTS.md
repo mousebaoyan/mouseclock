@@ -37,7 +37,7 @@
 | `docker compose up -d` | 启动本地 PostgreSQL（端口 5433，不和鼠洞的冲突）；第一次先 `cp .env.example .env` |
 | `pnpm install` | 装依赖 |
 | `pnpm dev` | 本地开发，启动时自动执行迁移 |
-| `pnpm check` | 类型检查、lint、格式检查和测试，提交前要全部通过 |
+| `pnpm check` | 类型检查、lint、格式检查、测试和构建，和 CI 跑的一样，提交前要全部通过；测试里也核对数据库类型和 `openapi/crawler.json` 是最新的、种子数据能填进空库 |
 | `pnpm test <路径>` | 只跑相关的测试 |
 | `pnpm format` | 格式化 |
 | `pnpm db:migrate` | 执行迁移 |

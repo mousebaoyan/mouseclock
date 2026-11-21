@@ -8,9 +8,9 @@ on:
 permissions:
   contents: read
 
-# A new push to a PR cancels its older run; every push to main keeps its own run.
+# A new push to a PR, or to main, cancels the older run.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -50,13 +50,6 @@ jobs:
           cache: true
           require-lockfile: true
       - run: pnpm check
-      - run: pnpm db:migrate
-      # Seeding goes through the ingest services, so this catches it falling behind them.
-      - run: pnpm seed
-      - run: pnpm db:codegen --verify
-      # The crawler's API types come from this file; the crawler job checks they match it.
-      - run: pnpm openapi && git diff --exit-code -- openapi
-      - run: pnpm build
 
   crawler:
     runs-on: ubuntu-latest

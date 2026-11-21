@@ -13,7 +13,7 @@
     "typecheck": "react-router typegen && tsc",
     "lint": "oxlint",
     "format": "prettier --write .",
-    "check": "pnpm typecheck && pnpm lint && prettier --check . && pnpm test",
+    "check": "pnpm typecheck && pnpm lint && prettier --check . && pnpm test && pnpm build",
     "db:migrate": "node --env-file-if-exists=.env scripts/migrate.ts",
     "db:codegen": "kysely-codegen",
     "openapi": "node --env-file-if-exists=.env scripts/openapi.ts",
