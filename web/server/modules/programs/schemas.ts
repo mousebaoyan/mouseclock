@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { Int, named, param, UnixSeconds } from "../../platform/http.ts";
+import { BoolParam, Int, named, param, UnixSeconds } from "../../platform/http.ts";
 
 // The shapes of programs and their fields (design §8.2): what extraction submits, what the
 // database stores in program_fields and program_versions, and what pages show. Keys left out
@@ -175,6 +175,23 @@ export const Cohort = z
 export const ProgramTableQuery = z.object({
   cohort: param(Int.min(COHORTS.min).max(COHORTS.max)).openapi({ description: "届" }),
 });
+
+// The table narrowed on the server, for those who can't take a whole cohort, such as Agents
+// (api.md §3). The page filters in the browser and asks for none of these.
+export const ProgramFilterQuery = ProgramTableQuery.extend({
+  q: z.string().trim().max(200).default("").openapi({
+    description: "关键词：学校名、简称、学院名或项目名里有它的，不分大小写",
+  }),
+  kind: Kind.optional().openapi({
+    description: `类型：${Object.entries(KIND_LABELS)
+      .map(([kind, label]) => `${kind} ${label}`)
+      .join("，")}`,
+  }),
+  closed: BoolParam.optional().openapi({
+    description: "true 只要已截止的，false 只要还没截止的，不带是都要",
+  }),
+});
+export type ProgramFilters = z.infer<typeof ProgramFilterQuery>;
 
 // A row of the table (design §10): only what the table shows, filters and sorts by. `apply` is
 // what the page shows; the two instants are for status, countdowns and sorting.

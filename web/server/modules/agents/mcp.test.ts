@@ -92,7 +92,7 @@ test("the tools are api.md §4's, described and with parameters as the API docum
     "withdraw_feedback",
   ]);
   const tool = (name: string) => tools.find((t) => t.name === name);
-  expect(tool("search_programs")?.description).toMatch(/^总表。一届的全部项目/);
+  expect(tool("search_programs")?.description).toMatch(/^总表。一届的项目/);
   expect(tool("search_programs")).toMatchObject({
     inputSchema: {
       properties: { cohort: { type: "integer", description: "届" } },
@@ -161,6 +161,9 @@ test("a tool calls the API as the token's owner, as far as its scope goes", asyn
       name: "夏令营",
     }),
   );
+  // A boolean in the address, as the API reads it.
+  const found = await call(personal, "search_programs", { cohort: 2027, closed: true });
+  expect(found.isError).toBe(false);
   const given = await call(personal, "submit_feedback", {
     id: program,
     body: { kind: "problem", field: null, reason: "名称不对" },

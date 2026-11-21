@@ -179,6 +179,57 @@ test("guests and frozen accounts see the five open programs closing soonest", as
   }
 });
 
+// The 2027 programs these filters pick, which aren't kept by ETag.
+async function picked(query: Record<string, string>, as: object = member) {
+  const res = await api.programs.$get({ query: { cohort: "2027", ...query } }, as);
+  if (res.status !== 200) throw new Error("Table failed");
+  expect(res.headers.get("etag")).toBeNull();
+  return (await res.json()).programs.map((p) => p.id);
+}
+
+test("the table narrows by keyword, kind and whether it's closed; a preview only within itself", async () => {
+  const seeded = await college();
+  const closed = await program(seeded, { apply: until("2026-05-01") });
+  const soon = [];
+  for (const day of [16, 17, 18, 19, 20]) {
+    soon.push(await program(seeded, { apply: until(`2026-05-${day}`) }));
+  }
+  await db
+    .updateTable("programs")
+    .set({ kind: "pre_recommendation", name: "预推免" })
+    .where("id", "=", soon[0])
+    .execute();
+  const school = await db
+    .insertInto("schools")
+    .values({ name: "另一大学", short_names: ["PKU"] })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const other = await db
+    .insertInto("colleges")
+    .values({ school_id: school.id, name: "软件学院", kind: "college", region: "上海" })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const source = await db
+    .insertInto("sources")
+    .values({ college_id: other.id, url: "https://other.example/notices" })
+    .returning("id")
+    .executeTakeFirstOrThrow();
+  const later = await program(
+    { collegeId: other.id, sourceId: source.id },
+    { apply: until("2026-06-01") },
+  );
+
+  expect(await picked({ q: "pku" })).toEqual([later]);
+  expect(await picked({ q: "计算机" })).toEqual([closed, ...soon]);
+  expect(await picked({ q: "预推" })).toEqual([soon[0]]);
+  expect(await picked({ kind: "pre_recommendation" })).toEqual([soon[0]]);
+  expect(await picked({ closed: "true" })).toEqual([closed]);
+  expect(await picked({ closed: "false", kind: "summer_camp" })).toEqual([...soon.slice(1), later]);
+  // Nothing past the five a guest sees.
+  expect(await picked({ q: "pku" }, {})).toEqual([]);
+  expect(await picked({ closed: "false" }, {})).toEqual(soon);
+});
+
 test("the link goes to the latest call, or else the latest version", async () => {
   const seeded = await college();
   const called = await program(seeded, {

@@ -19,8 +19,8 @@ import {
   ExportQuery,
   ProgramDetail,
   ProgramExport,
+  ProgramFilterQuery,
   ProgramTable,
-  ProgramTableQuery,
   ProgramVersions,
   SnapshotDetail,
   Stage,
@@ -43,12 +43,15 @@ const STARTED = Date.now().toString(36);
 
 // A member's browser keeps the table and asks again with its ETag; while nothing changed, the
 // answer is an empty 304 (design §14). Previews change with the clock, as programs close, and
-// aren't tagged; a request the route will turn down isn't either. The version is taken before the
+// aren't tagged; nor are filtered tables, which `closed` changes with the clock too and which
+// pages don't ask for, nor a request the route will turn down. The version is taken before the
 // rows: if they change in between, the tag is older than the data, and the next request downloads
 // them again rather than keep stale ones.
 const unlessUnchanged = createMiddleware<AppEnv>(async (c, next) => {
-  const query = ProgramTableQuery.safeParse(c.req.query());
+  const query = ProgramFilterQuery.safeParse(c.req.query());
   if (!query.success || !can(c.var.viewer, "read")) return next();
+  const { q, kind, closed } = query.data;
+  if (q !== "" || kind !== undefined || closed !== undefined) return next();
   const etag = `"${STARTED}-${query.data.cohort}-${await tableVersion()}"`;
   c.header("ETag", etag);
   c.header("Cache-Control", "private, no-cache");
@@ -74,16 +77,15 @@ export const programsRoutes = createRouter()
       middleware: [unlessUnchanged] as const,
       summary: "总表",
       description:
-        "一届的全部项目，按截止时间排好；筛选、排序和搜索由调用方做。没登录或冻结的只有还没截止、截止最近的 5 条。登录后的响应带 ETag，数据没变时用 If-None-Match 请求会返回 304。",
-      request: { query: ProgramTableQuery },
+        "一届的项目，按截止时间排好。可以按关键词、类型和是否截止先筛，都不带是这一届的全部，很长；别的筛选和排序由调用方做。没登录或冻结的只有还没截止、截止最近的 5 条，筛选也只在这几条里。不带筛选时，登录后的响应带 ETag，数据没变时用 If-None-Match 请求会返回 304。",
+      request: { query: ProgramFilterQuery },
       responses: {
         200: { description: "项目", content: json(ProgramTable) },
         400: errorResponse("届的格式有误"),
       },
     }),
     async (c) => {
-      const { cohort } = c.req.valid("query");
-      return c.json(await listPrograms(cohort, !can(c.var.viewer, "read")), 200);
+      return c.json(await listPrograms(c.req.valid("query"), !can(c.var.viewer, "read")), 200);
     },
   )
   .openapi(
