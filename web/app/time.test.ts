@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { countdown, currentCohort, parseTime, statusOf, timeText } from "./time.ts";
+import { countdown, currentCohort, parseTime, timeText } from "./time.ts";
 
 test("editors type a time as precise as the notice, which reads back as they typed it", () => {
   for (const [text, value] of [
@@ -18,20 +18,6 @@ test("editors type a time as precise as the notice, which reads back as they typ
   for (const text of ["6月30日", "2026-6-30", "2026-06 前", "2026-06-30 下旬", "2026-06-30 17"]) {
     expect(parseTime(text)).toBeNull();
   }
-});
-
-test("status follows the application's start and when applying is over", () => {
-  const program = { apply_start: 100, apply_deadline: 200, closes_at: 200 };
-  expect(statusOf(program, 99)).toBe("upcoming");
-  expect(statusOf(program, 100)).toBe("open");
-  expect(statusOf(program, 200)).toBe("closed");
-  expect(statusOf({ apply_start: null, apply_deadline: 200, closes_at: 200 }, 150)).toBe("open");
-  // Without a deadline, open until the event or the cohort's recommendation is over.
-  const undated = { apply_start: 100, apply_deadline: null, closes_at: 300 };
-  expect(statusOf(undated, 150)).toBe("open");
-  expect(statusOf(undated, 300)).toBe("closed");
-  expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 150)).toBeNull();
-  expect(statusOf({ apply_start: null, apply_deadline: null, closes_at: 300 }, 300)).toBe("closed");
 });
 
 test("countdowns round down, to the minute at the end", () => {

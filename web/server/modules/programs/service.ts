@@ -6,6 +6,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { tagsOf } from "./college-tags.ts";
 import { sanitizeSnapshot } from "./sanitize.ts";
+import { matchesSearch } from "./search.ts";
 import type {
   ApplyValue,
   Attachment,
@@ -14,11 +15,12 @@ import type {
   ExtractedFields,
   Kind,
   ProgramFields,
+  ProgramFilters,
   Role,
   TimeValue,
 } from "./schemas.ts";
 import { KIND_LABELS } from "./schemas.ts";
-import { closesAt, deadlineOf, formatApply, startOf } from "./time.ts";
+import { closesAt, deadlineOf, formatApply, startOf, statusOf } from "./time.ts";
 
 // The apply field put back together from its parts, null when the notice gave none or people
 // cleared it. `program` is the column holding the program's id, such as "programs.id".
@@ -144,14 +146,24 @@ function tableProgram(row: Awaited<ReturnType<ReturnType<typeof tableQuery>["exe
   };
 }
 
-// One cohort's programs for the table, by deadline.
-export async function listPrograms(cohort: number, preview: boolean) {
+// One cohort's programs for the table, by deadline, those the filters pick. A preview is the few
+// closing soonest, and the filters only narrow it.
+export async function listPrograms({ cohort, q, kind, closed }: ProgramFilters, preview: boolean) {
   let query = tableQuery()
     .where("p.cohort", "=", cohort)
     .orderBy("p.apply_deadline", (order) => order.asc().nullsLast())
     .orderBy("p.id");
   if (preview) query = query.where("p.apply_deadline", ">", new Date()).limit(PREVIEW_SIZE);
-  return { preview, programs: (await query.execute()).map(tableProgram) };
+  const now = unix(new Date());
+  const programs = (await query.execute())
+    .map(tableProgram)
+    .filter(
+      (p) =>
+        matchesSearch(p, q) &&
+        (kind === undefined || p.kind === kind) &&
+        (closed === undefined || (statusOf(p, now) === "closed") === closed),
+    );
+  return { preview, programs };
 }
 
 // One cohort's programs to download (design §13), as the table orders them.

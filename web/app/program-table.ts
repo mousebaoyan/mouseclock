@@ -1,8 +1,9 @@
 import type { Kind } from "../server/modules/programs/schemas.ts";
 import { allOf, anyOf, choices, tally } from "./facets.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
-import { currentCohort, statusOf, type Status } from "./time.ts";
-import { beijingYear } from "../server/modules/programs/time.ts";
+import { currentCohort } from "./time.ts";
+import { matchesSearch } from "../server/modules/programs/search.ts";
+import { beijingYear, statusOf, type Status } from "../server/modules/programs/time.ts";
 
 // The table's filters, sorting and pages (design §10), read from the address so a link shares
 // them. The server works out the first page it renders, and the browser every one after from
@@ -66,7 +67,6 @@ const VALUES: Record<Facet, (p: Program) => string[]> = {
 // The programs `filters` pick, as of `now` in Unix seconds. The API gives them by deadline.
 // Beside each choice of a filter goes how many it would show with the other filters as they are.
 export function tableView<P extends Program>(programs: P[], filters: Filters, now: number) {
-  const q = filters.q.toLowerCase();
   const picks: Record<Facet, string[]> = {
     kind: filters.kinds,
     tier: filters.tiers,
@@ -76,10 +76,7 @@ export function tableView<P extends Program>(programs: P[], filters: Filters, no
   const rows = programs.map((program) => ({ program, status: statusOf(program, now) }));
   // Whether a program passes every filter but `skip`.
   const passes = ({ program: p, status }: (typeof rows)[number], skip?: Facet | "status") =>
-    (!q ||
-      [p.school.name, ...p.school.short_names, p.college.name, p.name].some((text) =>
-        text.toLowerCase().includes(q),
-      )) &&
+    matchesSearch(p, filters.q) &&
     FACETS.every((facet) => facet === skip || anyOf(picks[facet], VALUES[facet](p))) &&
     allOf(filters.tags, p.college.tags) &&
     (skip === "status" || statusMatches(filters.status, status));

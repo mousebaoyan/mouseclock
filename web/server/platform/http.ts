@@ -132,6 +132,11 @@ export function param<T extends z.ZodType<number>>(schema: T) {
   );
 }
 export const IntParam = param(Int);
+// True or false from a query string. z.stringbool would have the OpenAPI document call it a string.
+export const BoolParam = z.preprocess(
+  (value) => (value === "true" ? true : value === "false" ? false : value),
+  z.boolean(),
+);
 export const IdParam = z.object({ id: IntParam });
 export const UnixSeconds = z.number().int().min(0).max(LAST_SECOND);
 // A page's address as the crawler reports it.

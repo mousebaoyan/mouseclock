@@ -10,7 +10,7 @@ import {
 } from "../../server/modules/programs/schemas.ts";
 import type { RequestStatus } from "../../server/modules/sources/schemas.ts";
 import { TIERS } from "../tiers.ts";
-import type { Status } from "../time.ts";
+import type { Status } from "../../server/modules/programs/time.ts";
 
 // Tags tell tiers, kinds and statuses apart at a glance: text in a hue on a light wash of it
 // (app.css). A filter's chip takes the same hue, with a border of it once picked.
