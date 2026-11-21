@@ -88,6 +88,15 @@ def test_configured_structure_and_legacy_encoding() -> None:
     assert result.items[0].url == "https://example.edu.cn/showarticle/Article/example/101"
 
 
+def test_a_link_too_broken_to_read_is_skipped_and_the_rest_kept() -> None:
+    selectors = Selectors(items="//li", title="normalize-space(.//a)", link=".//a/@href")
+    body = (
+        '<ul><li><a href="http://[broken">坏链接</a></li><li><a href="/2.htm">好链接</a></li></ul>'
+    )
+    result = parse_listing(body.encode(), BASE, selectors, "text/html; charset=utf-8")
+    assert [item.title for item in result.items] == ["好链接"]
+
+
 def test_rows_with_only_the_month_and_day_take_the_year_from_their_group_title() -> None:
     selectors = Selectors(
         items="//li[contains(@class,'list-group-item')]",

@@ -40,6 +40,7 @@ from crawler.extraction.chat import Chat, make_request
 from crawler.extraction.extract import Extract
 from crawler.extraction.pictures import ReadPicture
 from crawler.extraction.schema import response_schema
+from crawler.parse import ParseError
 from crawler.parse.dates import find_dates
 from crawler.parse.files import file_parts
 
@@ -253,7 +254,7 @@ class Check:
                         for part in parts
                     ]
                 )
-            except (ValueError, StepError) as error:
+            except (ParseError, StepError) as error:
                 logger.warning("Reading pictures again failed: %s", error)
         return readings
 

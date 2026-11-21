@@ -6,6 +6,7 @@ import openpyxl
 import pytest
 from PIL import Image
 
+from crawler.parse import ParseError
 from crawler.parse.files import file_parts
 from crawler.parse.image import Picture
 
@@ -97,7 +98,7 @@ def test_files_with_no_words_to_read_give_none() -> None:
 
 
 def test_a_broken_file_is_an_error() -> None:
-    with pytest.raises(ValueError, match="BadZipFile"):
+    with pytest.raises(ParseError, match="BadZipFile"):
         file_parts(b"PK\x03\x04" + b"\x00" * 30)
-    with pytest.raises(ValueError, match="UnidentifiedImageError"):
+    with pytest.raises(ParseError, match="UnidentifiedImageError"):
         file_parts(b"\x89PNG\r\n\x1a\n")

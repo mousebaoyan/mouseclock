@@ -1,8 +1,11 @@
 import codecs
 import re
+from urllib.parse import urldefrag, urljoin
 
 from lxml import etree, html
 from lxml.html import HtmlElement
+
+from crawler.parse import ParseError
 
 
 def parse_webpage(body: bytes, content_type: str | None) -> HtmlElement:
@@ -18,4 +21,13 @@ def parse_webpage(body: bytes, content_type: str | None) -> HtmlElement:
             ),
         )
     except (LookupError, etree.ParserError) as error:
-        raise ValueError("网页无法解析") from error
+        raise ParseError("网页无法解析") from error
+
+
+def absolute_url(base: str, href: str) -> str | None:
+    """`href` resolved against `base`, without its fragment; None when it is too broken to read,
+    such as an unclosed IPv6 address. Pages are full of those, and each only spoils its own link."""
+    try:
+        return urldefrag(urljoin(base, href)).url
+    except ValueError:
+        return None
