@@ -6,7 +6,7 @@ import openpyxl
 import pytest
 from PIL import Image
 
-from crawler.parse import ParseError
+from crawler.parse import ParseError, files
 from crawler.parse.files import file_parts
 from crawler.parse.image import Picture
 
@@ -95,6 +95,14 @@ def test_files_with_no_words_to_read_give_none() -> None:
     with zipfile.ZipFile(archive, "w") as files:
         files.writestr("说明.txt", "自编的说明")
     assert file_parts(archive.getvalue()) == []
+
+
+def test_a_mistake_in_our_own_reading_is_not_taken_for_a_broken_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(files, "_RADICALS", None)
+    with pytest.raises(TypeError):
+        file_parts(pdf_file(b"BT /F1 12 Tf 10 50 Td (A) Tj ET", b""))
 
 
 def test_a_broken_file_is_an_error() -> None:

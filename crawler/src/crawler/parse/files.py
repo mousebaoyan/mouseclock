@@ -3,9 +3,11 @@ Excel, including the old binary formats. Archives and other files have none to r
 reads the pictures; this leaves them in their place among the words."""
 
 import io
+import traceback
 import unicodedata
 import zipfile
 from collections.abc import Iterable, Iterator
+from pathlib import Path
 
 import docx
 import openpyxl
@@ -34,6 +36,7 @@ _IMAGE_HEADERS = (
 _WORD = "WordDocument".encode("utf-16-le")
 # Some PDFs map common characters to the Kangxi radicals that look like them, ⽣ for 生.
 _RADICALS = {code: unicodedata.normalize("NFKC", chr(code)) for code in range(0x2F00, 0x2FD6)}
+_OURS = Path(__file__).parent.parent
 
 
 def file_parts(data: bytes) -> list[str | Picture]:
@@ -51,8 +54,11 @@ def file_parts(data: bytes) -> list[str | Picture]:
                 return [_xlsx(data)]
         elif data.startswith(_OLE):
             return [extract_text(data).text if _WORD in data else _xls(data)]
-    # The files come from the colleges' sites, and parsers fail on broken ones in all sorts of ways.
+    # The files come from the colleges' sites, and the parsers fail on broken ones in all sorts of
+    # ways; what fails in our own code is a bug.
     except Exception as error:
+        if Path(traceback.extract_tb(error.__traceback__)[-1].filename).is_relative_to(_OURS):
+            raise
         raise ParseError(type(error).__name__) from error
     return []
 
