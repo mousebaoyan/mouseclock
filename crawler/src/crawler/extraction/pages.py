@@ -5,6 +5,7 @@ from pathlib import Path
 from pydantic import BaseModel, TypeAdapter
 
 from crawler.crawl.fetch import Fetcher
+from crawler.parse import ParseError
 from crawler.parse.indexing import Hyperlink
 from crawler.parse.notice import parse_notice
 
@@ -45,7 +46,7 @@ async def read_page(url: str, path: Path, fetcher: Fetcher, *, reuse_only: bool)
         raise PageError(f"http_{response.status}")
     try:
         notice = parse_notice(response.body, response.url, response.content_type)
-    except ValueError as error:
+    except ParseError as error:
         raise PageError(str(error)) from error
     page = Page(
         url=url,

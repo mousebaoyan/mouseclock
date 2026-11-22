@@ -9,6 +9,7 @@ from crawler.crawl.contract import AttachmentInfo, Usage, WorkSource
 from crawler.crawl.fetch import FetchError
 from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
+from crawler.parse import ParseError
 from crawler.parse.files import file_parts
 from crawler.parse.image import Picture
 from crawler.parse.notice import AttachmentLink, parse_notice
@@ -46,7 +47,7 @@ class ReadNotice:
             raise StepError("http_status", f"HTTP {response.status}")
         try:
             notice = parse_notice(response.body, response.url, response.content_type)
-        except ValueError as error:
+        except ParseError as error:
             raise StepError("error", str(error)) from error
         if len(notice.attachments) > MAX_ATTACHMENTS:
             logger.warning(
@@ -76,7 +77,7 @@ class ReadNotice:
         if data is not None:
             try:
                 text, pictures = await self._text(link.url, data, usage)
-            except ValueError as error:
+            except ParseError as error:
                 logger.warning("Attachment unreadable: %s", error, extra={"url": link.url})
         info = AttachmentInfo(
             name=link.name,

@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
+import type { Actor, Via } from "../../platform/access.ts";
 import { sql, type Selectable, type Transaction } from "kysely";
 import type { DB, Edits, Json } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
@@ -15,9 +16,7 @@ import {
 } from "../programs/service.ts";
 import type { StoredValue } from "../programs/schemas.ts";
 import type { z } from "@hono/zod-openapi";
-import { ProgramColumns, type ProgramEdit } from "./schemas.ts";
-
-export type Actor = { user_id: number; via: "web" | "agent" };
+import { ProgramColumns, type DisputeResult, type ProgramEdit } from "./schemas.ts";
 
 const COLUMNS = ProgramColumns.keyof().options;
 type FieldEdits = Omit<ProgramEdit, (typeof COLUMNS)[number] | "reason" | "basis">;
@@ -318,7 +317,7 @@ function editsQuery() {
       "edits.basis",
       "edits.user_id",
       "users.display_name",
-      sql<"web" | "agent">`edits.via`.as("via"),
+      sql<Via>`edits.via`.as("via"),
       "edits.reverts_id",
       "edits.feedback_id",
       // PostgreSQL answers exists with a boolean; Kysely types it for every database.
@@ -355,7 +354,7 @@ export async function listProgramEdits(programId: number) {
         "users.display_name",
         // Not null once reviewed, as all these are.
         sql<Date>`disputes.resolved_at`.as("resolved_at"),
-        sql<"corrected" | "confirmed">`disputes.result`.as("result"),
+        sql<DisputeResult>`disputes.result`.as("result"),
         sql<string>`disputes.note`.as("note"),
       ])
       .where("disputes.program_id", "=", programId)

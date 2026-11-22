@@ -10,6 +10,7 @@ from crawler.crawl.fetch import FetchError
 from crawler.crawl.rounds import StepError
 from crawler.crawl.website import Website
 from crawler.log import current_probe
+from crawler.parse import ParseError
 from crawler.parse.listing import ListConfig, parse_listing
 
 type GenerateConfig = Callable[[bytes, str, str | None, list[Usage]], Awaitable[ListConfig]]
@@ -47,7 +48,7 @@ async def probe_source(
                 page = parse_listing(
                     response.body, response.url, suggested.selectors, response.content_type
                 )
-        except ValueError as error:
+        except ParseError as error:
             raise StepError("error", str(error)) from error
         if not page.items:
             raise StepError("no_items")

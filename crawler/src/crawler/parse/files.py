@@ -15,6 +15,7 @@ from docx.text.paragraph import Paragraph
 from legacy_doc import extract_text
 from pypdf import PageObject, PdfReader
 
+from crawler.parse import ParseError
 from crawler.parse.image import Picture, picture
 
 _PDF = b"%PDF"
@@ -36,7 +37,7 @@ _RADICALS = {code: unicodedata.normalize("NFKC", chr(code)) for code in range(0x
 
 
 def file_parts(data: bytes) -> list[str | Picture]:
-    """The file's text and pictures in reading order. Raises ValueError when the file is broken."""
+    """The file's text and pictures in reading order. Raises ParseError when the file is broken."""
     try:
         if data.startswith(_IMAGE_HEADERS) or (data.startswith(b"RIFF") and data[8:12] == b"WEBP"):
             return [picture(data)]
@@ -52,7 +53,7 @@ def file_parts(data: bytes) -> list[str | Picture]:
             return [extract_text(data).text if _WORD in data else _xls(data)]
     # The files come from the colleges' sites, and parsers fail on broken ones in all sorts of ways.
     except Exception as error:
-        raise ValueError(type(error).__name__) from error
+        raise ParseError(type(error).__name__) from error
     return []
 
 

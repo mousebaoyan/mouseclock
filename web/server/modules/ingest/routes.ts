@@ -11,22 +11,14 @@ import {
   IntParam,
   param,
   UnixSeconds,
-  Url,
 } from "../../platform/http.ts";
-import {
-  ApplyValue,
-  Cohort,
-  ExtractedFields,
-  IsoDate,
-  Kind,
-  ProgramName,
-  Role,
-} from "../programs/schemas.ts";
+import { ApplyValue, IsoDate, Kind } from "../programs/schemas.ts";
 import { Failure, ListedItem } from "../sources/schemas.ts";
-import { UnresolvedDate } from "./schemas.ts";
+import { AttachmentInfo, Detail, ExtractedProgram, MB, NoticeFailure, Usage } from "./schemas.ts";
 import {
   crawlerTokenId,
   markRemoved,
+  PURPOSES,
   recordExtraction,
   recordListing,
   recordProbe,
@@ -41,8 +33,6 @@ import {
 // null, which is how the crawler's Pydantic models dump them; responses spell nulls out.
 
 type CrawlerEnv = { Variables: { crawlerTokenId: number } };
-
-const MB = 1024 * 1024;
 
 const authenticate = createMiddleware<CrawlerEnv>(async (c, next) => {
   const token = bearerToken(c);
@@ -59,40 +49,6 @@ const noContent = { description: "已记下" };
 const Config = z
   .record(z.string(), z.unknown())
   .openapi("Config", { description: "抓取节点自己的配置，格式由抓取节点定" });
-const Detail = z.string().max(1000).openapi({ description: "具体原因，比如 HTTP 403" });
-export const NoticeFailure = z
-  .strictObject({ url: Url, failure: Failure, detail: Detail.optional() })
-  .openapi("NoticeFailure");
-const Usage = z
-  .strictObject({
-    model: z.string().min(1).max(100),
-    input_tokens: Int.min(0),
-    output_tokens: Int.min(0),
-  })
-  .openapi("Usage");
-
-// One program a notice is about, as design §8.2 lays out.
-export const ExtractedProgram = z
-  .strictObject({
-    program_id: Int.optional().openapi({ description: "对照里的哪个项目；新项目不写" }),
-    college_id: Int,
-    cohort: Cohort,
-    kind: Kind,
-    name: ProgramName,
-    role: Role.openapi({ description: "call：报名；update：补充；result：名单" }),
-    fields: ExtractedFields,
-    unresolved_dates: z.array(UnresolvedDate).max(30).optional(),
-    checked: z
-      .array(z.enum(["no_deadline", "new"]))
-      .max(2)
-      .optional()
-      .openapi({
-        description:
-          "另一个模型也这样判断（总体设计 §8.3）：no_deadline 是报名通知确实没写截止，new 是学校没有这个项目，同学院、同届、同类型的那几个都不是",
-      }),
-  })
-  .openapi("ExtractedProgram");
-
 const Work = z
   .object({
     sources: z.array(
@@ -282,21 +238,7 @@ export const ingestRoutes = router
                   fetched_at: UnixSeconds,
                   html: z.string().max(10 * MB),
                   text: z.string().max(2 * MB),
-                  attachments: z
-                    .array(
-                      z
-                        .strictObject({
-                          name: z.string().min(1).max(500),
-                          url: Url,
-                          content_type: z.string().min(1).max(200),
-                          text: z.string().max(2 * MB),
-                          read_from_pictures: z.boolean().openapi({
-                            description: "文字里有 LLM 从图片或扫描页读出来的部分",
-                          }),
-                        })
-                        .openapi("AttachmentInfo"),
-                    )
-                    .max(50),
+                  attachments: z.array(AttachmentInfo).max(50),
                 })
                 .openapi("Snapshot"),
             },
@@ -423,7 +365,7 @@ export const ingestRoutes = router
                   notice_failures: z.array(NoticeFailure).max(5000),
                   usage: z
                     .array(
-                      Usage.extend({ purpose: z.enum(["screening", "extraction"]) }).openapi(
+                      Usage.extend({ purpose: z.enum(PURPOSES).exclude(["probe"]) }).openapi(
                         "RunUsage",
                       ),
                     )
@@ -486,3 +428,16 @@ ingestRoutes.openAPIRegistry.registerComponent("securitySchemes", "crawlerToken"
   type: "http",
   scheme: "bearer",
 });
+
+// The crawler's half of the API, from which the crawler generates its types (api.md §6).
+export function crawlerApiDocument() {
+  return `${JSON.stringify(
+    ingestRoutes.getOpenAPI31Document({
+      openapi: "3.1.0",
+      info: { title: "鼠钟抓取节点接口", version: "1" },
+      servers: [{ url: "/api/v1" }],
+    }),
+    null,
+    2,
+  )}\n`;
+}

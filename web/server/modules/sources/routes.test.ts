@@ -6,7 +6,8 @@ import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
 import { login, resolveSession } from "../accounts/service.ts";
 import { createCrawlerToken, recordRun, takeWork } from "../ingest/service.ts";
-import { createCollege, createSchool, createSource, updateSchool, type Actor } from "./service.ts";
+import type { Actor } from "../../platform/access.ts";
+import { createCollege, createSchool, createSource, updateSchool } from "./service.ts";
 import { LOGO_MAX_BYTES } from "./logo-files.ts";
 
 const api = testClient(app).api.v1;
@@ -508,11 +509,13 @@ test("conflicts, missing parents and invalid configuration do not change data or
   expect(await db.selectFrom("audit_log").select("id").execute()).toEqual(before);
 });
 
-test("an audit failure rolls back both creation and update", async () => {
+test("an audit failure rolls back both creation and update, and isn't taken for bad input", async () => {
+  // No one to be: a bug, not a school or college that isn't there.
   const actor: Actor = { user_id: 2147483647, via: "web" };
+  const bug = { constraint: "audit_log_user_id_fkey" };
   await expect(
     createSchool(actor, { name: "应当回滚", short_names: [], tier: null }),
-  ).rejects.toMatchObject({ status: 404 });
+  ).rejects.toMatchObject(bug);
   expect(
     await db.selectFrom("schools").select("id").where("name", "=", "应当回滚").execute(),
   ).toEqual([]);
@@ -520,9 +523,7 @@ test("an audit failure rolls back both creation and update", async () => {
     { user_id: adminId, via: "web" },
     { name: "回滚前", short_names: [], tier: null },
   );
-  await expect(updateSchool(actor, row.id, { name: "回滚后" })).rejects.toMatchObject({
-    status: 404,
-  });
+  await expect(updateSchool(actor, row.id, { name: "回滚后" })).rejects.toMatchObject(bug);
   expect(
     await db
       .selectFrom("schools")

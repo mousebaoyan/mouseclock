@@ -1,10 +1,9 @@
 import { sql, type Kysely, type Transaction } from "kysely";
-import { DatabaseError } from "pg";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
-import type { Viewer } from "../../platform/access.ts";
+import type { Actor, Viewer } from "../../platform/access.ts";
 import { recordAudit } from "../../platform/audit.ts";
-import { db, pageOf } from "../../platform/db.ts";
+import { db, pageOf, explainConflict } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { mutedNow } from "../accounts/service.ts";
@@ -19,8 +18,6 @@ import {
 
 // 求收录 (design §10.1): members ask for colleges to be crawled and vote for others' asks; admins
 // move them along. A college is included once it has a source that is crawled.
-
-type Actor = { user_id: number; via: "web" };
 
 // Each ask with its school's and college's names: from the list once matched, or as asked.
 function named(executor: Kysely<DB>) {
@@ -62,7 +59,7 @@ export async function listRequests(
           select user_id from inclusion_votes where request_id = inclusion_requests.id
           union
           select follows.user_id from follows join users on users.id = follows.user_id
-          where follows.college_id = inclusion_requests.college_id and not ${mutedNow}
+          where follows.college_id = inclusion_requests.college_id and not ${mutedNow()}
         ) as voters
       )`.as("votes"),
       sql<boolean>`exists (
@@ -115,13 +112,15 @@ async function writeRequests<T>(operation: (trx: Transaction<DB>) => Promise<T>)
   try {
     return await db.transaction().execute(operation);
   } catch (error) {
-    if (error instanceof DatabaseError && error.code === "23503") {
-      throw new AppError(404, "not_found", "学校、学院或求收录不存在", error);
-    }
-    if (error instanceof DatabaseError && error.code === "23505") {
-      throw new AppError(409, "duplicate", "这个学院已经有人提过了，把这条并进那一条", error);
-    }
-    throw error;
+    const asked = [409, "duplicate", "这个学院已经有人提过了，把这条并进那一条"] as const;
+    throw explainConflict(error, {
+      inclusion_requests_school_id_fkey: [404, "not_found", "学校不存在"],
+      inclusion_requests_college_id_fkey: [404, "not_found", "学院不存在"],
+      inclusion_votes_request_id_fkey: [404, "not_found", "求收录不存在"],
+      inclusion_requests_college_id_key: [...asked],
+      inclusion_requests_school_id_college_name_key: [...asked],
+      inclusion_requests_school_name_college_name_key: [...asked],
+    });
   }
 }
 
@@ -231,7 +230,7 @@ export async function dropUnwanted(trx: Transaction<DB>, requestId: number) {
             .selectFrom("follows")
             .innerJoin("users", "users.id", "follows.user_id")
             .whereRef("follows.college_id", "=", "inclusion_requests.college_id")
-            .where(sql<boolean>`not ${mutedNow}`)
+            .where(sql<boolean>`not ${mutedNow()}`)
             .select("follows.user_id"),
         ),
       ),

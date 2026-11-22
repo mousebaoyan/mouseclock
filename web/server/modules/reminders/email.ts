@@ -1,4 +1,5 @@
 import { setTimeout } from "node:timers/promises";
+import type { Actor } from "../../platform/access.ts";
 import { html } from "hono/html";
 import { sql, type Kysely, type Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
@@ -41,10 +42,7 @@ async function ruleOf(kind: MessageKind, executor: Kysely<DB> = db) {
   return row?.rule ?? MESSAGE_KINDS[kind].email;
 }
 
-export async function saveEmailRules(
-  owner: { user_id: number; via: "web" },
-  rules: Partial<Record<MessageKind, EmailRule>>,
-) {
+export async function saveEmailRules(owner: Actor, rules: Partial<Record<MessageKind, EmailRule>>) {
   const rows = Object.entries(rules).map(([kind, rule]) => ({ kind, rule }));
   if (rows.length === 0) return;
   await db.transaction().execute(async (trx) => {
@@ -156,6 +154,8 @@ export async function queueEmails(trx: Transaction<DB>, kind: MessageKind, messa
   );
   const going = messages.filter((m) => emailOn(rule, mine.get(m.user_id)));
   if (going.length === 0) return;
+  // Both from the process's clock, which the day after which an email is dropped is counted on.
+  const now = new Date();
   await trx
     .insertInto("emails")
     .values(
@@ -166,6 +166,8 @@ export async function queueEmails(trx: Transaction<DB>, kind: MessageKind, messa
           subject: m.title,
           body: plainText(kind, m),
           html: await page(kind, m),
+          created_at: now,
+          next_at: now,
         })),
       ),
     )
@@ -263,12 +265,13 @@ const MAX_ATTEMPTS = 5;
 // Every minute: the due emails, oldest first, a second or two apart so a batch doesn't leave all at
 // once, until none is left or no mailbox can send.
 export async function sendEmails() {
+  const now = new Date();
   const stale = await db
     .updateTable("emails")
-    .set({ dropped_at: sql<Date>`now()` })
+    .set({ dropped_at: now })
     .where("sent_at", "is", null)
     .where("dropped_at", "is", null)
-    .where("created_at", "<", sql<Date>`now() - interval '1 day'`)
+    .where("created_at", "<", new Date(now.getTime() - 24 * 3600_000))
     .executeTakeFirst();
   if (stale.numUpdatedRows > 0n) {
     log("warn", "Dropped emails unsent for a day", { count: Number(stale.numUpdatedRows) });
@@ -287,7 +290,7 @@ export async function sendEmails() {
       .select(["u.qq", "u.frozen", "u.token_refused_at"])
       .where("e.sent_at", "is", null)
       .where("e.dropped_at", "is", null)
-      .where("e.next_at", "<=", sql<Date>`now()`)
+      .where("e.next_at", "<=", new Date())
       .orderBy("e.id")
       .limit(1)
       .executeTakeFirst();
@@ -315,7 +318,7 @@ export async function sendEmails() {
       const minutes = RETRY_MINUTES * 2 ** (attempts - 1);
       await db
         .updateTable("emails")
-        .set({ attempts, next_at: sql<Date>`now() + make_interval(mins => ${minutes})` })
+        .set({ attempts, next_at: new Date(Date.now() + minutes * 60_000) })
         .where("id", "=", email.id)
         .execute();
       continue;
@@ -326,7 +329,7 @@ export async function sendEmails() {
 }
 
 async function settle(id: number, done: "sent_at" | "dropped_at") {
-  const now = sql<Date>`now()`;
+  const now = new Date();
   await db
     .updateTable("emails")
     .set(done === "sent_at" ? { sent_at: now } : { dropped_at: now })

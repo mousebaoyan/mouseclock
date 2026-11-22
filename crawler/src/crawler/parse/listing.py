@@ -1,14 +1,15 @@
 import re
 from dataclasses import dataclass
 from datetime import date
-from urllib.parse import urldefrag, urljoin, urlsplit
+from urllib.parse import urlsplit
 
 from lxml import etree
 from lxml.html import HtmlElement
 from pydantic import BaseModel, ConfigDict, field_validator
 
 from crawler.crawl.contract import ListedItem
-from crawler.parse.webpage import parse_webpage
+from crawler.parse import ParseError
+from crawler.parse.webpage import absolute_url, parse_webpage
 
 
 class Selectors(BaseModel):
@@ -63,12 +64,12 @@ class ListPage:
 def _elements(node: HtmlElement, expression: str) -> list[HtmlElement]:
     result: list[object] | str | float | bool = node.xpath(expression, smart_strings=False)
     if not isinstance(result, list):
-        raise ValueError("items 必须选中条目元素")
+        raise ParseError("items 必须选中条目元素")
     values: list[object] = result
     elements: list[HtmlElement] = []
     for value in values:
         if not isinstance(value, HtmlElement):
-            raise ValueError("items 必须选中条目元素")
+            raise ParseError("items 必须选中条目元素")
         elements.append(value)
     return elements
 
@@ -80,7 +81,7 @@ def _value(node: HtmlElement, expression: str | None, *, href: bool = False) -> 
     if isinstance(result, list):
         values: list[object] = result
         if not all(isinstance(v, (HtmlElement, str)) for v in values):
-            raise ValueError("字段 XPath 必须返回文字或元素")
+            raise ParseError("字段 XPath 必须返回文字或元素")
         value = values[0] if values else ""
     else:
         value = result
@@ -89,7 +90,7 @@ def _value(node: HtmlElement, expression: str | None, *, href: bool = False) -> 
     elif isinstance(value, str):
         text = value
     else:
-        raise ValueError("字段 XPath 必须返回文字或元素")
+        raise ParseError("字段 XPath 必须返回文字或元素")
     return " ".join(text.split())
 
 
@@ -144,7 +145,9 @@ def _group_year(row: HtmlElement) -> int | None:
 def _url(base: str, href: str) -> str | None:
     if not href or href.startswith("#"):
         return None
-    absolute, _ = urldefrag(urljoin(base, href))
+    absolute = absolute_url(base, href)
+    if absolute is None:
+        return None
     parts = urlsplit(absolute)
     return absolute if parts.scheme in {"http", "https"} and parts.netloc else None
 
@@ -210,7 +213,7 @@ def parse_listing(
                 list(items.values()), _url(url, _value(root, selectors.next, href=True))
             )
     except etree.XPathError as error:
-        raise ValueError("XPath 无法计算") from error
+        raise ParseError("XPath 无法计算") from error
     return ListPage(_generic_items(root, url), _next(root, url))
 
 

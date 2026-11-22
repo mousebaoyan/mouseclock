@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from crawler.crawl.browser import PageSession
 from crawler.crawl.contract import ListedItem, WorkSource
 from crawler.crawl.rounds import StepError
+from crawler.parse import ParseError
 from crawler.parse.listing import ListConfig, parse_listing
 
 
@@ -45,7 +46,7 @@ async def list_items(
             page = parse_listing(
                 response.body, response.url, config.selectors, response.content_type
             )
-        except ValueError as error:
+        except ParseError as error:
             raise StepError("error", str(error)) from error
         if not page.items:
             break

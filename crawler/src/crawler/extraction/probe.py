@@ -1,4 +1,3 @@
-from lxml import etree
 from pydantic import JsonValue, ValidationError
 
 from crawler.crawl.contract import Usage
@@ -6,7 +5,7 @@ from crawler.crawl.rounds import StepError
 from crawler.extraction.chat import Chat, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.listing import ListConfig, Selectors
-from crawler.parse.webpage import parse_webpage
+from crawler.parse.webpage import page_without_scripts
 
 MAX_HTML_CHARACTERS = 200_000
 INSTRUCTIONS = """Find the main notice list in the supplied HTML.
@@ -25,11 +24,7 @@ Return only the JSON configuration matching the supplied schema, never code or e
 
 
 def prepare(body: bytes, url: str, content_type: str | None) -> dict[str, JsonValue]:
-    root = parse_webpage(body, content_type)
-    # Keep the nodes themselves so positional XPath still addresses the original page.
-    for node in root.iter("script", "style"):
-        node.text = None
-    html = etree.tostring(root, encoding="unicode", method="html")
+    html = page_without_scripts(body, content_type)
     if len(html) > MAX_HTML_CHARACTERS:
         raise StepError("error", "试抓失败: page_too_large")
     return make_request(

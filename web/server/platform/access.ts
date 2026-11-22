@@ -1,5 +1,12 @@
 import { AppError } from "./errors.ts";
 
+// Where a person did something: on the site, or through their Agent.
+export const VIAS = ["web", "agent"] as const;
+export type Via = (typeof VIAS)[number];
+
+// Who did something, for the records of it.
+export type Actor = { user_id: number; via: Via };
+
 // Who a request comes from: the user of its session.
 export type Viewer = {
   id: number;

@@ -243,3 +243,23 @@ test("emails leave through the mailboxes in order, and go no further once their 
   await sendEmails();
   expect((await emailsTo("管理鼠")).map((email) => email.state)).toEqual(["sent", "dropped"]);
 });
+
+test("an email still unsent a day after it was queued is dropped, and not a moment before", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    const queued = new Date("2026-06-27T01:00:00Z");
+    vi.setSystemTime(queued);
+    await send("deadline_soon", "管理鼠");
+    // Neither mailbox can log in, so the email waits.
+    smtp.failing.add("a@qq.com").add("b@qq.com");
+    vi.setSystemTime(queued.getTime() + 24 * 3600_000 - 1000);
+    await sendEmails();
+    expect((await emailsTo("管理鼠")).at(-1)?.state).toBe("waiting");
+    vi.setSystemTime(queued.getTime() + 24 * 3600_000 + 1000);
+    await sendEmails();
+    expect((await emailsTo("管理鼠")).at(-1)?.state).toBe("dropped");
+  } finally {
+    smtp.failing.clear();
+    vi.useRealTimers();
+  }
+});

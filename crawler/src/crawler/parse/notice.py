@@ -4,12 +4,13 @@ them, the body's HTML, and the files the notice attaches."""
 import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from urllib.parse import unquote, urldefrag, urljoin, urlsplit
+from urllib.parse import unquote, urlsplit
 
 from lxml.html import HtmlElement, tostring
 
+from crawler.parse import ParseError
 from crawler.parse.indexing import Hyperlink
-from crawler.parse.webpage import parse_webpage
+from crawler.parse.webpage import absolute_url, parse_webpage
 
 # The body as the site systems of the sources mark it, more specific first (design §7.2);
 # fixtures/notice/README.md lists the systems and the sites they come from.
@@ -95,10 +96,13 @@ class Notice:
 def parse_notice(body: bytes, url: str, content_type: str | None) -> Notice:
     """`url` is where the page ended up after redirects; links resolve against it."""
     root = parse_webpage(body, content_type)
-    root.make_links_absolute(url, handle_failures="ignore")
+    # Two steps, as make_links_absolute doesn't pass handle_failures on to <base>: a link broken
+    # against the page's <base>, or a <base> broken itself, then spoils only that link.
+    root.resolve_base_href(handle_failures="ignore")
+    root.make_links_absolute(url, resolve_base_href=False, handle_failures="ignore")
     content = _body(root)
     if content is None:
-        raise ValueError("认不出正文")
+        raise ParseError("认不出正文")
     text = _Text()
     text.walk(content)
     return Notice(
@@ -138,8 +142,7 @@ def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[Atta
             script = element.text or ""
             if (hrefs := _TRS_HREFS.search(script)) and (names := _TRS_NAMES.search(script)):
                 for href, name in zip(hrefs[1].split("|"), names[1].split("|"), strict=False):
-                    if href:
-                        target = urldefrag(urljoin(url, href)).url
+                    if href and (target := absolute_url(url, href)):
                         links.setdefault(target, name.strip()[:500] or _name(element, target))
             continue
         if element.tag == "img":
@@ -148,15 +151,18 @@ def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[Atta
             src = element.get("src")
             if not src or src.startswith("data:"):
                 src = element.get("data-src")
-            if src and element in in_body and not any(icon in src for icon in _ICONS):
-                target = urldefrag(urljoin(url, src)).url
+            if (
+                src
+                and element in in_body
+                and not any(icon in src for icon in _ICONS)
+                and (target := absolute_url(url, src))
+            ):
                 links.setdefault(target, _name(element, target))
             continue
         # WebPlus embeds a PDF as a player with its address in pdfsrc.
         href = element.get("pdfsrc") or (element.get("href") if element.tag == "a" else None)
-        if not href:
+        if not href or not (target := absolute_url(url, href)):
             continue
-        target = urldefrag(urljoin(url, href)).url
         if not (element in in_body or element in in_areas or _VSB_ATTACHMENT in target):
             continue
         name = _name(element, target)
@@ -242,9 +248,13 @@ class _Text:
             self.add(child.tail or "")
         self.separate(gap)
         href = element.get("href") if element.tag == "a" else None
-        if (
-            href
-            and len(self.starts) > first
-            and urlsplit(href).scheme in {"http", "https", "mailto"}
-        ):
+        if href and len(self.starts) > first and _linkable(href):
             self.hyperlinks.append(Hyperlink(self.starts[first], self.length, href))
+
+
+def _linkable(href: str) -> bool:
+    # A link make_links_absolute couldn't read is left as it was.
+    try:
+        return urlsplit(href).scheme in {"http", "https", "mailto"}
+    except ValueError:
+        return False

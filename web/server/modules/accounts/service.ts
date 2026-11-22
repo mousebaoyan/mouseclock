@@ -4,9 +4,10 @@ import { editRevoked, type Scope, type Viewer } from "../../platform/access.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { env } from "../../platform/env.ts";
+import { log } from "../../platform/log.ts";
 import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import { fetchProfile, type Profile } from "./mousehole.ts";
+import { fetchProfile, MouseholeError, type Profile } from "./mousehole.ts";
 
 export const SESSION_TTL_MS = 90 * 24 * 3600_000;
 // Sliding renewal rewrites the session row at most this often.
@@ -89,9 +90,11 @@ export function toViewer(
 }
 
 // The same, for a query with `users` in it.
-export const mutedNow = sql<boolean>`(
-  users.muted and (users.muted_until is null or users.muted_until > now())
-)`;
+export function mutedNow() {
+  return sql<boolean>`(
+    users.muted and (users.muted_until is null or users.muted_until > ${new Date()})
+  )`;
+}
 
 export async function resolveSession(token: string) {
   const row = await db
@@ -232,7 +235,8 @@ export async function profileOf(userId: number) {
 // Every person logged in, or who uses the site without opening it, an hour after their last
 // refresh (design §6.1): a subscription or a follow sends them messages and a personal token lets
 // their Agent in, so a ban or leaving the group must reach here. One at a time: mousehole's server
-// is busy enough.
+// is busy enough. A person whose profile mousehole turns down or garbles is skipped, so they don't
+// hold up those after them; mousehole out of reach ends the round.
 export async function refreshUsers() {
   const due = await db
     .selectFrom("users")
@@ -266,35 +270,45 @@ export async function refreshUsers() {
     .orderBy("synced_at")
     .execute();
   for (const user of due) {
-    const profile = await fetchProfile(user.mousehole_token);
-    // Only while the token asked about is still theirs: logging in meanwhile brought a new one.
-    if (profile) {
-      await db
+    await refreshUser(user).catch((error: unknown) => {
+      if (!(error instanceof MouseholeError)) throw error;
+      log("error", "Refreshing a user from mousehole failed", {
+        user_id: user.id,
+        failure: error.message,
+      });
+    });
+  }
+}
+
+async function refreshUser(user: { id: number; mousehole_token: string }) {
+  const profile = await fetchProfile(user.mousehole_token);
+  // Only while the token asked about is still theirs: logging in meanwhile brought a new one.
+  if (profile) {
+    await db
+      .updateTable("users")
+      .set(fromProfile(profile, user.mousehole_token))
+      .where("id", "=", user.id)
+      .where("mousehole_token", "=", user.mousehole_token)
+      .execute();
+  } else {
+    // Banned, or the access taken back: logged out, their tokens revoked (design §13), and no
+    // messages until they log in again.
+    await db.transaction().execute(async (trx) => {
+      const refused = await trx
         .updateTable("users")
-        .set(fromProfile(profile, user.mousehole_token))
+        .set({ token_refused_at: new Date() })
         .where("id", "=", user.id)
         .where("mousehole_token", "=", user.mousehole_token)
+        .executeTakeFirst();
+      if (refused.numUpdatedRows === 0n) return;
+      await trx.deleteFrom("sessions").where("user_id", "=", user.id).execute();
+      await trx
+        .updateTable("api_tokens")
+        .set({ revoked_at: new Date() })
+        .where("user_id", "=", user.id)
+        .where("revoked_at", "is", null)
         .execute();
-    } else {
-      // Banned, or the access taken back: logged out, their tokens revoked (design §13), and no
-      // messages until they log in again.
-      await db.transaction().execute(async (trx) => {
-        const refused = await trx
-          .updateTable("users")
-          .set({ token_refused_at: new Date() })
-          .where("id", "=", user.id)
-          .where("mousehole_token", "=", user.mousehole_token)
-          .executeTakeFirst();
-        if (refused.numUpdatedRows === 0n) return;
-        await trx.deleteFrom("sessions").where("user_id", "=", user.id).execute();
-        await trx
-          .updateTable("api_tokens")
-          .set({ revoked_at: new Date() })
-          .where("user_id", "=", user.id)
-          .where("revoked_at", "is", null)
-          .execute();
-      });
-    }
+    });
   }
 }
 

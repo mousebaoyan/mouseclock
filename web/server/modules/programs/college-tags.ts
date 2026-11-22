@@ -1,17 +1,15 @@
 import type { z } from "@hono/zod-openapi";
+import type { Actor } from "../../platform/access.ts";
 import { sql, type Transaction } from "kysely";
-import { DatabaseError } from "pg";
 import type { DB } from "../../../db/types.ts";
 import { recordAudit } from "../../platform/audit.ts";
-import { db } from "../../platform/db.ts";
+import { db, explainConflict } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import type { TagInput, TagPatch } from "./schemas.ts";
 
 // 学院标签 (design §9.3): members put the admins' presets on colleges, one vote each; a tag counts
 // as the college's once enough of them did.
-
-type Actor = { user_id: number; via: "web" };
 
 // One member's view isn't the members' impression.
 export const TAG_THRESHOLD = 3;
@@ -54,10 +52,10 @@ export async function tagCollege(userId: number, collegeId: number, tagId: numbe
       .onConflict((oc) => oc.columns(["college_id", "tag_id", "user_id"]).doNothing())
       .execute();
   } catch (error) {
-    if (error instanceof DatabaseError && error.code === "23503") {
-      throw new AppError(404, "not_found", "学院或标签不存在", error);
-    }
-    throw error;
+    throw explainConflict(error, {
+      college_tag_votes_college_id_fkey: [404, "not_found", "学院不存在"],
+      college_tag_votes_tag_id_fkey: [404, "not_found", "标签不存在"],
+    });
   }
 }
 
@@ -148,10 +146,7 @@ async function writeTags<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
       return await operation(trx);
     });
   } catch (error) {
-    if (error instanceof DatabaseError && error.code === "23505") {
-      throw new AppError(409, "duplicate", "已经有这个标签了", error);
-    }
-    throw error;
+    throw explainConflict(error, { college_tags_name_key: [409, "duplicate", "已经有这个标签了"] });
   }
 }
 

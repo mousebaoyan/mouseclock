@@ -1,8 +1,8 @@
 import { sql, type Transaction } from "kysely";
-import { DatabaseError } from "pg";
+import type { Actor } from "../../platform/access.ts";
 import type { z } from "zod";
 import type { DB } from "../../../db/types.ts";
-import { db, pageOf } from "../../platform/db.ts";
+import { db, pageOf, explainConflict } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../../platform/audit.ts";
@@ -28,20 +28,19 @@ import {
 import type { LogoType } from "./logo-files.ts";
 import { includeCollege } from "./inclusion-requests.ts";
 
-export type Actor = { user_id: number; via: "web" | "seed" };
-
 // Keep constraint failures useful even if two admins save the same name concurrently.
 async function write<T>(operation: (trx: Transaction<DB>) => Promise<T>) {
   try {
     return await db.transaction().execute(operation);
   } catch (error) {
-    if (error instanceof DatabaseError && error.code === "23505") {
-      throw new AppError(409, "duplicate", "名称或来源网址已存在", error);
-    }
-    if (error instanceof DatabaseError && error.code === "23503") {
-      throw new AppError(404, "not_found", "所属学校、学院或操作人不存在", error);
-    }
-    throw error;
+    throw explainConflict(error, {
+      schools_name_key: [409, "duplicate", "已有同名的学校"],
+      colleges_school_id_name_key: [409, "duplicate", "这所学校已有同名的学院"],
+      sources_url_key: [409, "duplicate", "已有这个来源网址"],
+      school_logos_school_id_fkey: [404, "not_found", "学校不存在"],
+      colleges_school_id_fkey: [404, "not_found", "所属学校不存在"],
+      sources_college_id_fkey: [404, "not_found", "所属学院不存在"],
+    });
   }
 }
 
@@ -74,7 +73,7 @@ export async function setLogo(
       .insertInto("school_logos")
       .values({ school_id: schoolId, ...logo })
       .onConflict((conflict) =>
-        conflict.column("school_id").doUpdateSet({ ...logo, updated_at: sql`now()` }),
+        conflict.column("school_id").doUpdateSet({ ...logo, updated_at: new Date() }),
       )
       .execute();
     await recordAudit(trx, {

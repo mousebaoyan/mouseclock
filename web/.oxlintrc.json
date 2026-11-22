@@ -42,6 +42,28 @@
             "message": "React Compiler memoizes automatically.",
             "allowTypeImports": true
           }
+        ],
+        "patterns": [
+          {
+            "group": ["pg", "pg/*"],
+            "message": "Only server/platform/db.ts uses pg (AGENTS.md: each library in one module)."
+          },
+          {
+            "group": ["nodemailer", "nodemailer/*"],
+            "message": "Only reminders/mailer.ts sends email (AGENTS.md: each library in one module)."
+          },
+          {
+            "group": ["xss", "xss/*"],
+            "message": "Only programs/sanitize.ts sanitizes (AGENTS.md: each library in one module)."
+          },
+          {
+            "group": ["@modelcontextprotocol/server", "@modelcontextprotocol/server/*"],
+            "message": "Only agents/mcp.ts serves MCP (AGENTS.md: each library in one module)."
+          },
+          {
+            "group": ["lucide", "lucide/*"],
+            "message": "Icons come from components/icons.tsx (AGENTS.md: each library in one module)."
+          }
         ]
       }
     ],
@@ -86,5 +108,188 @@
     "unicorn/no-array-sort": "off",
     "unicorn/no-array-reverse": "off",
     "react/react-in-jsx-scope": "off"
-  }
+  },
+  // Each library is allowed in its own files, and only there.
+  "overrides": [
+    {
+      "files": ["server/platform/db.ts", "test/database.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "importNames": ["useMemo", "useCallback", "memo"],
+                "message": "React Compiler memoizes automatically.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["nodemailer", "nodemailer/*"],
+                "message": "Only reminders/mailer.ts sends email (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["xss", "xss/*"],
+                "message": "Only programs/sanitize.ts sanitizes (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["@modelcontextprotocol/server", "@modelcontextprotocol/server/*"],
+                "message": "Only agents/mcp.ts serves MCP (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["lucide", "lucide/*"],
+                "message": "Icons come from components/icons.tsx (AGENTS.md: each library in one module)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["server/modules/reminders/mailer.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "importNames": ["useMemo", "useCallback", "memo"],
+                "message": "React Compiler memoizes automatically.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["pg", "pg/*"],
+                "message": "Only server/platform/db.ts uses pg (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["xss", "xss/*"],
+                "message": "Only programs/sanitize.ts sanitizes (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["@modelcontextprotocol/server", "@modelcontextprotocol/server/*"],
+                "message": "Only agents/mcp.ts serves MCP (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["lucide", "lucide/*"],
+                "message": "Icons come from components/icons.tsx (AGENTS.md: each library in one module)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["server/modules/programs/sanitize.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "importNames": ["useMemo", "useCallback", "memo"],
+                "message": "React Compiler memoizes automatically.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["pg", "pg/*"],
+                "message": "Only server/platform/db.ts uses pg (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["nodemailer", "nodemailer/*"],
+                "message": "Only reminders/mailer.ts sends email (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["@modelcontextprotocol/server", "@modelcontextprotocol/server/*"],
+                "message": "Only agents/mcp.ts serves MCP (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["lucide", "lucide/*"],
+                "message": "Icons come from components/icons.tsx (AGENTS.md: each library in one module)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["server/modules/agents/mcp.ts"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "importNames": ["useMemo", "useCallback", "memo"],
+                "message": "React Compiler memoizes automatically.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["pg", "pg/*"],
+                "message": "Only server/platform/db.ts uses pg (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["nodemailer", "nodemailer/*"],
+                "message": "Only reminders/mailer.ts sends email (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["xss", "xss/*"],
+                "message": "Only programs/sanitize.ts sanitizes (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["lucide", "lucide/*"],
+                "message": "Icons come from components/icons.tsx (AGENTS.md: each library in one module)."
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "files": ["app/components/icons.tsx"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "paths": [
+              {
+                "name": "react",
+                "importNames": ["useMemo", "useCallback", "memo"],
+                "message": "React Compiler memoizes automatically.",
+                "allowTypeImports": true
+              }
+            ],
+            "patterns": [
+              {
+                "group": ["pg", "pg/*"],
+                "message": "Only server/platform/db.ts uses pg (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["nodemailer", "nodemailer/*"],
+                "message": "Only reminders/mailer.ts sends email (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["xss", "xss/*"],
+                "message": "Only programs/sanitize.ts sanitizes (AGENTS.md: each library in one module)."
+              },
+              {
+                "group": ["@modelcontextprotocol/server", "@modelcontextprotocol/server/*"],
+                "message": "Only agents/mcp.ts serves MCP (AGENTS.md: each library in one module)."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

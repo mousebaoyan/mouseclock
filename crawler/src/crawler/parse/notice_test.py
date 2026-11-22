@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from crawler.parse import ParseError
 from crawler.parse.notice import AttachmentLink, parse_notice
 
 FIXTURES = Path(__file__).parent / "fixtures" / "notice"
@@ -105,8 +106,42 @@ def test_links_keep_where_their_words_are_and_resolve_against_the_final_address(
     ]
 
 
+def test_links_too_broken_to_read_are_skipped_and_the_rest_kept() -> None:
+    page = (
+        '<div class="v_news_content"><p><a href="http://[broken">坏链接</a>'
+        '<a href="/files/b.pdf">简章.pdf</a></p><img src="http://[broken.png">'
+        "<script>var appLinkStr='http://[broken|/files/c.doc';"
+        "var appDescStr='坏附件|报名表.doc';</script></div>"
+    )
+    notice = parse_notice(page.encode(), URL, None)
+    assert notice.attachments == [
+        AttachmentLink("简章.pdf", "https://example.edu.cn/files/b.pdf"),
+        AttachmentLink("报名表.doc", "https://example.edu.cn/files/c.doc"),
+    ]
+    assert [link.href for link in notice.hyperlinks] == ["https://example.edu.cn/files/b.pdf"]
+
+
+@pytest.mark.parametrize(
+    ("base", "link", "resolved"),
+    [
+        ("http://[broken", "/files/a.pdf", "https://example.edu.cn/files/a.pdf"),
+        ("https://example.edu.cn/b/", "a.pdf", "https://example.edu.cn/b/a.pdf"),
+    ],
+)
+def test_a_broken_link_against_the_pages_base_spoils_only_itself(
+    base: str, link: str, resolved: str
+) -> None:
+    page = (
+        f'<base href="{base}"><div class="v_news_content"><p>示例'
+        f'<a href="http://[broken">坏链接</a><a href="{link}">简章.pdf</a></p></div>'
+    )
+    notice = parse_notice(page.encode(), URL, None)
+    assert notice.text == "示例坏链接简章.pdf"
+    assert notice.attachments == [AttachmentLink("简章.pdf", resolved)]
+
+
 def test_a_page_no_template_knows_is_not_guessed_at() -> None:
-    with pytest.raises(ValueError, match="认不出正文"):
+    with pytest.raises(ParseError, match="认不出正文"):
         parse_notice("<nav>导航</nav><div>自编的正文</div>".encode(), URL, None)
 
 

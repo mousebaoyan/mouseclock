@@ -53,9 +53,14 @@ export function deadlineDay(value: TimeValue) {
 export const PARTS = { early: "上旬", mid: "中旬", late: "下旬" };
 export const MARKS = { before: "前", about: "前后" };
 
+// The calendar day in Beijing, as YYYY-MM-DD.
+export function beijingDay(now: Date) {
+  return new Date(now.getTime() + 8 * 3600_000).toISOString().slice(0, 10);
+}
+
 // The year in Beijing, for formatTime.
 export function beijingYear(now: Date) {
-  return new Date(now.getTime() + 8 * 3600_000).getUTCFullYear();
+  return Number(beijingDay(now).slice(0, 4));
 }
 
 function yearMonth(year: number, month: number, thisYear: number) {

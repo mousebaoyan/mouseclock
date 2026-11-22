@@ -1,4 +1,5 @@
 import { z } from "@hono/zod-openapi";
+import { VIAS } from "../../platform/access.ts";
 import { Int, named, Page, PageParams, UnixSeconds } from "../../platform/http.ts";
 import {
   ApplyUrl,
@@ -16,6 +17,9 @@ import {
   TimeValue,
   StoredValue,
 } from "../programs/schemas.ts";
+
+const DisputeResult = z.enum(["corrected", "confirmed"]);
+export type DisputeResult = z.infer<typeof DisputeResult>;
 
 // What a program has besides its fields, which people can change too.
 export const ProgramColumns = z.object({
@@ -78,7 +82,7 @@ export const Edit = z
     reason: z.string().nullable().openapi({ description: "撤销的为空" }),
     basis: z.string().nullable().openapi({ description: "撤销的为空" }),
     user: z.object({ id: Int, display_name: z.string() }),
-    via: z.enum(["web", "agent"]),
+    via: z.enum(VIAS),
     reverts_id: Int.nullable().openapi({ description: "撤销的是哪一次" }),
     feedback_id: Int.nullable().openapi({ description: "照哪条修改申请改的" }),
     reverted: z.boolean().openapi({ description: "这一次被撤销过" }),
@@ -95,7 +99,7 @@ export const ProgramHistory = ProgramEdits.extend({
       z.object({
         by: z.object({ id: Int, display_name: z.string() }),
         at: UnixSeconds,
-        result: z.enum(["corrected", "confirmed"]),
+        result: DisputeResult,
         note: z.string(),
       }),
     )
@@ -195,19 +199,22 @@ export const FeedbackInput = z
 export type FeedbackInput = z.output<typeof FeedbackInput>;
 
 export const FEEDBACK_STATUSES = ["pending", "accepted", "rejected", "withdrawn"] as const;
+export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
+const FeedbackKind = z.enum(["problem", "edit"]);
+export type FeedbackKind = z.infer<typeof FeedbackKind>;
 
 export const Feedback = z
   .object({
     id: Int,
     program: z.object({ id: Int, name: z.string(), school: z.string(), college: z.string() }),
-    kind: z.enum(["problem", "edit"]),
+    kind: FeedbackKind,
     field: z.string().nullable(),
     old_value: StoredValue.nullable().openapi({ description: "提的时候这一处的值" }),
     proposed_value: StoredValue.nullable().openapi({ description: "修改申请改成什么，为空是清空" }),
     reason: z.string(),
     basis: z.string().nullable(),
     status: z.enum(FEEDBACK_STATUSES),
-    via: z.enum(["web", "agent"]),
+    via: z.enum(VIAS),
     user: z.object({ id: Int, display_name: z.string() }),
     created_at: UnixSeconds,
     review: z
@@ -236,7 +243,7 @@ export const FeedbackReview = z.strictObject({
 
 export const DisputeResolution = z
   .strictObject({
-    result: z.enum(["corrected", "confirmed"]).openapi({ description: "改正了，还是确认没错" }),
+    result: DisputeResult.openapi({ description: "改正了，还是确认没错" }),
     note: z.string(named("说明")).trim().min(1).max(500),
   })
   .openapi("DisputeResolution");
