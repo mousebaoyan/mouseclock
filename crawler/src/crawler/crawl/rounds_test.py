@@ -7,18 +7,26 @@ import httpx
 
 from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import (
-    AttachmentInfo,
     ExtractedFields,
     ExtractedProgram,
     ExtractionContext,
     ListedItem,
     PendingNotice,
+    ReadAttachment,
     ScreeningResult,
+    UnreadAttachment,
     Usage,
     WorkSource,
 )
 from crawler.crawl.fetch import Fetcher, FetchError
-from crawler.crawl.rounds import Attachment, NoticePage, StepError, Steps, crawl_source
+from crawler.crawl.rounds import (
+    ATTACHMENT_FAILURES_LISTED,
+    Attachment,
+    NoticePage,
+    StepError,
+    Steps,
+    crawl_source,
+)
 from crawler.crawl.website import Website
 from crawler.extraction.chat import Chat
 from crawler.extraction.chat_test import completion
@@ -115,7 +123,7 @@ async def screen(
 def page(text: str, files: int = 0) -> NoticePage:
     attachments = [
         Attachment(
-            AttachmentInfo(
+            ReadAttachment(
                 name=f"{n}.pdf",
                 url=f"http://a/{n}.pdf",
                 content_type="pdf",
@@ -163,12 +171,12 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     )
 
     behind_captcha = Attachment(
-        AttachmentInfo(
+        UnreadAttachment(
             name="表.doc",
             url="http://a/表.doc",
             content_type="doc",
-            text="",
-            read_from_pictures=False,
+            failure="download_failed",
+            detail="返回的是网页",
         ),
         None,
     )
@@ -207,8 +215,14 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         "text": "表",
         "read_from_pictures": False,
     }
-    # The one behind a captcha is listed, and there is no file to send.
-    assert snapshot["attachments"][1]["url"] == "http://a/表.doc"
+    # The one behind a captcha is listed with why, and there is no file to send.
+    assert snapshot["attachments"][1] == {
+        "name": "表.doc",
+        "url": "http://a/表.doc",
+        "content_type": "doc",
+        "failure": "download_failed",
+        "detail": "返回的是网页",
+    }
     assert site.called("PUT /snapshots/10/attachments/0") == [b"%PDF"]
     # The website gets the programs as the second model's check left them.
     [extraction] = site.called("POST /snapshots/10/extraction")
@@ -222,6 +236,15 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
         "new_count": 2,
         "useful_count": 1,
         "notice_failures": [],
+        "attachment_failures": [
+            {
+                "notice_url": "http://a/1.htm",
+                "url": "http://a/表.doc",
+                "failure": "download_failed",
+                "detail": "返回的是网页",
+            }
+        ],
+        "attachment_failure_count": 1,
         "usage": [
             {
                 "purpose": "extraction",
@@ -231,6 +254,36 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
             }
         ],
     }
+
+
+def test_a_round_lists_the_first_attachments_not_read_and_counts_them_all() -> None:
+    notices = [3, 5, 6]
+    site = FakeWebsite([pending(n, "fetch") for n in notices], extracted=frozenset(notices))
+    unread = [
+        Attachment(
+            UnreadAttachment(
+                name=f"{n}.pdf", url=f"http://a/{n}.pdf", content_type="pdf", failure="too_large"
+            ),
+            None,
+        )
+        for n in range(34)
+    ]
+
+    async def read(
+        _pages: PageSession, _source: WorkSource, _url: str, _usage: list[Usage]
+    ) -> NoticePage | None:
+        return NoticePage(html="", text="通知", hyperlinks=(), attachments=unread)
+
+    site.run(Steps(list_items, screen, read, extract, check))
+
+    [run] = site.called("POST /runs")
+    assert len(run["attachment_failures"]) == ATTACHMENT_FAILURES_LISTED
+    assert run["attachment_failures"][0] == {
+        "notice_url": "http://a/3.htm",
+        "url": "http://a/0.pdf",
+        "failure": "too_large",
+    }
+    assert run["attachment_failure_count"] == 3 * 34
 
 
 def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> None:
@@ -287,7 +340,7 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
     # Reading the picture went before the extraction and the check after, and their usage goes
     # with it.
     picture = Attachment(
-        AttachmentInfo(
+        ReadAttachment(
             name="日程.png",
             url="http://a/日程.png",
             content_type="image/png",

@@ -1,6 +1,14 @@
 import { z } from "@hono/zod-openapi";
 import { Int, Url } from "../../platform/http.ts";
-import { Cohort, Evidence, ExtractedFields, Kind, ProgramName, Role } from "../programs/schemas.ts";
+import {
+  AttachmentFailureKind,
+  Cohort,
+  Evidence,
+  ExtractedFields,
+  Kind,
+  ProgramName,
+  Role,
+} from "../programs/schemas.ts";
 import { Failure } from "../sources/schemas.ts";
 
 export const MB = 1024 * 1024;
@@ -51,15 +59,36 @@ export const ExtractedProgram = z
   .openapi("ExtractedProgram");
 export type ExtractedProgram = z.infer<typeof ExtractedProgram>;
 
+const attachment = {
+  name: z.string().min(1).max(500),
+  url: Url,
+  content_type: z.string().min(1).max(200),
+};
 export const AttachmentInfo = z
-  .strictObject({
-    name: z.string().min(1).max(500),
-    url: Url,
-    content_type: z.string().min(1).max(200),
-    text: z.string().max(2 * MB),
-    read_from_pictures: z.boolean().openapi({
-      description: "文字里有 LLM 从图片或扫描页读出来的部分",
-    }),
-  })
+  .union([
+    z
+      .strictObject({
+        ...attachment,
+        text: z.string().max(2 * MB),
+        read_from_pictures: z.boolean().openapi({
+          description: "文字里有 LLM 从图片或扫描页读出来的部分",
+        }),
+      })
+      .openapi("ReadAttachment"),
+    z
+      .strictObject({ ...attachment, failure: AttachmentFailureKind, detail: Detail.optional() })
+      .openapi("UnreadAttachment"),
+  ])
   .openapi("AttachmentInfo");
 export type AttachmentInfo = z.infer<typeof AttachmentInfo>;
+
+// An attachment a round couldn't read, on the notice it is in.
+export const AttachmentFailure = z
+  .strictObject({
+    notice_url: Url,
+    url: Url,
+    failure: AttachmentFailureKind,
+    detail: Detail.optional(),
+  })
+  .openapi("AttachmentFailure");
+export type AttachmentFailure = z.infer<typeof AttachmentFailure>;

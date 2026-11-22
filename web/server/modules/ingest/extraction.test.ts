@@ -443,6 +443,51 @@ test("a second model's word that a call has no deadline, or that a program is ne
   expect([...(await reviewOf(snap)), ...(await reviewOf(second))]).toEqual([]);
 });
 
+test("a call is asked for its deadline when an attachment wasn't read, which the review says", async () => {
+  const { cs, notice } = await setUp("g3.edu.cn");
+  const res = await api.notices[":id"].snapshot.$post(
+    {
+      param: { id: String(notice) },
+      json: {
+        fetched_at: 1780000000,
+        html: "",
+        text: `${BODY}\n报名办法见附件`,
+        attachments: [
+          {
+            name: "招生简章.pdf",
+            url: "https://x.edu.cn/j.pdf",
+            content_type: "application/pdf",
+            failure: "download_failed",
+            detail: "HTTP 403",
+          },
+        ],
+      },
+    },
+    crawler,
+  );
+  if (res.status !== 200) throw new Error(`status ${res.status}`);
+  const { snapshot_id: snap } = await res.json();
+  // The second model didn't see the attachment either.
+  await extract(snap, [{ college_id: cs, fields: {}, checked: ["no_deadline"] }]);
+  const [program] = await programsOf(cs);
+  expect(await reviewOf(snap)).toEqual([
+    { reason: "no_deadline", key: null, program_id: program.id },
+  ]);
+  const listed = await v1["review-items"].$get({ query: { reason: "no_deadline" } }, editor);
+  expect(listed.status).toBe(200);
+  if (listed.status !== 200) return;
+  expect((await listed.json()).items).toMatchObject([
+    {
+      notice: {
+        snapshot_id: snap,
+        unread_attachments: [
+          { name: "招生简章.pdf", failure: "download_failed", detail: "HTTP 403" },
+        ],
+      },
+    },
+  ]);
+});
+
 test("a later notice changes the parts it states, adds dates by label, and keeps a person's edits", async () => {
   const { cs, notice, snapshot: first } = await setUp("c.edu.cn");
   await extract(first, [

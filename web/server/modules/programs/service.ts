@@ -357,7 +357,9 @@ function attachmentsOf(snapshot: string) {
       'position', a.position,
       'name', a.name,
       'content_type', a.content_type,
-      'size', octet_length(a.data)
+      'size', octet_length(a.data),
+      'failure', a.failure,
+      'detail', a.detail
     ) order by a.position), '[]')
     from attachments as a
     where a.snapshot_id = ${sql.ref(snapshot)}

@@ -40,7 +40,12 @@ async function source(name: string) {
 async function run(
   sourceId: number,
   time: string,
-  outcome: { failure?: "http_status"; notice_failures?: number } = {},
+  outcome: {
+    failure?: "http_status";
+    notice_failures?: number;
+    attachment_failures?: number;
+    attachment_failure_count?: number;
+  } = {},
 ) {
   await db
     .insertInto("crawl_runs")
@@ -57,6 +62,15 @@ async function run(
         Array.from({ length: outcome.notice_failures ?? 0 }, (_, i) => ({
           url: `https://x.edu.cn/${i}.htm`,
           failure: "timeout",
+        })),
+      ),
+      attachment_failure_count: outcome.attachment_failure_count ?? 0,
+      attachment_failures: JSON.stringify(
+        Array.from({ length: outcome.attachment_failures ?? 0 }, (_, i) => ({
+          notice_url: "https://x.edu.cn/1.htm",
+          url: `https://x.edu.cn/${i}.pdf`,
+          failure: "download_failed",
+          detail: "HTTP 403",
         })),
       ),
     })
@@ -95,7 +109,12 @@ test("a day lists the sources crawled on it, those failing or gone quiet first",
   await noticeFirstSeen(failing, "2026-07-01T10:00:00");
   await run(quiet, "2026-07-10T08:00:00");
   await noticeFirstSeen(quiet, "2026-06-01T10:00:00");
-  await run(fine, "2026-07-10T08:00:00", { notice_failures: 25 });
+  // The crawler lists the first attachments not read and counts them all.
+  await run(fine, "2026-07-10T08:00:00", {
+    notice_failures: 25,
+    attachment_failures: 21,
+    attachment_failure_count: 300,
+  });
   await run(fine, "2026-07-10T12:00:00");
   await noticeFirstSeen(fine, "2026-07-10T08:01:00");
   await run(later, "2026-07-11T08:00:00");
@@ -168,6 +187,15 @@ test("a day lists the sources crawled on it, those failing or gone quiet first",
   const [first, second] = result.items[2].runs;
   expect(first.notice_failures).toHaveLength(20);
   expect(first.notice_failure_count).toBe(25);
+  expect(first.attachment_failures).toHaveLength(20);
+  expect(first.attachment_failures[0]).toEqual({
+    notice_url: "https://x.edu.cn/1.htm",
+    url: "https://x.edu.cn/0.pdf",
+    failure: "download_failed",
+    detail: "HTTP 403",
+  });
+  expect(first.attachment_failure_count).toBe(300);
+  expect(second.attachment_failure_count).toBe(0);
   expect(second.started_at).toBe(at("2026-07-10T12:00:00").getTime() / 1000);
   expect(result.items[2].usage).toEqual({ input_tokens: 3300, output_tokens: 403 });
   expect(result.items[0].runs).toHaveLength(1);

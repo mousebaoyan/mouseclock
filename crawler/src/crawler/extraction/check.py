@@ -31,6 +31,7 @@ from crawler.crawl.contract import (
     Materials,
     ProgramCandidate,
     Quota,
+    ReadAttachment,
     Requirements,
     TimeValue,
     Usage,
@@ -293,7 +294,9 @@ def _pictures(evidence: list[Evidence], page: NoticePage) -> set[int]:
     return {
         e.attachment
         for e in evidence
-        if e.attachment is not None and page.attachments[e.attachment].info.read_from_pictures
+        if e.attachment is not None
+        and isinstance(info := page.attachments[e.attachment].info, ReadAttachment)
+        and info.read_from_pictures
     }
 
 

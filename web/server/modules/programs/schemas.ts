@@ -350,12 +350,28 @@ export const ProgramDetail = z
   })
   .openapi("ProgramDetail");
 
+// Why an attachment's words aren't in the snapshot (design §7.4).
+export const AttachmentFailureKind = z
+  .enum(["download_failed", "too_large", "unreadable"])
+  .openapi("AttachmentFailureKind", {
+    description:
+      "download_failed：没下载成，比如超时、HTTP 403、返回的是网页；too_large：超过 10MB；unreadable：文件读不出来，文件照样上传",
+  });
+export type AttachmentFailureKind = z.infer<typeof AttachmentFailureKind>;
+
 export const Attachment = z
   .object({
     position: Int,
     name: z.string(),
     content_type: z.string(),
-    size: Int.nullable().openapi({ description: "字节数；为空是抓取节点还没传上文件" }),
+    size: Int.nullable().openapi({
+      description: "字节数；为空是没下载成，或者抓取节点还没传上文件",
+    }),
+    failure: z.union([AttachmentFailureKind, z.null()]).openapi({
+      description:
+        "没读成的原因；为空是没记下没读成：读成了（可能本来就没有文字），或者是记下原因以前存的",
+    }),
+    detail: z.string().openapi({ description: "具体原因，比如 HTTP 403" }),
   })
   .openapi("Attachment");
 export type Attachment = z.infer<typeof Attachment>;

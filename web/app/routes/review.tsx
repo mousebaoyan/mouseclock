@@ -2,6 +2,7 @@ import type { InferResponseType } from "hono/client";
 import { useState, type ReactNode } from "react";
 import { data, Link } from "react-router";
 import { cn } from "~/cn";
+import { attachmentFailureText } from "~/components/crawl";
 import { FormMessage } from "~/components/form";
 import { ExternalLink } from "~/components/icons";
 import { Empty, Page } from "~/components/page";
@@ -335,6 +336,14 @@ function Card({ item, reason, thisYear }: { item: Item; reason: Reason; thisYear
             <ExternalLink className="size-3" />
           </a>
         </p>
+        {item.notice.unread_attachments.length > 0 && (
+          <p className="text-[13px] text-warning">
+            以下附件未能读取，请核对原文中的附件：
+            {item.notice.unread_attachments
+              .map((a) => `${a.name} ${attachmentFailureText(a.failure, a.detail)}`)
+              .join("；")}
+          </p>
+        )}
       </header>
       {decision && <Deciding decision={decision} undo={undo} />}
       {/* Hidden rather than gone, so taking a decision back keeps what was picked. */}

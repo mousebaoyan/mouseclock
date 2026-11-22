@@ -2,6 +2,7 @@ import { testClient } from "hono/testing";
 import { beforeAll, expect, test } from "vitest";
 import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
+import type { AttachmentFailureKind } from "../programs/schemas.ts";
 import { createCrawlerToken, takeWork } from "./service.ts";
 
 const api = testClient(app).api.v1.crawler;
@@ -266,6 +267,125 @@ test("the same words make no new snapshot, changed attachment text or its readin
   expect(changed.snapshot_id).not.toBe(first.snapshot_id);
   // The same words, read from a scan this time.
   expect((await snapshot(noticeId, "新表", true)).snapshot_id).not.toBe(changed.snapshot_id);
+});
+
+async function stored(snapshotId: number) {
+  return db
+    .selectFrom("attachments")
+    .select(["text", "read_from_pictures", "failure", "detail", "data"])
+    .where("snapshot_id", "=", snapshotId)
+    .execute();
+}
+
+test("an attachment not read says why, and a snapshot is new when that changes", async () => {
+  const source = await newSource("c2.edu.cn");
+  const { pending } = await list(source.id, [
+    { url: "https://c2.edu.cn/1.htm", title: "推免通知" },
+  ]);
+  const noticeId = pending[0].id;
+  type Outcome =
+    | { text: string; read_from_pictures: boolean }
+    | { failure: AttachmentFailureKind; detail?: string };
+  const pdf = (file: string, outcome: Outcome) => ({
+    name: `${file}.pdf`,
+    url: `https://c2.edu.cn/${file}.pdf`,
+    content_type: "application/pdf",
+    ...outcome,
+  });
+  const post = async (...attachments: ReturnType<typeof pdf>[]) => {
+    const res = await api.notices[":id"].snapshot.$post(
+      {
+        param: { id: String(noticeId) },
+        json: { fetched_at: 1780000000, html: "<p>正文</p>", text: "正文", attachments },
+      },
+      crawler,
+    );
+    if (res.status !== 200) throw new Error(`status ${res.status}`);
+    return res.json();
+  };
+
+  const forbidden = await post(pdf("j", { failure: "download_failed", detail: "HTTP 403" }));
+  expect(await stored(forbidden.snapshot_id)).toEqual([
+    {
+      text: "",
+      read_from_pictures: false,
+      failure: "download_failed",
+      detail: "HTTP 403",
+      data: null,
+    },
+  ]);
+  // Why it failed this time doesn't change what the snapshot has.
+  expect(await post(pdf("j", { failure: "download_failed", detail: "请求超时" }))).toEqual(
+    forbidden,
+  );
+  const broken = await post(pdf("j", { failure: "unreadable", detail: "PdfReadError" }));
+  expect(broken.snapshot_id).not.toBe(forbidden.snapshot_id);
+  // The broken file is kept, for people to open themselves.
+  expect(broken.missing_files).toEqual([0]);
+  const read = await post(pdf("j", { text: "", read_from_pictures: false }));
+  expect(read.snapshot_id).not.toBe(broken.snapshot_id);
+  expect(await stored(read.snapshot_id)).toMatchObject([{ failure: null, detail: "" }]);
+
+  // Another file failing alike, or the same ones in another order, is another snapshot: the file
+  // uploaded for a position goes with its address.
+  const other = await post(pdf("k", { text: "", read_from_pictures: false }));
+  expect(other.snapshot_id).not.toBe(read.snapshot_id);
+  const unread = { failure: "too_large" as const };
+  const both = await post(pdf("j", unread), pdf("k", unread));
+  const swapped = await post(pdf("k", unread), pdf("j", unread));
+  expect(swapped.snapshot_id).not.toBe(both.snapshot_id);
+});
+
+test("a round's attachments not read are kept with it, none when it lists none", async () => {
+  const source = await newSource("c3.edu.cn");
+  const now = Math.floor(Date.now() / 1000);
+  const run = {
+    source_id: source.id,
+    finished_at: now,
+    listed: 1,
+    new_count: 1,
+    useful_count: 0,
+    notice_failures: [],
+    usage: [],
+  };
+  const failure = {
+    notice_url: "https://c3.edu.cn/1.htm",
+    url: "https://c3.edu.cn/j.pdf",
+    failure: "too_large" as const,
+  };
+  const reported = [
+    { ...run, started_at: now - 120, attachment_failures: [failure], attachment_failure_count: 1 },
+    { ...run, started_at: now - 60 },
+    // Thousands, of which the first are listed.
+    {
+      ...run,
+      started_at: now,
+      attachment_failures: Array.from({ length: 100 }, () => failure),
+      attachment_failure_count: 27_500,
+    },
+  ];
+  for (const json of reported) expect((await api.runs.$post({ json }, crawler)).status).toBe(204);
+  // A count short of the ones listed would hide them on the dashboard.
+  for (const attachment_failure_count of [undefined, 0]) {
+    const json = {
+      ...run,
+      started_at: now + 60,
+      attachment_failures: [failure],
+      attachment_failure_count,
+    };
+    expect((await api.runs.$post({ json }, crawler)).status).toBe(400);
+  }
+  const rows = await db
+    .selectFrom("crawl_runs")
+    .select(["attachment_failures", "attachment_failure_count"])
+    .where("source_id", "=", source.id)
+    .orderBy("started_at")
+    .execute();
+  expect(rows.map((row) => [row.attachment_failures, row.attachment_failure_count])).toEqual([
+    [[failure], 1],
+    [[], 0],
+    [Array.from({ length: 100 }, () => failure), 27_500],
+  ]);
 });
 
 test("a notice of a program still open comes back to be fetched once a day", async () => {

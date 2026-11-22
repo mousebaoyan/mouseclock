@@ -8,10 +8,10 @@ import pytest
 from PIL import Image
 
 from crawler.crawl.contract import (
-    AttachmentInfo,
     ExtractedFields,
     ExtractedProgram,
     ExtractionContext,
+    ReadAttachment,
     Usage,
 )
 from crawler.crawl.rounds import Attachment, NoticePage
@@ -67,7 +67,7 @@ def poster(text: str) -> Attachment:
     """A picture whose words the first reading made out as the text."""
     buffer = io.BytesIO()
     Image.new("RGB", (40, 20), "white").save(buffer, "PNG")
-    info = AttachmentInfo(
+    info = ReadAttachment(
         name="海报.png",
         url="http://a/p.png",
         content_type="image/png",

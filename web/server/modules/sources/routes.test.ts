@@ -253,6 +253,8 @@ test("admins maintain schools, colleges and sources with before/after audit reco
     new_count: 0,
     useful_count: 0,
     notice_failures: [],
+    attachment_failures: [],
+    attachment_failure_count: 0,
     usage: [],
   });
   // Inserted later but finished earlier: latest means finished_at, not row ID.
@@ -264,6 +266,8 @@ test("admins maintain schools, colleges and sources with before/after audit reco
     new_count: 2,
     useful_count: 1,
     notice_failures: [],
+    attachment_failures: [],
+    attachment_failure_count: 0,
     usage: [],
   });
   const listRes = await api.admin.sources.$get({ query: { q: "测试大学" } }, admin);

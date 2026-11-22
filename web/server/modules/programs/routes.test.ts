@@ -565,7 +565,9 @@ test("versions list their notices, what each changed and the attachments", async
         content_type: "application/pdf",
         text: "",
         read_from_pictures: false,
-        data: position === 0 ? Buffer.from("%PDF") : null,
+        ...(position === 0
+          ? { data: Buffer.from("%PDF") }
+          : { failure: "download_failed", detail: "HTTP 403" }),
       })),
     )
     .execute();
@@ -586,8 +588,22 @@ test("versions list their notices, what each changed and the attachments", async
       },
       snapshot: { id: snapshot, fetched_at: now.getTime() / 1000 },
       attachments: [
-        { position: 0, name: "附件0.pdf", content_type: "application/pdf", size: 4 },
-        { position: 1, name: "附件1.pdf", content_type: "application/pdf", size: null },
+        {
+          position: 0,
+          name: "附件0.pdf",
+          content_type: "application/pdf",
+          size: 4,
+          failure: null,
+          detail: "",
+        },
+        {
+          position: 1,
+          name: "附件1.pdf",
+          content_type: "application/pdf",
+          size: null,
+          failure: "download_failed",
+          detail: "HTTP 403",
+        },
       ],
     },
     expect.objectContaining({ number: 1, role: "call", attachments: [] }),

@@ -95,6 +95,12 @@ def test_files_with_no_words_to_read_give_none() -> None:
     with zipfile.ZipFile(archive, "w") as files:
         files.writestr("说明.txt", "自编的说明")
     assert file_parts(archive.getvalue()) == []
+    empty = io.BytesIO()
+    with zipfile.ZipFile(empty, "w"):
+        pass
+    assert file_parts(empty.getvalue()) == []
+    assert file_parts(b"Rar!\x1a\x07\x01\x00") == []
+    assert file_parts(b"7z\xbc\xaf\x27\x1c\x00\x04") == []
 
 
 def test_a_mistake_in_our_own_reading_is_not_taken_for_a_broken_file(
@@ -110,3 +116,7 @@ def test_a_broken_file_is_an_error() -> None:
         file_parts(b"PK\x03\x04" + b"\x00" * 30)
     with pytest.raises(ParseError, match="UnidentifiedImageError"):
         file_parts(b"\x89PNG\r\n\x1a\n")
+    # What a site sends in place of the file, or a file cut short of its header.
+    for data in (b"Access denied", b"PK"):
+        with pytest.raises(ParseError, match="认不出文件格式"):
+            file_parts(data)

@@ -7,6 +7,7 @@ from crawler.crawl.contract import (
     ExtractedProgram,
     ExtractionContext,
     ProgramCandidate,
+    ReadAttachment,
     UnresolvedDate,
     Usage,
 )
@@ -73,7 +74,10 @@ def prepare(
 ) -> tuple[dict[str, JsonValue], NoticeIndex]:
     index = index_documents(
         [Document(page.text, hyperlinks=page.hyperlinks)]
-        + [Document(a.info.text, attachment=i) for i, a in enumerate(page.attachments)],
+        + [
+            Document(a.info.text if isinstance(a.info, ReadAttachment) else "", attachment=i)
+            for i, a in enumerate(page.attachments)
+        ],
         published_on=context.published_on,
     )
     shared = context.model_copy(
