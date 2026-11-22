@@ -14,7 +14,15 @@ import {
 } from "../../platform/http.ts";
 import { ApplyValue, IsoDate, Kind } from "../programs/schemas.ts";
 import { Failure, ListedItem } from "../sources/schemas.ts";
-import { AttachmentInfo, Detail, ExtractedProgram, MB, NoticeFailure, Usage } from "./schemas.ts";
+import {
+  AttachmentFailure,
+  AttachmentInfo,
+  Detail,
+  ExtractedProgram,
+  MB,
+  NoticeFailure,
+  Usage,
+} from "./schemas.ts";
 import {
   crawlerTokenId,
   markRemoved,
@@ -363,6 +371,14 @@ export const ingestRoutes = router
                   new_count: Int.min(0),
                   useful_count: Int.min(0).openapi({ description: "新通知里抽取出项目的" }),
                   notice_failures: z.array(NoticeFailure).max(5000),
+                  attachment_failures: z
+                    .array(AttachmentFailure)
+                    .max(100)
+                    .default([])
+                    .openapi({ description: "抓到的通知里没读成的附件，最多列前 100 个" }),
+                  attachment_failure_count: Int.min(0)
+                    .default(0)
+                    .openapi({ description: "抓到的通知里没读成的附件一共几个" }),
                   usage: z
                     .array(
                       Usage.extend({ purpose: z.enum(PURPOSES).exclude(["probe"]) }).openapi(
@@ -375,6 +391,10 @@ export const ingestRoutes = router
                         "没随初筛或抽取交上来的模型调用：中途失败的，读了图片却不用再抽取的",
                     }),
                 })
+                .refine(
+                  (run) => run.attachment_failure_count >= run.attachment_failures.length,
+                  "没读成的附件总数不能少于列出的个数",
+                )
                 .openapi("Run"),
             },
           },

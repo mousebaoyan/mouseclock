@@ -1,4 +1,6 @@
 import type { InferResponseType } from "hono/client";
+import { cn } from "~/cn";
+import { attachmentFailureText } from "~/components/crawl";
 import { ExternalLink } from "~/components/icons";
 import { Page, Panel } from "~/components/page";
 import { DateTime } from "~/components/time";
@@ -66,24 +68,28 @@ export default function SnapshotPage({ loaderData }: Route.ComponentProps) {
                 {snapshot.attachments.map((attachment) => (
                   <li key={attachment.position} className="px-4 py-2.5">
                     {attachment.size === null ? (
-                      <>
-                        {attachment.name}
-                        <span className="block text-xs text-muted-foreground">文件尚未保存</span>
-                      </>
+                      attachment.name
                     ) : (
-                      <>
-                        <a
-                          href={`/api/v1/snapshots/${snapshot.id}/attachments/${attachment.position}`}
-                          download
-                          className="link break-all"
-                        >
-                          {attachment.name}
-                        </a>
-                        <span className="block text-xs text-muted-foreground">
-                          {size(attachment.size)}
-                        </span>
-                      </>
+                      <a
+                        href={`/api/v1/snapshots/${snapshot.id}/attachments/${attachment.position}`}
+                        download
+                        className="link break-all"
+                      >
+                        {attachment.name}
+                      </a>
                     )}
+                    <span
+                      className={cn(
+                        "block text-xs",
+                        attachment.failure ? "text-warning" : "text-muted-foreground",
+                      )}
+                    >
+                      {attachment.failure
+                        ? `${attachmentFailureText(attachment.failure, attachment.detail)}，文字未收入快照`
+                        : attachment.size === null
+                          ? "文件尚未保存"
+                          : size(attachment.size)}
+                    </span>
                   </li>
                 ))}
               </ul>

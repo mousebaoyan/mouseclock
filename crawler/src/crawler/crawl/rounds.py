@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import (
+    AttachmentFailure,
     AttachmentInfo,
     ExtractedProgram,
     Extraction,
@@ -23,6 +24,7 @@ from crawler.crawl.contract import (
     Screening,
     ScreeningResult,
     Snapshot,
+    UnreadAttachment,
     Usage,
     WorkSource,
 )
@@ -32,6 +34,9 @@ from crawler.log import crawl_round
 from crawler.parse.indexing import Hyperlink
 
 logger = logging.getLogger(__name__)
+# A round can fail on thousands of attachments, mostly for one reason; the website keeps how many
+# and the first ones (docs/api.md §6).
+ATTACHMENT_FAILURES_LISTED = 100
 
 
 class StepError(Exception):
@@ -130,6 +135,7 @@ async def crawl_source(
         new = [notice for notice in listing.pending if notice.step == "screen"]
         screened_in: set[int] = set()
         failures: list[NoticeFailure] = []
+        unread: list[AttachmentFailure] = []
         # What the calls that failed, or whose answers weren't needed, cost.
         unreported: list[RunUsage] = []
         if new:
@@ -157,7 +163,9 @@ async def crawl_source(
             # Reading pictures counts as extraction.
             usage = []
             try:
-                programs = await _fetch_notice(notice, source, pages, website, steps, clock, usage)
+                programs = await _fetch_notice(
+                    notice, source, pages, website, steps, clock, usage, unread
+                )
             # What the website refuses for one notice fails only that notice, and says why.
             except (FetchError, StepError, RefusedError) as error:
                 logger.warning("Fetching a notice failed: %s", error, extra={"url": notice.url})
@@ -178,6 +186,8 @@ async def crawl_source(
                 new_count=listing.new_count,
                 useful_count=useful,
                 notice_failures=failures,
+                attachment_failures=unread[:ATTACHMENT_FAILURES_LISTED],
+                attachment_failure_count=len(unread),
                 usage=unreported,
             )
         )
@@ -193,11 +203,19 @@ async def _fetch_notice(
     steps: Steps,
     clock: Callable[[], float],
     usage: list[Usage],
+    unread: list[AttachmentFailure],
 ) -> int | None:
     page = await steps.read(pages, source, notice.url, usage)
     if page is None:
         await website.removed(notice.id)
         return None
+    unread += [
+        AttachmentFailure(
+            notice_url=notice.url, url=a.info.url, failure=a.info.failure, detail=a.info.detail
+        )
+        for a in page.attachments
+        if isinstance(a.info, UnreadAttachment)
+    ]
     result = await website.snapshot(
         notice.id,
         Snapshot(

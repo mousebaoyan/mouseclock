@@ -106,7 +106,7 @@ class TimeToMonth(BaseModel):
     ] = None
 
 
-class AttachmentInfo(BaseModel):
+class ReadAttachment(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
@@ -117,6 +117,14 @@ class AttachmentInfo(BaseModel):
     read_from_pictures: Annotated[
         bool, Field(description="文字里有 LLM 从图片或扫描页读出来的部分")
     ]
+
+
+type AttachmentFailureKind = Annotated[
+    Literal["download_failed", "too_large", "unreadable"],
+    Field(
+        description="download_failed：没下载成，比如超时、HTTP 403、返回的是网页；too_large：超过 10MB；unreadable：文件读不出来，文件照样上传"
+    ),
+]
 
 
 type ValueItem = Annotated[str, Field(max_length=500, min_length=1)]
@@ -153,6 +161,18 @@ class NoticeFailure(BaseModel):
     )
     url: Annotated[str, Field(max_length=2000)]
     failure: Failure
+    detail: Annotated[str | None, Field(description="具体原因，比如 HTTP 403", max_length=1000)] = (
+        None
+    )
+
+
+class AttachmentFailure(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    notice_url: Annotated[str, Field(max_length=2000)]
+    url: Annotated[str, Field(max_length=2000)]
+    failure: AttachmentFailureKind
     detail: Annotated[str | None, Field(description="具体原因，比如 HTTP 403", max_length=1000)] = (
         None
     )
@@ -216,14 +236,17 @@ class Screening(BaseModel):
 type TimeValue = TimeToMinute | TimeToDay | TimeToMonth
 
 
-class Snapshot(BaseModel):
+class UnreadAttachment(BaseModel):
     model_config = ConfigDict(
         extra="forbid",
     )
-    fetched_at: Annotated[int, Field(ge=0, le=8640000000000)]
-    html: Annotated[str, Field(max_length=10485760)]
-    text: Annotated[str, Field(max_length=2097152)]
-    attachments: Annotated[list[AttachmentInfo], Field(max_length=50)]
+    name: Annotated[str, Field(max_length=500, min_length=1)]
+    url: Annotated[str, Field(max_length=2000)]
+    content_type: Annotated[str, Field(max_length=200, min_length=1)]
+    failure: AttachmentFailureKind
+    detail: Annotated[str | None, Field(description="具体原因，比如 HTTP 403", max_length=1000)] = (
+        None
+    )
 
 
 class ApplyUrl(BaseModel):
@@ -395,6 +418,17 @@ class Run(BaseModel):
     new_count: Annotated[int, Field(ge=0, le=2147483647)]
     useful_count: Annotated[int, Field(description="新通知里抽取出项目的", ge=0, le=2147483647)]
     notice_failures: Annotated[list[NoticeFailure], Field(max_length=5000)]
+    attachment_failures: Annotated[
+        list[AttachmentFailure] | None,
+        Field(
+            description="抓到的通知里没读成的附件，最多列前 100 个",
+            max_length=100,
+            validate_default=True,
+        ),
+    ] = []
+    attachment_failure_count: Annotated[
+        int | None, Field(description="抓到的通知里没读成的附件一共几个", ge=0, le=2147483647)
+    ] = 0
     usage: Annotated[
         list[RunUsage],
         Field(
@@ -416,6 +450,9 @@ class ApplyValue(BaseModel):
     start: TimeValue | None = None
     end: TimeValue | None = None
     rolling: Annotated[Literal[True] | None, Field(description="额满即止、先到先审")] = None
+
+
+type AttachmentInfo = ReadAttachment | UnreadAttachment
 
 
 class Apply(BaseModel):
@@ -488,6 +525,16 @@ class ProgramCandidate(BaseModel):
     kind: Literal["winter_camp", "summer_camp", "pre_recommendation", "september_round"]
     name: str
     apply: ApplyValue | None
+
+
+class Snapshot(BaseModel):
+    model_config = ConfigDict(
+        extra="forbid",
+    )
+    fetched_at: Annotated[int, Field(ge=0, le=8640000000000)]
+    html: Annotated[str, Field(max_length=10485760)]
+    text: Annotated[str, Field(max_length=2097152)]
+    attachments: Annotated[list[AttachmentInfo], Field(max_length=50)]
 
 
 class ExtractedProgram(BaseModel):

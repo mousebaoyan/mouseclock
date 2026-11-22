@@ -5,8 +5,14 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import type { Evidence, Kind, Role } from "../programs/schemas.ts";
-import type { AttachmentInfo, ExtractedProgram, Usage } from "./schemas.ts";
+import type { AttachmentFailureKind, Evidence, Kind, Role } from "../programs/schemas.ts";
+import type {
+  AttachmentFailure,
+  AttachmentInfo,
+  ExtractedProgram,
+  NoticeFailure,
+  Usage,
+} from "./schemas.ts";
 import {
   applyOf,
   applyStored,
@@ -287,19 +293,27 @@ export async function recordSnapshot(
       latest &&
       (await trx
         .selectFrom("attachments")
-        .select(["text", "read_from_pictures"])
+        .select(["url", "text", "read_from_pictures", "failure"])
         .where("snapshot_id", "=", latest.id)
         .orderBy("position")
         .execute());
-    // Words read from pictures make their evidence wait for review (design §8.3).
+    const attachments = submission.attachments.map((a) =>
+      "failure" in a
+        ? { ...a, text: "", read_from_pictures: false, detail: a.detail ?? "" }
+        : { ...a, failure: null, detail: "" },
+    );
+    // Each attachment's file goes with its address, and a file downloaded at last to a snapshot of
+    // its own; words read from pictures make their evidence wait for review (design §7.4, §8.3).
     const unchanged =
       latest !== undefined &&
       latest.text === submission.text &&
-      latestAttachments?.length === submission.attachments.length &&
+      latestAttachments?.length === attachments.length &&
       latestAttachments.every(
         (a, i) =>
-          a.text === submission.attachments[i].text &&
-          a.read_from_pictures === submission.attachments[i].read_from_pictures,
+          a.url === attachments[i].url &&
+          a.text === attachments[i].text &&
+          a.read_from_pictures === attachments[i].read_from_pictures &&
+          a.failure === attachments[i].failure,
       );
 
     const snapshot = unchanged
@@ -314,16 +328,10 @@ export async function recordSnapshot(
           })
           .returning(["id", "extracted_at"])
           .executeTakeFirstOrThrow();
-    if (!unchanged && submission.attachments.length > 0) {
+    if (!unchanged && attachments.length > 0) {
       await trx
         .insertInto("attachments")
-        .values(
-          submission.attachments.map((a, position) => ({
-            snapshot_id: snapshot.id,
-            position,
-            ...a,
-          })),
-        )
+        .values(attachments.map((a, position) => ({ snapshot_id: snapshot.id, position, ...a })))
         .execute();
     }
     await trx
@@ -425,7 +433,9 @@ export async function recordRun(run: {
   listed: number;
   new_count: number;
   useful_count: number;
-  notice_failures: { url: string; failure: Failure; detail?: string }[];
+  notice_failures: NoticeFailure[];
+  attachment_failures: AttachmentFailure[];
+  attachment_failure_count: number;
   usage: (Usage & { purpose: "screening" | "extraction" })[];
 }) {
   const { usage, ...rest } = run;
@@ -438,6 +448,7 @@ export async function recordRun(run: {
         ...rest,
         failure: run.failure ?? null,
         notice_failures: JSON.stringify(run.notice_failures),
+        attachment_failures: JSON.stringify(run.attachment_failures),
       })
       .onConflict((oc) => oc.columns(["source_id", "started_at"]).doNothing())
       .returning("id")
@@ -519,7 +530,14 @@ function squash(text: string) {
 }
 
 // The texts a snapshot's evidence is looked up in: its body and its attachments, by position.
-export type Docs = { body: string; attachments: { text: string; read_from_pictures: boolean }[] };
+export type Docs = {
+  body: string;
+  attachments: {
+    text: string;
+    read_from_pictures: boolean;
+    failure: AttachmentFailureKind | null;
+  }[];
+};
 
 export function evidenceFound(docs: Docs, evidence: Evidence[]) {
   return evidence.every((e) => {
@@ -558,7 +576,12 @@ export async function recordExtraction(
     const context = await extractionContext(trx, snapshot.source_id, snapshot.published_on);
     const year = noticeYear(snapshot.published_on);
     const held: ReviewItem[] = [];
-    for (const program of programs) {
+    // The second model didn't see an attachment that wasn't read either (design §8.3).
+    const unread = docs.attachments.some((a) => a.failure !== null);
+    for (const given of programs) {
+      const program = unread
+        ? { ...given, checked: given.checked?.filter((c) => c !== "no_deadline") }
+        : given;
       for (const unresolved of program.unresolved_dates ?? []) {
         if (
           !evidenceFound(docs, unresolved.evidence) ||
@@ -624,7 +647,11 @@ export async function docsOf(trx: Transaction<DB>, snapshotId: number): Promise<
     .executeTakeFirstOrThrow();
   const attachments = await trx
     .selectFrom("attachments")
-    .select(["text", "read_from_pictures"])
+    .select([
+      "text",
+      "read_from_pictures",
+      sql<AttachmentFailureKind | null>`failure`.as("failure"),
+    ])
     .where("snapshot_id", "=", snapshotId)
     .orderBy("position")
     .execute();

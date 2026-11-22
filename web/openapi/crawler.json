@@ -581,6 +581,16 @@
         "additionalProperties": false
       },
       "AttachmentInfo": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadAttachment"
+          },
+          {
+            "$ref": "#/components/schemas/UnreadAttachment"
+          }
+        ]
+      },
+      "ReadAttachment": {
         "type": "object",
         "properties": {
           "name": {
@@ -615,6 +625,50 @@
           "read_from_pictures"
         ],
         "additionalProperties": false
+      },
+      "UnreadAttachment": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "content_type": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "failure": {
+            "$ref": "#/components/schemas/AttachmentFailureKind"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "具体原因，比如 HTTP 403"
+          }
+        },
+        "required": [
+          "name",
+          "url",
+          "content_type",
+          "failure"
+        ],
+        "additionalProperties": false
+      },
+      "AttachmentFailureKind": {
+        "type": "string",
+        "enum": [
+          "download_failed",
+          "too_large",
+          "unreadable"
+        ],
+        "description": "download_failed：没下载成，比如超时、HTTP 403、返回的是网页；too_large：超过 10MB；unreadable：文件读不出来，文件照样上传"
       },
       "Extraction": {
         "type": "object",
@@ -1338,6 +1392,22 @@
             },
             "maxItems": 5000
           },
+          "attachment_failures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AttachmentFailure"
+            },
+            "maxItems": 100,
+            "default": [],
+            "description": "抓到的通知里没读成的附件，最多列前 100 个"
+          },
+          "attachment_failure_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647,
+            "default": 0,
+            "description": "抓到的通知里没读成的附件一共几个"
+          },
           "usage": {
             "type": "array",
             "items": {
@@ -1396,6 +1466,35 @@
           }
         },
         "required": [
+          "url",
+          "failure"
+        ],
+        "additionalProperties": false
+      },
+      "AttachmentFailure": {
+        "type": "object",
+        "properties": {
+          "notice_url": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2000,
+            "format": "uri"
+          },
+          "failure": {
+            "$ref": "#/components/schemas/AttachmentFailureKind"
+          },
+          "detail": {
+            "type": "string",
+            "maxLength": 1000,
+            "description": "具体原因，比如 HTTP 403"
+          }
+        },
+        "required": [
+          "notice_url",
           "url",
           "failure"
         ],

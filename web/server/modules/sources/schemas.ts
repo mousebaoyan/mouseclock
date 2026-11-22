@@ -112,6 +112,7 @@ export const RunSummary = z
     new_count: Int,
     useful_count: Int,
     notice_failure_count: Int,
+    attachment_failure_count: Int.openapi({ description: "抓到的通知里没读成的附件数" }),
   })
   .openapi("RunSummary");
 export const SourceProbe = z

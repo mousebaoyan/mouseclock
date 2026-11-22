@@ -3,7 +3,7 @@ import { db, pageOf } from "../../platform/db.ts";
 import { unix } from "../../platform/http.ts";
 import { beijingDay } from "../programs/time.ts";
 import type { Failure } from "../sources/schemas.ts";
-import type { NoticeFailure } from "./schemas.ts";
+import type { AttachmentFailure, NoticeFailure } from "./schemas.ts";
 import { BUSY_MONTHS, type Purpose } from "./service.ts";
 
 // The crawl dashboard (design §7.5): how each source's rounds went on a day, Beijing time.
@@ -13,9 +13,11 @@ const DAY_MS = 24 * 3600_000;
 // likely changed and needs its config looked at (design §7.5).
 const FAILING_ROUNDS = 2;
 const STALE_MS = 30 * DAY_MS;
-// A round can report thousands of notices it couldn't fetch, mostly for one reason; the first
-// few show it.
-const NOTICE_FAILURES_SHOWN = 20;
+// A round can report thousands of notices or attachments it couldn't fetch, mostly for one reason;
+// the first few show it.
+const FAILURES_SHOWN = 20;
+const firstFailures = (column: "notice_failures" | "attachment_failures") =>
+  sql`jsonb_path_query_array(${sql.ref(column)}, ${`$[0 to ${FAILURES_SHOWN - 1}]`}::jsonpath)`;
 
 export async function crawlDay(query: {
   date?: string;
@@ -122,10 +124,12 @@ export async function crawlDay(query: {
         "listed",
         "new_count",
         "useful_count",
-        sql<NoticeFailure[]>`jsonb_path_query_array(
-          notice_failures, ${`$[0 to ${NOTICE_FAILURES_SHOWN - 1}]`}::jsonpath
-        )`.as("notice_failures"),
+        firstFailures("notice_failures").$castTo<NoticeFailure[]>().as("notice_failures"),
         sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"),
+        firstFailures("attachment_failures")
+          .$castTo<AttachmentFailure[]>()
+          .as("attachment_failures"),
+        "attachment_failure_count",
       ])
       .where(sql<boolean>`source_id = any(${ids})`)
       .where("started_at", ">=", start)

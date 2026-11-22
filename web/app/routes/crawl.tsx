@@ -2,7 +2,7 @@ import type { InferResponseType } from "hono/client";
 import { useState } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
-import { failureText, RunResult } from "~/components/crawl";
+import { attachmentFailureText, failureText, RunResult } from "~/components/crawl";
 import { ChevronLeft, ChevronRight } from "~/components/icons";
 import { List, Row } from "~/components/list";
 import { Empty, Facts, Page } from "~/components/page";
@@ -241,7 +241,8 @@ function Section({ source }: { source: Source }) {
   );
 }
 
-// Each round of the day, with the notices it couldn't fetch, and what the source cost in tokens.
+// Each round of the day, with the notices and attachments it couldn't fetch, and what the source
+// cost in tokens.
 function Rounds({ source }: { source: Source }) {
   return (
     <div className="space-y-2 rounded-md border bg-muted/40 p-3 text-[13px]">
@@ -256,6 +257,7 @@ function Rounds({ source }: { source: Source }) {
               </span>
             </p>
             <NoticeFailures run={run} />
+            <AttachmentFailures run={run} />
           </li>
         ))}
       </ol>
@@ -357,6 +359,38 @@ function NoticeFailures({ run }: { run: Source["runs"][number] }) {
       {run.notice_failure_count > run.notice_failures.length && (
         <li className="text-muted-foreground">
           另有 {run.notice_failure_count - run.notice_failures.length} 条未列出
+        </li>
+      )}
+    </ul>
+  );
+}
+
+// The attachments of a round's notices that couldn't be read: extraction went on without them.
+function AttachmentFailures({ run }: { run: Source["runs"][number] }) {
+  if (run.attachment_failure_count === 0) return null;
+  return (
+    <ul className="mt-1 space-y-0.5 pl-12 text-xs">
+      {run.attachment_failures.map((attachment) => (
+        <li key={`${attachment.notice_url} ${attachment.url}`} className="break-all">
+          <a href={attachment.url} target="_blank" rel="nofollow noopener" className="link">
+            {attachment.url}
+          </a>
+          <span className="ml-2 text-muted-foreground">
+            附件{attachmentFailureText(attachment.failure, attachment.detail)}
+          </span>
+          <a
+            href={attachment.notice_url}
+            target="_blank"
+            rel="nofollow noopener"
+            className="link ml-2"
+          >
+            所在通知
+          </a>
+        </li>
+      ))}
+      {run.attachment_failure_count > run.attachment_failures.length && (
+        <li className="text-muted-foreground">
+          另有 {run.attachment_failure_count - run.attachment_failures.length} 个附件未列出
         </li>
       )}
     </ul>

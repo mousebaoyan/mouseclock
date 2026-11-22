@@ -1,11 +1,14 @@
 """The words in the files notices attach (design §5.1): images, PDF (scanned pages too), Word and
-Excel, including the old binary formats. Archives and other files have none to read. The LLM
-reads the pictures; this leaves them in their place among the words."""
+Excel, including the old binary formats. Archives (rar and 7z known by their headers alone) and
+.pptx slides have none to read; anything else isn't the file a notice links to. The LLM reads the
+pictures; this leaves them in their place among the words."""
 
 import io
+import traceback
 import unicodedata
 import zipfile
 from collections.abc import Iterable, Iterator
+from pathlib import Path
 
 import docx
 import openpyxl
@@ -19,8 +22,10 @@ from crawler.parse import ParseError
 from crawler.parse.image import Picture, picture
 
 _PDF = b"%PDF"
-_ZIP = b"PK\x03\x04"
+# An empty zip has only its end record.
+_ZIP = (b"PK\x03\x04", b"PK\x05\x06")
 _OLE = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_ARCHIVES = (b"Rar!\x1a\x07", b"7z\xbc\xaf\x27\x1c")
 _IMAGE_HEADERS = (
     b"\x89PNG\r\n\x1a\n",
     b"\xff\xd8\xff",
@@ -34,6 +39,7 @@ _IMAGE_HEADERS = (
 _WORD = "WordDocument".encode("utf-16-le")
 # Some PDFs map common characters to the Kangxi radicals that look like them, ⽣ for 生.
 _RADICALS = {code: unicodedata.normalize("NFKC", chr(code)) for code in range(0x2F00, 0x2FD6)}
+_OURS = Path(__file__).parent.parent
 
 
 def file_parts(data: bytes) -> list[str | Picture]:
@@ -49,12 +55,21 @@ def file_parts(data: bytes) -> list[str | Picture]:
                 return [_docx(data)]
             if "xl/workbook.xml" in parts:
                 return [_xlsx(data)]
-        elif data.startswith(_OLE):
+            return []
+        if data.startswith(_OLE):
             return [extract_text(data).text if _WORD in data else _xls(data)]
-    # The files come from the colleges' sites, and parsers fail on broken ones in all sorts of ways.
+    # The files come from the colleges' sites, and the parsers fail on broken ones in all sorts of
+    # ways, so an error is told by where it was raised: in our own code it is a bug; in a parser or
+    # the standard library it counts as the file's, which a bad argument of ours would too, showing
+    # as one error name across many files.
     except Exception as error:
+        if Path(traceback.extract_tb(error.__traceback__)[-1].filename).is_relative_to(_OURS):
+            raise
         raise ParseError(type(error).__name__) from error
-    return []
+    if data.startswith(_ARCHIVES):
+        return []
+    # Such as a page saying access is denied, sent as plain text in place of the file.
+    raise ParseError("认不出文件格式")
 
 
 def _page(page: PageObject) -> list[str | Picture]:

@@ -50,6 +50,8 @@ export interface Applications {
 export interface Attachments {
   content_type: string;
   data: Buffer | null;
+  detail: Generated<string>;
+  failure: string | null;
   name: string;
   position: number;
   read_from_pictures: boolean;
@@ -103,6 +105,8 @@ export interface CrawlerTokens {
 }
 
 export interface CrawlRuns {
+  attachment_failure_count: Generated<number>;
+  attachment_failures: Generated<Json>;
   detail: Generated<string>;
   failure: string | null;
   finished_at: Timestamp;

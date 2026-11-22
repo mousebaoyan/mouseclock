@@ -346,8 +346,56 @@ for (const school of SCHOOLS) {
       );
     }
 
+    // The second college's call gives its dates in a file its site wouldn't let the crawler
+    // download, so a person checks it for a deadline.
+    if (i === 1) {
+      const listed = await recordListing(sourceId, [
+        {
+          url: `https://${host}/info/60.htm`,
+          title: `${college.name}2027年预推免招生简章`,
+          published_on: day(-1),
+        },
+      ]);
+      const [notice] = listed.pending.filter((p) => p.step === "screen");
+      await recordScreening(
+        sourceId,
+        [{ notice_id: notice.id, score: 0.9, screened_in: true }],
+        USAGE,
+      );
+      const text = `${college.name}2027年预推免招生简章\n报名时间和方式见附件。\n招生简章.pdf`;
+      const snapshot = await recordSnapshot(notice.id, {
+        fetched_at: new Date(),
+        html: html(text),
+        text,
+        attachments: [
+          {
+            name: "招生简章.pdf",
+            url: `https://${host}/files/60.pdf`,
+            content_type: "application/pdf",
+            failure: "download_failed",
+            detail: "HTTP 403",
+          },
+        ],
+      });
+      await recordExtraction(
+        snapshot.snapshot_id,
+        [
+          {
+            college_id: collegeId,
+            cohort: 2027,
+            kind: "pre_recommendation",
+            name: "2027年预推免（第二批）",
+            role: "call",
+            fields: {},
+            checked: ["no_deadline", "new"],
+          },
+        ],
+        USAGE,
+      );
+    }
+
     // A round a day for the last three days and an hour ago; one site has been refusing since
-    // two days ago, and another timed out on two notices today.
+    // two days ago, and another timed out on two notices today and couldn't download a file.
     for (const ago of [3, 2, 1, 1 / 24]) {
       const started = new Date(Date.now() - ago * DAY_MS);
       const refused = i === 2 && ago < 3;
@@ -366,6 +414,18 @@ for (const school of SCHOOLS) {
                 failure: "timeout" as const,
               }))
             : [],
+        attachment_failures:
+          i === 1 && ago < 1
+            ? [
+                {
+                  notice_url: `https://${host}/info/60.htm`,
+                  url: `https://${host}/files/60.pdf`,
+                  failure: "download_failed" as const,
+                  detail: "HTTP 403",
+                },
+              ]
+            : [],
+        attachment_failure_count: i === 1 && ago < 1 ? 1 : 0,
         usage: [],
       });
     }

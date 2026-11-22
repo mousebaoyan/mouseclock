@@ -6,9 +6,9 @@ import httpx
 import pytest
 
 from crawler.crawl.contract import (
-    AttachmentInfo,
     ExtractionContext,
     ProgramCandidate,
+    ReadAttachment,
     TimeToMinute,
     Usage,
 )
@@ -179,7 +179,7 @@ def test_the_same_existing_project_twice_is_rejected() -> None:
 def test_unparsed_attachment_date_keeps_raw_evidence_and_has_no_invented_value() -> None:
     text = "报名截止为下周二17点。"
     attachment = Attachment(
-        AttachmentInfo(
+        ReadAttachment(
             name="安排.txt",
             url="https://example.edu/1.txt",
             content_type="text/plain",

@@ -12,7 +12,7 @@ import {
 import { IsoDate } from "../programs/schemas.ts";
 import { crawlDay } from "./dashboard.ts";
 import { RunSummary } from "../sources/schemas.ts";
-import { NoticeFailure } from "./schemas.ts";
+import { AttachmentFailure, NoticeFailure } from "./schemas.ts";
 import { PURPOSES } from "./service.ts";
 
 // The crawl dashboard (design §7.5), for members.
@@ -21,6 +21,9 @@ const Tokens = z.object({ input_tokens: Int, output_tokens: Int });
 
 const CrawlRun = RunSummary.extend({
   notice_failures: z.array(NoticeFailure).openapi({ description: "没抓成的通知，最多列 20 条" }),
+  attachment_failures: z
+    .array(AttachmentFailure)
+    .openapi({ description: "抓到的通知里没读成的附件，最多列 20 个" }),
 }).openapi("CrawlRun");
 
 const CrawlDay = Page(

@@ -1,3 +1,4 @@
+import asyncio
 import io
 import json
 from collections.abc import Iterator
@@ -11,10 +12,10 @@ import pytest
 from PIL import Image
 
 from crawler.crawl.browser import PageSession
-from crawler.crawl.contract import Usage, WorkSource
+from crawler.crawl.contract import ReadAttachment, UnreadAttachment, Usage, WorkSource
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.fetch_test import FakeSites
-from crawler.crawl.notice import ReadNotice
+from crawler.crawl.notice import MAX_FILE, ReadNotice
 from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import NoticePage, StepError
 from crawler.extraction.chat import Chat
@@ -106,41 +107,118 @@ def test_a_page_that_cant_be_read_fails_the_notice(
     assert (caught.value.failure, caught.value.detail) == (failure, detail)
 
 
-def test_attachments_keep_their_order_and_the_ones_not_downloaded_stay_listed(
-    readings: Readings,
-) -> None:
+def test_attachments_keep_their_order_and_the_ones_not_read_say_why(readings: Readings) -> None:
     body = (
         '<div class="v_news_content"><p>自编的通知正文。</p>'
         '<p><a href="files/form.docx">申请表.docx</a></p>'
         '<p><a href="files/letter.doc">推荐信.doc</a></p>'
-        '<p><a href="files/list.pdf">名单.pdf</a></p></div>'
+        '<p><a href="files/list.pdf">名单.pdf</a></p>'
+        '<p><a href="files/big.pdf">简章.pdf</a></p>'
+        '<p><a href="files/broken.xlsx">名额.xlsx</a></p>'
+        '<p><a href="files/denied.pdf">日程.pdf</a></p></div>'
     )
+    files = "https://example.edu.cn/info/1001/files"
+    broken = b"PK\x03\x04" + b"\x00" * 30
     pages = {
         # The notice moved; its links are relative to where it is now.
         "https://example.edu.cn/old/101.htm": httpx.Response(301, headers={"location": PAGE}),
         PAGE: httpx.Response(200, html=body),
-        "https://example.edu.cn/info/1001/files/form.docx": httpx.Response(
-            200, content=docx_file("请于9月20日前提交。")
-        ),
+        f"{files}/form.docx": httpx.Response(200, content=docx_file("请于9月20日前提交。")),
         # Some sites answer with a captcha page in place of the file.
-        "https://example.edu.cn/info/1001/files/letter.doc": httpx.Response(
-            200, html="<p>请输入验证码下载附件</p>"
-        ),
+        f"{files}/letter.doc": httpx.Response(200, html="<p>请输入验证码下载附件</p>"),
+        f"{files}/big.pdf": httpx.Response(200, content=b"%PDF" + b"0" * MAX_FILE),
+        f"{files}/broken.xlsx": httpx.Response(200, content=broken),
+        f"{files}/denied.pdf": httpx.Response(200, text="Access denied"),
     }
     page = read(pages, readings, "https://example.edu.cn/old/101.htm")
     assert page is not None
-    assert page.text == "自编的通知正文。\n申请表.docx\n推荐信.doc\n名单.pdf"
-    assert all(not a.info.read_from_pictures for a in page.attachments)
-    assert [(a.info.name, a.info.content_type, a.info.text) for a in page.attachments] == [
-        (
-            "申请表.docx",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "请于9月20日前提交。",
+    assert page.text == (
+        "自编的通知正文。\n申请表.docx\n推荐信.doc\n名单.pdf\n简章.pdf\n名额.xlsx\n日程.pdf"
+    )
+    unread = {
+        "name": "名单.pdf",
+        "url": f"{files}/list.pdf",
+        "content_type": "application/pdf",
+    }
+    assert [a.info for a in page.attachments] == [
+        ReadAttachment(
+            name="申请表.docx",
+            url=f"{files}/form.docx",
+            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            text="请于9月20日前提交。",
+            read_from_pictures=False,
         ),
-        ("推荐信.doc", "application/msword", ""),
-        ("名单.pdf", "application/pdf", ""),
+        UnreadAttachment(
+            name="推荐信.doc",
+            url=f"{files}/letter.doc",
+            content_type="application/msword",
+            failure="download_failed",
+            detail="返回的是网页",
+        ),
+        UnreadAttachment(**unread, failure="download_failed", detail="HTTP 404"),
+        UnreadAttachment(
+            name="简章.pdf",
+            url=f"{files}/big.pdf",
+            content_type="application/pdf",
+            failure="too_large",
+        ),
+        UnreadAttachment(
+            name="名额.xlsx",
+            url=f"{files}/broken.xlsx",
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            failure="unreadable",
+            detail="BadZipFile",
+        ),
+        UnreadAttachment(
+            name="日程.pdf",
+            url=f"{files}/denied.pdf",
+            content_type="application/pdf",
+            failure="unreadable",
+            detail="认不出文件格式",
+        ),
     ]
-    assert [a.data is not None for a in page.attachments] == [True, False, False]
+    # A broken file is kept all the same, for people to open themselves.
+    assert [a.data for a in page.attachments[1:]] == [None, None, None, broken, b"Access denied"]
+
+
+def test_an_attachment_the_site_doesnt_answer_for_says_so(readings: Readings) -> None:
+    body = '<div class="v_news_content"><p>正文。</p><a href="f.pdf">简章.pdf</a></div>'
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith(".pdf"):
+            raise httpx.ConnectError("refused", request=request)
+        return httpx.Response(200, html=body)
+
+    async def use() -> NoticePage | None:
+        async with (
+            Fetcher(httpx.MockTransport(handle), lambda: 0.0, _no_wait) as fetcher,
+            Chat("local-test", httpx.MockTransport(FakeModel().handle)) as llm,
+        ):
+            return await ReadNotice(ReadPicture(llm), readings)(
+                PageSession(fetcher, None), SOURCE, PAGE, []
+            )
+
+    page = asyncio.run(use())
+    assert page is not None
+    [attachment] = page.attachments
+    assert attachment.info == UnreadAttachment(
+        name="简章.pdf",
+        url="https://example.edu.cn/info/1001/f.pdf",
+        content_type="application/pdf",
+        failure="download_failed",
+        detail="无法连接",
+    )
+
+
+async def _no_wait(_seconds: float) -> None:
+    pass
+
+
+def words(page: NoticePage) -> tuple[str, bool]:
+    """The first attachment's words, and whether the LLM read them from pictures."""
+    info = page.attachments[0].info
+    assert isinstance(info, ReadAttachment)
+    return info.text, info.read_from_pictures
 
 
 def test_the_llm_reads_a_picture_once_while_the_file_stays_the_same(readings: Readings) -> None:
@@ -160,15 +238,14 @@ def test_the_llm_reads_a_picture_once_while_the_file_stays_the_same(readings: Re
     again = read_with(png_file("white"), usage[1])
     changed = read_with(png_file("gray"), usage[2])
 
-    assert [page.attachments[0].info.text for page in (first, again, changed)] == [
-        "第1次读的文字",
-        "第1次读的文字",
-        "第2次读的文字",
+    # Evidence in them waits for review, kept from before or not.
+    assert [words(page) for page in (first, again, changed)] == [
+        ("第1次读的文字", True),
+        ("第1次读的文字", True),
+        ("第2次读的文字", True),
     ]
     used = Usage(model="deepseek-flash", input_tokens=1000, output_tokens=100)
     assert usage == [[used], [], [used]]
-    # Evidence in them waits for review, kept from before or not.
-    assert all(page.attachments[0].info.read_from_pictures for page in (first, again, changed))
     assert [len(images) for images in model.calls] == [1, 1]
     assert model.calls[0][0].startswith("data:image/png;base64,")
 
@@ -190,9 +267,7 @@ def test_a_long_picture_is_read_a_few_strips_at_a_time_in_order(readings: Readin
     assert len(strips) > STRIPS_PER_CALL
     groups = list(batched(strips, STRIPS_PER_CALL, strict=False))
     assert [len(images) for images in model.calls] == [len(group) for group in groups]
-    assert page.attachments[0].info.text == "\n".join(
-        f"第{n}次读的文字" for n in range(1, len(groups) + 1)
-    )
+    assert words(page) == ("\n".join(f"第{n}次读的文字" for n in range(1, len(groups) + 1)), True)
 
 
 def test_a_picture_the_llm_cant_read_fails_the_notice_and_the_ones_read_still_cost(

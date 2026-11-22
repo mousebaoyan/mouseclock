@@ -431,6 +431,7 @@ export async function latestRuns(sourceIds: number[]) {
       "listed",
       "new_count",
       "useful_count",
+      "attachment_failure_count",
     ])
     .select(sql<number>`jsonb_array_length(notice_failures)`.as("notice_failure_count"))
     .where("source_id", "in", sourceIds)

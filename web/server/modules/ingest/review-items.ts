@@ -5,7 +5,14 @@ import type { DB } from "../../../db/types.ts";
 import { db, pageOf } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
-import type { Evidence, ExtractedFields, Kind, Role, StoredValue } from "../programs/schemas.ts";
+import type {
+  AttachmentFailureKind,
+  Evidence,
+  ExtractedFields,
+  Kind,
+  Role,
+  StoredValue,
+} from "../programs/schemas.ts";
 import { currentFields, deleteProgram, lockProgram, setFields } from "../programs/service.ts";
 import { recordAudit } from "../../platform/audit.ts";
 import { announceNews } from "../reminders/follows.ts";
@@ -60,6 +67,11 @@ const PLACING_REASONS: ReviewReason[] = [
 type FieldPayload = { value: StoredValue; evidence: Evidence[]; confidence: number };
 
 type ItemProgram = { id: number; name: string; college: string; school: string };
+type UnreadAttachment = {
+  name: string;
+  failure: AttachmentFailureKind;
+  detail: string;
+};
 
 function itemsQuery(reason: ReviewReason) {
   return db
@@ -80,6 +92,14 @@ function itemsQuery(reason: ReviewReason) {
         join schools as s on s.id = c.school_id
         where p.id = review_items.program_id
       )`.as("program"),
+      // What extraction didn't see of the notice (design §12.2).
+      sql<UnreadAttachment[]>`(
+        select coalesce(jsonb_agg(jsonb_build_object(
+          'name', a.name, 'failure', a.failure, 'detail', a.detail
+        ) order by a.position), '[]')
+        from attachments as a
+        where a.snapshot_id = snapshots.id and a.failure is not null
+      )`.as("unread_attachments"),
     ])
     .where("review_items.status", "=", "pending")
     .where("review_items.reason", "=", reason)
@@ -181,11 +201,17 @@ function common(row: {
   notice_title: string;
   notice_url: string;
   program: ItemProgram | null;
+  unread_attachments: UnreadAttachment[];
 }) {
   return {
     id: row.id,
     created_at: unix(row.created_at),
-    notice: { title: row.notice_title, url: row.notice_url, snapshot_id: row.snapshot_id },
+    notice: {
+      title: row.notice_title,
+      url: row.notice_url,
+      snapshot_id: row.snapshot_id,
+      unread_attachments: row.unread_attachments,
+    },
     program: row.program,
   };
 }

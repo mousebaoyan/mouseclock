@@ -9,7 +9,14 @@ import {
   PageParams,
   UnixSeconds,
 } from "../../platform/http.ts";
-import { Cohort, Evidence, Kind, StoredValue } from "../programs/schemas.ts";
+import {
+  Attachment,
+  AttachmentFailureKind,
+  Cohort,
+  Evidence,
+  Kind,
+  StoredValue,
+} from "../programs/schemas.ts";
 import {
   acceptReviewItem,
   listReviewItems,
@@ -37,7 +44,18 @@ const ReviewItem = z
   .object({
     id: Int,
     created_at: UnixSeconds,
-    notice: z.object({ title: z.string(), url: z.string(), snapshot_id: Int }),
+    notice: z.object({
+      title: z.string(),
+      url: z.string(),
+      snapshot_id: Int,
+      unread_attachments: z
+        .array(
+          Attachment.pick({ name: true, detail: true }).extend({
+            failure: AttachmentFailureKind,
+          }),
+        )
+        .openapi({ description: "快照里没读成的附件，抽取没看到它们" }),
+    }),
     program: z
       .object({ id: Int, name: z.string(), college: z.string(), school: z.string() })
       .nullable()
