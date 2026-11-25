@@ -824,7 +824,7 @@ https://ddl.mousebaoyan.cn
 
 - 抓取节点每分钟向网站领一次活：到期要抓的来源和管理员要试抓的来源。抓取节点停了，网站照常能用，只是没有新数据；抓取看板会显示抓取节点多久没来领活。
 - 为什么分开：实测 11 所学校和研究所的官网和研招网，香港和上海都能访问（浙大要用 HTTP），但从上海访问快 2–4 倍；浏览器抓取和附件解析吃 CPU 和内存，放在上海也不占网站服务器的资源。判别和抽取都调用外部接口，抓取节点不跑模型。
-- **镜像**：在 `main` 上打 `v1.2.3` 这样的版本标签时，GitHub Actions 构建网站和抓取节点的镜像，推到 `ghcr.io/mousebaoyan/mouseclock-web` 和 `mouseclock-crawler`（标签是版本号和 `latest`）。两个包设为公开，两台机器不用登录就能拉；镜像里没有密钥。机器上只拉镜像，不编译。
+- **镜像**：在 `main` 上打 `v1.2.3` 这样的版本标签时，GitHub Actions 构建网站和抓取节点的镜像，推到 `ghcr.io/mousebaoyan/mouseclock-web` 和 `mouseclock-crawler`（标签是版本号和 `latest`）。两个包设为公开，两台机器不用登录就能拉；镜像里没有密钥。机器上只拉镜像，不编译。构建缓存存在同一个包的 `buildcache` 标签上，输入没变的层直接用上一版的，机器上有上一版就不用再下载。抓取节点的第三方依赖和浏览器排在前面，`uv.lock`、`pyproject.toml` 和基础镜像都没变就不重建，只改了代码的版本只多一层项目本身。
 - **网站**：`web/deploy/compose.yml` 在服务器上和 `.env` 一起放在 `/opt/1panel/www/sites/mouseclock/`。加入 `1panel-network`，通过容器名连 PostgreSQL；端口只监听 `127.0.0.1:3280`；根文件系统只读，内存上限 512MB，V8 堆 256MB（抓取节点交的附件文件最大 10MB）。
 - **数据库**：1Panel 的 PostgreSQL 里的 `mouseclock` 库和同名账号，这个账号只有这个库的权限；迁移在启动时自动执行。
 - **反代和域名**：1Panel 里的反向代理网站 `ddl.mousebaoyan.cn`，证书和 HTTP/3 用 1Panel 的站点设置，其余配置见 `web/deploy/openresty.conf`。Cloudflare 上 `*.mousebaoyan.cn` 已经指向这台服务器，仅 DNS，和鼠洞一样。

@@ -40,3 +40,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          # Layers whose inputs didn't change are the last release's, which the machines already
+          # have. Kept in GHCR: the Actions cache of one tag can't be read by the next.
+          cache-from: type=registry,ref=ghcr.io/mousebaoyan/mouseclock-${{ matrix.part }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/mousebaoyan/mouseclock-${{ matrix.part }}:buildcache,mode=max,image-manifest=true,oci-mediatypes=true
