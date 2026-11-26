@@ -155,6 +155,61 @@ def test_asking_for_work_that_fails_leaves_the_rounds_and_logs_no_details(
     assert all("token-secret" not in JsonFormatter().format(r) for r in caplog.records)
 
 
+def test_work_handed_out_again_while_in_progress_is_left_to_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("crawler.main.POLL", 0)
+    source = WorkSource(
+        id=1, url="http://a/list.htm", browser=False, keep_all=False, config=None, backfill=False
+    )
+    asks = reported = 0
+    stopping = asyncio.Event()
+    asked_thrice = asyncio.Event()
+    # How many rounds had been reported when each began.
+    rounds: list[int] = []
+
+    # Its lease long gone, the website hands the source out at every ask.
+    def handle(request: httpx.Request) -> httpx.Response:
+        nonlocal asks, reported
+        if request.url.path.endswith("/runs"):
+            reported += 1
+            return httpx.Response(204)
+        asks += 1
+        # Twenty asks are plenty for both rounds.
+        if reported == 2 or asks > 20:
+            stopping.set()
+            return httpx.Response(200, json={"sources": [], "probes": []})
+        if asks == 3:
+            asked_thrice.set()
+        return httpx.Response(200, json={"sources": [source.model_dump(mode="json")], "probes": []})
+
+    async def list_items(_pages: PageSession, _source: WorkSource) -> list[ListedItem]:
+        rounds.append(reported)
+        if len(rounds) == 1:
+            await asked_thrice.wait()
+        raise StepError("no_items")
+
+    async def main() -> None:
+        nowhere = httpx.MockTransport(lambda _: httpx.Response(500))
+        async with (
+            asyncio.timeout(5),
+            Fetcher(nowhere) as fetcher,
+            Website("http://site", "token", httpx.MockTransport(handle)) as website,
+        ):
+            await serve(
+                website,
+                Browser(fetcher),
+                Steps(list_items, unused, unused, unused, unused),
+                stopping,
+                unused,
+            )
+
+    asyncio.run(main())
+
+    # Handed out again twice while the first round went on, then once more after it reported.
+    assert rounds == [0, 1]
+
+
 def test_probe_from_work_generates_preview_while_other_tasks_fail_and_stop_waits() -> None:
     source = WorkSource(
         id=1,

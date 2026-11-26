@@ -6,7 +6,7 @@ import logging
 import os
 import signal
 import sys
-from collections.abc import Mapping
+from collections.abc import Coroutine, Mapping
 from contextlib import closing, suppress
 from pathlib import Path
 from typing import Annotated
@@ -69,8 +69,17 @@ async def serve(
     stopping: asyncio.Event,
     generate: GenerateConfig,
 ) -> None:
+    # A lease can run out while its work is still going on, when the model is slow; the website
+    # then hands the same work out again (api.md §6), and it is left to the task already doing it.
+    running: set[tuple[str, int]] = set()
+
     # Leaving the group waits for the rounds still running.
     async with asyncio.TaskGroup() as rounds:
+
+        def start(key: tuple[str, int], job: Coroutine[None, None, None]) -> None:
+            running.add(key)
+            rounds.create_task(job).add_done_callback(lambda _: running.discard(key))
+
         while True:
             try:
                 work = await website.work()
@@ -86,9 +95,11 @@ async def serve(
                 )
             else:
                 for source in work.sources:
-                    rounds.create_task(_crawl(source, browser, website, steps))
+                    if ("source", source.id) not in running:
+                        start(("source", source.id), _crawl(source, browser, website, steps))
                 for probe in work.probes:
-                    rounds.create_task(_probe(probe, browser, website, generate))
+                    if ("probe", probe.id) not in running:
+                        start(("probe", probe.id), _probe(probe, browser, website, generate))
             with suppress(TimeoutError):
                 await asyncio.wait_for(stopping.wait(), POLL)
             if stopping.is_set():
