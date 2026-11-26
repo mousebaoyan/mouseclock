@@ -1,8 +1,23 @@
 import { expect, test } from "vitest";
 import { collegeView } from "./college-list.ts";
 
-function college(name: string, region: string, directions: string[] = [], tags: string[] = []) {
-  return { name, region, directions, tags };
+// Tags as how many put each on.
+function college(
+  name: string,
+  region: string,
+  directions: string[] = [],
+  tags: Record<string, number> = {},
+) {
+  return {
+    name,
+    region,
+    directions,
+    tags: Object.entries(tags).map(([tag, count]) => ({
+      name: tag,
+      color: "gray" as const,
+      count,
+    })),
+  };
 }
 
 // 北辰 lists a college elsewhere first; 安和 comes first by name but its region comes later.
@@ -12,8 +27,8 @@ const SCHOOLS = [
     short_names: ["北辰", "BCU"],
     tier: "985",
     colleges: [
-      college("深圳研究院", "广东", ["软件"], ["有机试"]),
-      college("计算机学院", "北京", ["计算机"], ["对双非友好", "有机试"]),
+      college("深圳研究院", "广东", ["软件"], { 有机试: 3, 看重竞赛: 2 }),
+      college("计算机学院", "北京", ["计算机"], { 对双非友好: 4, 有机试: 3 }),
     ],
   },
   {
@@ -50,6 +65,11 @@ test("tags narrow: a college has to have each picked; each counts among what is 
   expect(names("tag=有机试")).toEqual([["北辰大学", ["深圳研究院", "计算机学院"]]]);
   expect(names("tag=有机试&tag=对双非友好")).toEqual([["北辰大学", ["计算机学院"]]]);
   expect(view("tag=有机试").counts.tag).toEqual({ 有机试: 2, 对双非友好: 1 });
+});
+
+test("a tag too few put on is shown but doesn't filter", () => {
+  expect(names("tag=看重竞赛")).toEqual([]);
+  expect(view("").tags).toEqual(["对双非友好", "有机试"]);
 });
 
 test("each choice counts what it would show under the other filters", () => {

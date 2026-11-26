@@ -12,11 +12,12 @@ import { Button, buttonVariants } from "~/components/ui/button";
 import { Reveal } from "~/components/ui/reveal";
 import { UserAvatar } from "~/components/user-avatar";
 import { ProgramCard, ProgramCards } from "~/components/program";
-import { COLLEGE_KINDS, CollegeTags, Tag, TierTag } from "~/components/tags";
+import { COLLEGE_KINDS, CollegeTags, pickedColor, Tag, TierTag } from "~/components/tags";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { forgetTable } from "../table-cache.ts";
 import { useNow } from "../time.ts";
+import { TAG_THRESHOLD } from "../../server/modules/programs/schemas.ts";
 import { beijingYear } from "../../server/modules/programs/time.ts";
 import type { loader as rootLoader } from "../root.tsx";
 import type { Route } from "./+types/college-detail.ts";
@@ -159,7 +160,10 @@ function CollegeTagPanel({
   const me = useRouteLoaderData<typeof rootLoader>("root")?.me;
   const opened = college.tag_counts.find((t) => t.id === votes?.tag);
   return (
-    <Panel title="学院标签" description="3 人以上贴的才算这个学院的标签">
+    <Panel
+      title="学院标签"
+      description={`有人贴就显示在学院名下面；${TAG_THRESHOLD} 人以上贴的才算这个学院的标签，能用来筛选`}
+    >
       <div className="space-y-3">
         <div className="flex flex-wrap gap-2">
           {college.tag_counts.map((tag) => (
@@ -219,7 +223,7 @@ function TagButton({ tag, muted }: { tag: CollegeDetail["tag_counts"][number]; m
         className={cn(
           "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[13px] whitespace-nowrap tabular-nums pointer-coarse:h-9 disabled:cursor-default",
           on
-            ? "border-primary/60 bg-primary-soft font-medium text-primary"
+            ? cn("font-medium", pickedColor(tag.color))
             : "bg-card text-foreground/80 enabled:hover:border-input enabled:hover:text-foreground",
         )}
       >

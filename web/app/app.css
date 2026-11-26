@@ -66,16 +66,17 @@
   --destructive: #c8372d;
   --success: #1e7b4e;
   --warning: #a86206;
-  /* Tags tell tiers, kinds and statuses apart at a glance: text in the hue on a light wash. */
-  --tag-red: #c03a2b;
-  --tag-orange: #c2560c;
-  --tag-amber: #94670a;
-  --tag-green: #1e7b4e;
-  --tag-teal: #17766c;
-  --tag-sky: #0f6fa8;
+  /* Tags tell tiers, kinds and statuses apart at a glance: text in the hue on a light wash,
+     dark enough for 4.5:1 on it over the page. */
+  --tag-red: #b63729;
+  --tag-orange: #a74a0a;
+  --tag-amber: #845c09;
+  --tag-green: #1c7449;
+  --tag-teal: #167269;
+  --tag-sky: #0e69a0;
   --tag-blue: #3557b8;
   --tag-violet: #6d48c2;
-  --tag-pink: #b8396f;
+  --tag-pink: #af3669;
   --tag-gray: #5d6778;
 }
 

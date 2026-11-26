@@ -7,7 +7,7 @@ import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { recordAudit } from "../../platform/audit.ts";
 import type { Kind } from "../programs/schemas.ts";
-import { collegeTagCounts, TAG_THRESHOLD, tagsOf } from "../programs/college-tags.ts";
+import { collegeTagCounts, shownTagsOf } from "../programs/college-tags.ts";
 import { applyOf, eventEndOf, logoOf } from "../programs/service.ts";
 import { closesAt } from "../programs/time.ts";
 import {
@@ -212,7 +212,7 @@ export async function listPublicColleges() {
       "colleges.kind",
       "colleges.region",
       "colleges.directions",
-      tagsOf("colleges.id").as("tags"),
+      shownTagsOf("colleges.id").as("tags"),
     ])
     .orderBy("schools.name")
     .orderBy("colleges.name")
@@ -320,7 +320,9 @@ export async function getPublicCollege(id: number, userId: number) {
     region: college.region,
     directions: college.directions,
     // From the same counts, so the two agree.
-    tags: tagCounts.filter((tag) => tag.count >= TAG_THRESHOLD).map((tag) => tag.name),
+    tags: tagCounts
+      .filter((tag) => tag.count > 0)
+      .map(({ name, color, count }) => ({ name, color, count })),
     tag_counts: tagCounts,
     followers: college.followers ?? 0,
     following: college.following,

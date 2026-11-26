@@ -1,3 +1,5 @@
+import type { z } from "@hono/zod-openapi";
+import { TAG_THRESHOLD, type ShownTags } from "../server/modules/programs/schemas.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
 import { allOf, anyOf, choices, tally } from "./facets.ts";
 import { TIERS } from "./tiers.ts";
@@ -9,8 +11,18 @@ type School = {
   name: string;
   short_names: string[];
   tier: string | null;
-  colleges: { name: string; region: string; directions: string[]; tags: string[] }[];
+  colleges: {
+    name: string;
+    region: string;
+    directions: string[];
+    tags: z.infer<typeof ShownTags>;
+  }[];
 };
+
+// Only the tags that count filter (design §9.3); the rest are only shown.
+function counted(college: School["colleges"][number]) {
+  return college.tags.filter((tag) => tag.count >= TAG_THRESHOLD).map((tag) => tag.name);
+}
 
 export const SORTS = [
   { value: "", label: "按学校名称" },
@@ -51,7 +63,7 @@ export function collegeView<S extends School>(schools: S[], params: URLSearchPar
           (college) =>
             (skip === "region" || anyOf(regions, [college.region])) &&
             (skip === "direction" || anyOf(directions, college.directions)) &&
-            allOf(tags, college.tags) &&
+            allOf(tags, counted(college)) &&
             (named || college.name.toLowerCase().includes(q)),
         );
         return { ...school, colleges };
@@ -83,10 +95,10 @@ export function collegeView<S extends School>(schools: S[], params: URLSearchPar
         narrowed("direction").flatMap((school) => school.colleges.flatMap((c) => c.directions)),
       ),
       // Picking a tag narrows, so each counts among what the picked ones leave.
-      tag: tally(matched.flatMap((school) => school.colleges.flatMap((c) => c.tags))),
+      tag: tally(matched.flatMap((school) => school.colleges.flatMap(counted))),
     },
     regions: choices(all.map((college) => college.region)),
     directions: choices(all.flatMap((college) => college.directions)),
-    tags: choices(all.flatMap((college) => college.tags)),
+    tags: choices(all.flatMap(counted)),
   };
 }
