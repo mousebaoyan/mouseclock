@@ -6,7 +6,7 @@ from typing import Self
 import httpx
 import pytest
 
-from crawler.crawl.browser import Browser
+from crawler.crawl.browser import Browser, PageSession
 from crawler.crawl.contract import WorkSource
 from crawler.crawl.fetch import INTERVAL, Fetcher, FetchError
 
@@ -367,5 +367,23 @@ def test_a_plain_round_opens_a_page_only_a_browser_gets_in_a_context_of_its_own(
             [context] = driver.contexts
             assert context.closed
             assert [page.url for page in context.pages] == ["https://mp.weixin.qq.com/s/example"]
+
+    run(main)
+
+
+def test_plain_downloads_name_the_page_the_attachment_is_linked_from() -> None:
+    clock = FakeClock()
+
+    def serve(request: httpx.Request) -> httpx.Response:
+        if request.headers.get("referer") == "http://a/notice.htm":
+            return httpx.Response(200, content=b"%PDF-1.7")
+        return httpx.Response(200, content="<html>请输入验证码下载附件</html>".encode())
+
+    async def main() -> None:
+        async with Fetcher(httpx.MockTransport(serve), clock.clock, clock.sleep) as fetcher:
+            attachment = await PageSession(fetcher, None).download(
+                "http://a/file.pdf", page_url="http://a/notice.htm", max_size=1000
+            )
+            assert attachment.body == b"%PDF-1.7"
 
     run(main)

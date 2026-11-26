@@ -5,7 +5,7 @@ from crawler.crawl.rounds import StepError
 from crawler.extraction.chat import Chat, make_request
 from crawler.extraction.schema import response_schema
 from crawler.parse.listing import ListConfig, Selectors
-from crawler.parse.webpage import page_without_scripts
+from crawler.parse.webpage import html_without_scripts
 
 MAX_HTML_CHARACTERS = 200_000
 INSTRUCTIONS = """Find the main notice list in the supplied HTML.
@@ -24,7 +24,7 @@ Return only the JSON configuration matching the supplied schema, never code or e
 
 
 def prepare(body: bytes, url: str, content_type: str | None) -> dict[str, JsonValue]:
-    html = page_without_scripts(body, content_type)
+    html = html_without_scripts(body, content_type)
     if len(html) > MAX_HTML_CHARACTERS:
         raise StepError("error", "试抓失败: page_too_large")
     return make_request(

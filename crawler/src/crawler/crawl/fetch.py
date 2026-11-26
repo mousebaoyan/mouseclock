@@ -42,6 +42,14 @@ class _Site:
     finished_at: float = float("-inf")
 
 
+def referer(url: str, page_url: str) -> dict[str, str]:
+    """The page an attachment is linked from, told only to that page's own site."""
+    page, target = httpx.URL(page_url), httpx.URL(url)
+    if (page.scheme, page.raw_host, page.port) != (target.scheme, target.raw_host, target.port):
+        return {}
+    return {"Referer": str(page.copy_with(fragment=None, userinfo=b""))}
+
+
 class Fetcher:
     """One per crawler process, shared by everything that crawls, so the rules hold across tasks."""
 
@@ -76,12 +84,15 @@ class Fetcher:
             finally:
                 site.finished_at = self._clock()
 
-    async def get(self, url: str, max_size: int | None = None) -> Response:
+    async def get(
+        self, url: str, max_size: int | None = None, page_url: str | None = None
+    ) -> Response:
         """A body longer than max_size stops being read there, so the caller sees it is too long
         without the whole file being downloaded."""
         # Each hop on its own, so a redirect to another site waits its turn there too.
         for _ in range(MAX_REDIRECTS + 1):
-            response, body = await self._send(url, max_size)
+            headers = referer(url, page_url) if page_url is not None else {}
+            response, body = await self._send(url, max_size, headers)
             if response.next_request is None:
                 return Response(
                     str(response.url),
@@ -92,12 +103,14 @@ class Fetcher:
             url = str(response.next_request.url)
         raise FetchError("too_many_redirects", url)
 
-    async def _send(self, url: str, max_size: int | None) -> tuple[httpx.Response, bytes]:
+    async def _send(
+        self, url: str, max_size: int | None, headers: dict[str, str]
+    ) -> tuple[httpx.Response, bytes]:
         async with self.permit(url):
             started = self._clock()
             body = bytearray()
             try:
-                async with self._client.stream("GET", url) as response:
+                async with self._client.stream("GET", url, headers=headers) as response:
                     async for chunk in response.aiter_bytes():
                         body += chunk
                         if max_size is not None and len(body) > max_size:
