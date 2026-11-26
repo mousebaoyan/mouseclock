@@ -49,7 +49,9 @@ _LATE_BODIES = ("TRS_Editor", "mce-content-body", "view-cnt")
 _ATTACHMENT_AREAS = ("Annex", "wrap-appendix", "cas-wrap-appendix")
 # VSB's links to a notice's attachments, in the body or listed after it.
 _VSB_ATTACHMENT = "DownloadAttachUrl"
-_FILE = re.compile(r"\.(?:pdf|docx?|xlsx?|wps|pptx?|zip|rar|7z|jpe?g|png|gif|bmp)$", re.IGNORECASE)
+FILE_NAME = re.compile(
+    r"\.(?:pdf|docx?|xlsx?|wps|pptx?|zip|rar|7z|jpe?g|png|gif|bmp)$", re.IGNORECASE
+)
 # TRS writes a notice's attachments into its page script, which fills the attachment area in a
 # browser: addresses and names, separated by |. They are read from the script, which never runs.
 _TRS_HREFS = re.compile(r"appLinkStr\s*=\s*'([^']*)'")
@@ -111,6 +113,11 @@ class Notice:
     hyperlinks: tuple[Hyperlink, ...]
     # In the order they appear on the page.
     attachments: list[AttachmentLink]
+
+
+def file_name(url: str) -> str:
+    """The last part of the address's path, decoded."""
+    return without_nul(unquote(PurePosixPath(urlsplit(url).path).name))
 
 
 def parse_notice(body: bytes, url: str, content_type: str | None) -> Notice:
@@ -187,8 +194,8 @@ def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[Atta
             # A file the body shows in a frame, such as a notice that is a PDF and nothing more.
             src = element.get("src")
             if src and element in in_body and (target := absolute_url(url, src)):
-                name = without_nul(unquote(PurePosixPath(urlsplit(target).path).name))
-                if _FILE.search(name):
+                name = file_name(target)
+                if FILE_NAME.search(name):
                     links.setdefault(target, name[:500])
             continue
         # WebPlus embeds a PDF as a player with its address in pdfsrc.
@@ -202,8 +209,8 @@ def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[Atta
             element.get("pdfsrc")
             or element.get("download") is not None
             or _VSB_ATTACHMENT in target
-            or _FILE.search(unquote(urlsplit(target).path))
-            or _FILE.search(name)
+            or FILE_NAME.search(unquote(urlsplit(target).path))
+            or FILE_NAME.search(name)
         ):
             links.setdefault(target, name)
     # The website keeps addresses up to 2000 characters.
@@ -222,7 +229,7 @@ def _name(element: HtmlElement, url: str) -> str:
         element.text_content(),
         embedded and embedded[1],
         element.get("alt"),
-        without_nul(unquote(PurePosixPath(urlsplit(url).path).name)),
+        file_name(url),
     ):
         name = " ".join((candidate or "").split())
         # VSB writes some names in brackets: 【附件1.docx】.

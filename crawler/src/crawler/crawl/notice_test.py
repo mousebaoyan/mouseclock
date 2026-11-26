@@ -13,12 +13,18 @@ import pytest
 from PIL import Image
 
 from crawler.crawl.browser import PageSession
-from crawler.crawl.contract import ReadAttachment, UnreadAttachment, Usage, WorkSource
+from crawler.crawl.contract import (
+    PendingNotice,
+    ReadAttachment,
+    UnreadAttachment,
+    Usage,
+    WorkSource,
+)
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.fetch_test import FakeSites
 from crawler.crawl.notice import MAX_FILE, ReadNotice
 from crawler.crawl.readings import Readings
-from crawler.crawl.rounds import NoticePage, StepError
+from crawler.crawl.rounds import Attachment, NoticePage, StepError
 from crawler.extraction.chat import Chat
 from crawler.extraction.chat_test import completion
 from crawler.extraction.pictures import STRIPS_PER_CALL, ReadPicture
@@ -33,6 +39,10 @@ SOURCE = WorkSource(
     backfill=False,
 )
 PAGE = "https://example.edu.cn/info/1001/101.htm"
+
+
+def pending(url: str = PAGE) -> PendingNotice:
+    return PendingNotice(id=1, url=url, title="自编的推免通知", published_on=None, step="fetch")
 
 
 def docx_file(*paragraphs: str) -> bytes:
@@ -76,16 +86,20 @@ def read(
     model: FakeModel | None = None,
     usage: list[Usage] | None = None,
 ) -> NoticePage | None:
-    transport = httpx.MockTransport((model or FakeModel()).handle)
+    return FakeSites(pages).run(lambda fetcher: read_with(fetcher, readings, url, model, usage))
 
-    async def use(fetcher: Fetcher) -> NoticePage | None:
-        async with Chat("local-test", transport) as llm:
-            read_notice = ReadNotice(ReadPicture(llm), readings)
-            return await read_notice(
-                PageSession(fetcher, None), SOURCE, url, [] if usage is None else usage
-            )
 
-    return FakeSites(pages).run(use)
+async def read_with(
+    fetcher: Fetcher,
+    readings: Readings,
+    url: str = PAGE,
+    model: FakeModel | None = None,
+    usage: list[Usage] | None = None,
+) -> NoticePage | None:
+    async with Chat("local-test", httpx.MockTransport((model or FakeModel()).handle)) as llm:
+        return await ReadNotice(ReadPicture(llm), readings)(
+            PageSession(fetcher, None), SOURCE, pending(url), [] if usage is None else usage
+        )
 
 
 @pytest.mark.parametrize("status", [404, 410])
@@ -217,6 +231,74 @@ def test_an_attachment_behind_a_captcha_or_a_login_says_so(readings: Readings) -
     ]
 
 
+FILE = "https://example.edu.cn/files/%E9%80%9A%E7%9F%A5.docx"
+
+
+def test_a_notice_that_is_a_file_has_it_as_its_one_attachment(readings: Readings) -> None:
+    data = docx_file("请于9月20日前报名。")
+    page = read({FILE: httpx.Response(200, content=data)}, readings, FILE)
+    assert page == NoticePage(
+        "",
+        "",
+        (),
+        [
+            Attachment(
+                ReadAttachment(
+                    name="自编的推免通知.docx",
+                    url=FILE,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    text="请于9月20日前报名。",
+                    read_from_pictures=False,
+                ),
+                data,
+            )
+        ],
+    )
+
+
+def test_a_notice_that_is_a_file_is_gone_or_kept_back_like_a_page(readings: Readings) -> None:
+    gone = FakeSites({FILE: httpx.Response(404, html="<p>页面不存在</p>")})
+    assert gone.run(lambda fetcher: read_with(fetcher, readings, FILE)) is None
+    kept = FakeSites(
+        {
+            FILE: httpx.Response(302, headers={"location": LOGIN}),
+            LOGIN: httpx.Response(200, html="<form>统一身份认证</form>"),
+        }
+    )
+    with pytest.raises(StepError) as caught:
+        kept.run(lambda fetcher: read_with(fetcher, readings, FILE))
+    assert (caught.value.failure, caught.value.detail) == ("restricted", "要登录")
+    # Neither is opened again as a page.
+    assert [url for _, url in gone.requests + kept.requests] == [FILE, FILE, LOGIN]
+
+
+def test_a_file_address_that_answers_with_a_page_is_read_as_one(readings: Readings) -> None:
+    body = '<div class="v_news_content"><p>自编的通知正文。</p></div>'
+    sites = FakeSites({FILE: httpx.Response(200, html=body)})
+    page = sites.run(lambda fetcher: read_with(fetcher, readings, FILE))
+    assert page is not None
+    assert (page.text, page.attachments) == ("自编的通知正文。", [])
+    # Opened again as a page, which a source needing a browser renders.
+    assert [url for _, url in sites.requests] == [FILE, FILE]
+
+
+def test_a_file_notice_takes_the_type_of_where_it_ended_up(readings: Readings) -> None:
+    pdf = "https://example.edu.cn/files/101.pdf"
+    pages = {
+        pdf: httpx.Response(302, headers={"location": FILE}),
+        FILE: httpx.Response(200, content=docx_file("请于9月20日前报名。")),
+    }
+    page = read(pages, readings, pdf)
+    assert page is not None
+    [attachment] = page.attachments
+    assert isinstance(attachment.info, ReadAttachment)
+    assert (attachment.info.name, attachment.info.url, attachment.info.content_type) == (
+        "自编的推免通知.docx",
+        pdf,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+
 def test_attachments_keep_their_order_and_the_ones_not_read_say_why(readings: Readings) -> None:
     body = (
         '<div class="v_news_content"><p>自编的通知正文。</p>'
@@ -305,7 +387,7 @@ def test_an_attachment_the_site_doesnt_answer_for_says_so(readings: Readings) ->
             Chat("local-test", httpx.MockTransport(FakeModel().handle)) as llm,
         ):
             return await ReadNotice(ReadPicture(llm), readings)(
-                PageSession(fetcher, None), SOURCE, PAGE, []
+                PageSession(fetcher, None), SOURCE, pending(), []
             )
 
     page = asyncio.run(use())
@@ -406,7 +488,7 @@ def test_a_picture_the_llm_cant_read_fails_the_notice_and_the_ones_read_still_co
     async def use(fetcher: Fetcher) -> NoticePage | None:
         async with Chat("local-test", httpx.MockTransport(handle)) as llm:
             read_notice = ReadNotice(ReadPicture(llm), readings)
-            return await read_notice(PageSession(fetcher, None), SOURCE, PAGE, usage)
+            return await read_notice(PageSession(fetcher, None), SOURCE, pending(), usage)
 
     with pytest.raises(StepError, match="http_400"):
         FakeSites(pages).run(use)

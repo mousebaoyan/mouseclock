@@ -78,7 +78,9 @@ class Steps:
     ]
     # A notice's page with its attachments downloaded and read, the LLM reading the pictures in
     # them; None when the page answers 404 or 410 (design §7.4).
-    read: Callable[[PageSession, WorkSource, str, list[Usage]], Awaitable[NoticePage | None]]
+    read: Callable[
+        [PageSession, WorkSource, PendingNotice, list[Usage]], Awaitable[NoticePage | None]
+    ]
     # The programs a notice is about (design §8.2).
     extract: Callable[
         [str, NoticePage, ExtractionContext, list[Usage]], Awaitable[list[ExtractedProgram]]
@@ -205,7 +207,7 @@ async def _fetch_notice(
     usage: list[Usage],
     unread: list[AttachmentFailure],
 ) -> int | None:
-    page = await steps.read(pages, source, notice.url, usage)
+    page = await steps.read(pages, source, notice, usage)
     if page is None:
         await website.removed(notice.id)
         return None
