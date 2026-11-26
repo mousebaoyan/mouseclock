@@ -12,6 +12,7 @@ import {
 } from "react-router";
 import type { Route } from "./+types/root.ts";
 import { apiContext } from "./api.server.ts";
+import { useLeftAt } from "./left-at.ts";
 import { PageTransition } from "~/components/page-transition";
 import { SiteHeader } from "~/components/site-header";
 import { buttonVariants } from "~/components/ui/button";
@@ -92,6 +93,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
       : typeof response?.data === "string"
         ? response.data
         : "页面加载失败，请稍后重试";
+  const leftAt = useLeftAt(true);
   return (
     <main className="mx-auto flex max-w-xl flex-col items-center px-4 py-20 text-center">
       <title>{title}</title>
@@ -108,7 +110,7 @@ export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
             登录
           </a>
         )}
-        <Link to="/" className={buttonVariants({ variant: "outline" })}>
+        <Link to={leftAt("/")} className={buttonVariants({ variant: "outline" })}>
           返回项目总表
         </Link>
       </div>

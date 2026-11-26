@@ -77,7 +77,7 @@
 | 求收录 | `GET /inclusion-requests?status=`、`POST /inclusion-requests` | 列表、提交（[总体设计 §10.1](design.md#101-求收录)）：学院已收录的返回 `409 already_included`；有人提过、还没收录的算同求，返回那一条。列表里关注着这个学院的也算同求：`votes` 每人算一次，`mine` 是自己同求了或关注着，`following` 是关注着 |
 | | `PUT`、`DELETE /inclusion-requests/{id}/vote` | 同求、撤回；撤回只撤自己点的那一票，关注算的那一票取消关注才撤 |
 | | `PATCH /admin/inclusion-requests/{id}`、`POST /admin/inclusion-requests/{id}/merge` | 管理员改进度和原因、对上清单里的学校和学院；把一条并进另一条（`{ into }`），同求合在一起；对上了学院的不能并进没对上的（`409 merge_into_matched`）。都记进操作日志 |
-| 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
+| 抓取看板 | `GET /crawl-runs?date=&source_id=` | 某天（北京时间，默认今天）各来源的各轮结果和用量，标红、标黄的在前，分页；每轮带上第一次见到的通知和抽出的项目，没抓成的通知和附件所在的通知带上标题；带这一天按用途和模型的总用量，以及抓取节点上次来领活的时间。`source_id` 只看一个来源。登录后能看（[总体设计 §7.5](design.md#75-抓取看板)） |
 | 我的 | `GET`、`PATCH /me/email-settings` | 每类消息发不发邮件：站长定成不发的不列，没动过的带站长的默认；也说能不能收邮件，没有 QQ 号的收不到（[总体设计 §11.2](design.md#112-邮件)）。`PATCH` 只改给出的几类 |
 | | `GET`、`POST /me/tokens`，`DELETE /me/tokens/{id}` | 个人令牌，只认网页会话：列出还能用的；生成时返回的令牌只出现这一次，每人最多 10 个（[总体设计 §13](design.md#13-agent-接入)） |
 | 数据下载 | `GET /export?cohort=&format=` | 一届的全部项目，`csv` 或 `json`，作为文件下载，登录后可用；和总表一样带 ETag（[总体设计 §13](design.md#13-agent-接入)） |

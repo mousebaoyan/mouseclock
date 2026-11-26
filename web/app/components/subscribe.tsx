@@ -11,13 +11,11 @@ export function Subscribe({
   program,
   subscribed,
   outlined,
-  className,
 }: {
   program: { id: number; subscribers: number };
   subscribed: boolean;
   // On a program's page, beside its other buttons; a small plain one on cards.
   outlined?: boolean;
-  className?: string;
 }) {
   const fetcher = useFetcher<typeof action>();
   const { pathname, search } = useLocation();
@@ -31,7 +29,6 @@ export function Subscribe({
     className: cn(
       "touch-target relative z-1 tabular-nums",
       on && "text-primary hover:text-primary",
-      className,
     ),
   });
   const label = (

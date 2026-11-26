@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
 import { ChevronRight } from "~/components/icons";
+import { useLeftAt } from "../left-at.ts";
 
 // Every page has the same width, the header's.
 export const WIDTH = "mx-auto w-full max-w-7xl px-4 sm:px-6";
@@ -27,6 +28,7 @@ export function Page({
   hideTitle?: boolean;
   children: ReactNode;
 }) {
+  const leftAt = useLeftAt();
   return (
     <main className={cn(WIDTH, "space-y-5 pt-6 pb-14 sm:pt-8")}>
       {hideTitle ? (
@@ -38,7 +40,7 @@ export function Page({
               {crumbs.map((crumb) => (
                 <span key={crumb.to} className="flex items-center gap-1">
                   <Link
-                    to={crumb.to}
+                    to={leftAt(crumb.to)}
                     className="touch-target text-muted-foreground hover:text-primary"
                   >
                     {crumb.label}

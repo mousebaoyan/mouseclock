@@ -117,7 +117,7 @@ export default function Agent({ loaderData, actionData }: Route.ComponentProps) 
                       value={text}
                       aria-label={label}
                       onFocus={(event) => event.currentTarget.select()}
-                      className="field h-auto min-w-0 flex-1 resize-none py-2 font-mono text-xs"
+                      className="field min-w-0 flex-1 resize-none font-mono text-xs"
                     />
                     <CopyButton text={text} />
                   </div>

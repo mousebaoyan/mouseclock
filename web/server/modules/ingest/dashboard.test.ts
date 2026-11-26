@@ -42,6 +42,7 @@ async function run(
   time: string,
   outcome: {
     failure?: "http_status";
+    new_count?: number;
     notice_failures?: number;
     attachment_failures?: number;
     attachment_failure_count?: number;
@@ -56,7 +57,7 @@ async function run(
       failure: outcome.failure ?? null,
       detail: outcome.failure ? "HTTP 403" : "",
       listed: outcome.failure ? 0 : 20,
-      new_count: 0,
+      new_count: outcome.new_count ?? 0,
       useful_count: 0,
       notice_failures: JSON.stringify(
         Array.from({ length: outcome.notice_failures ?? 0 }, (_, i) => ({
@@ -193,6 +194,7 @@ test("a day lists the sources crawled on it, those failing or gone quiet first",
     url: "https://x.edu.cn/0.pdf",
     failure: "download_failed",
     detail: "HTTP 403",
+    notice_title: null,
   });
   expect(first.attachment_failure_count).toBe(300);
   expect(second.attachment_failure_count).toBe(0);
@@ -207,6 +209,55 @@ test("a day lists the sources crawled on it, those failing or gone quiet first",
   expect(
     (await day({ date: "2026-07-10", source_id: String(fine) })).items.map((s) => s.id),
   ).toEqual([fine]);
+});
+
+test("each round lists the notices it saw first, and failures by their titles", async () => {
+  const id = await source("rounds.edu.cn");
+  await run(id, "2026-08-10T08:00:00", { new_count: 2, notice_failures: 1 });
+  await run(id, "2026-08-10T12:00:00", { new_count: 1 });
+  // The list of a round still running, not yet reported, is no earlier round's, though
+  // listed before theirs.
+  await noticeFirstSeen(id, "2026-08-10T16:00:20");
+  // Seen while each round ran, by the website's clock.
+  await noticeFirstSeen(id, "2026-08-10T08:00:20");
+  await noticeFirstSeen(id, "2026-08-10T08:00:40");
+  await noticeFirstSeen(id, "2026-08-10T12:00:20");
+  // One the round didn't count, such as a stray of another kind: no more than its count show.
+  await noticeFirstSeen(id, "2026-08-10T12:00:40");
+  await db
+    .insertInto("notices")
+    .values({ source_id: id, url: "https://x.edu.cn/0.htm", title: "没抓成的通知" })
+    .execute();
+
+  const [first, second] = (await day({ date: "2026-08-10", source_id: String(id) })).items[0].runs;
+  expect(first.new_notices.map((notice) => notice.url).toSorted()).toEqual([
+    "https://x.edu.cn/2026-08-10T08:00:20.htm",
+    "https://x.edu.cn/2026-08-10T08:00:40.htm",
+  ]);
+  expect(first.new_notices[0].programs).toEqual([]);
+  expect(second.new_notices.map((notice) => notice.url)).not.toContain(
+    "https://x.edu.cn/2026-08-10T16:00:20.htm",
+  );
+  expect(second.new_notices).toHaveLength(1);
+  expect(first.notice_failures).toEqual([
+    { url: "https://x.edu.cn/0.htm", failure: "timeout", title: "没抓成的通知" },
+  ]);
+});
+
+test("rounds back to back at 18:00 claim each notice once", async () => {
+  const id = await source("evening.edu.cn");
+  await run(id, "2026-08-11T17:59:00", { new_count: 1 });
+  await run(id, "2026-08-11T18:00:10", { new_count: 1 });
+  await noticeFirstSeen(id, "2026-08-11T17:59:30");
+  await noticeFirstSeen(id, "2026-08-11T18:00:20");
+
+  const [first, second] = (await day({ date: "2026-08-11", source_id: String(id) })).items[0].runs;
+  expect(first.new_notices.map((notice) => notice.url)).toEqual([
+    "https://x.edu.cn/2026-08-11T17:59:30.htm",
+  ]);
+  expect(second.new_notices.map((notice) => notice.url)).toEqual([
+    "https://x.edu.cn/2026-08-11T18:00:20.htm",
+  ]);
 });
 
 test("only members see the dashboard", async () => {

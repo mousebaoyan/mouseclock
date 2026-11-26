@@ -227,6 +227,9 @@
   .field {
     @apply h-9 w-full min-w-0 rounded-md border border-input bg-card px-3 text-sm outline-none placeholder:text-subtle-foreground hover:border-[color-mix(in_oklab,var(--input),var(--foreground)_15%)] focus-visible:border-primary focus-visible:ring-3 focus-visible:ring-ring/15 disabled:opacity-50 aria-invalid:border-destructive pointer-coarse:h-11;
   }
+  textarea.field {
+    @apply h-auto py-2 leading-relaxed;
+  }
   .link {
     @apply text-primary underline-offset-4 hover:underline;
   }
@@ -307,7 +310,7 @@
   }
 }
 
-/* What opens beneath a control, such as a Reveal's evidence or the phones' filters, eases down
+/* What opens beneath a control, such as a field's evidence or the phones' filters, eases down
    into view. A utility, so it can wait for a variant such as group-open. */
 @utility drop-in {
   animation: drop-in 180ms ease-out;

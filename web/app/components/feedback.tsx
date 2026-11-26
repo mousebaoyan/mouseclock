@@ -293,7 +293,7 @@ function ValueInput({ field, current }: { field: string; current: StoredValue | 
           name="value"
           rows={4}
           defaultValue={Array.isArray(current) ? current.join("\n") : undefined}
-          className="field h-auto py-2 leading-relaxed"
+          className="field"
         />
       </Field>
     );

@@ -413,7 +413,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                     spellCheck={false}
                     defaultValue={draft?.config ?? (config ? JSON.stringify(config, null, 2) : "")}
                     placeholder="{}"
-                    className="field h-auto py-2 font-mono text-xs leading-relaxed"
+                    className="field font-mono text-xs"
                   />
                 </Field>
                 <Field
@@ -426,7 +426,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                     maxLength={1000}
                     defaultValue={fields?.unavailable_reason ?? ""}
                     placeholder="例如：需要登录、有验证码；可正常抓取时留空"
-                    className="field h-auto py-2"
+                    className="field"
                   />
                 </Field>
                 <div className="flex flex-wrap gap-2">

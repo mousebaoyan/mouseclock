@@ -2,9 +2,8 @@ import type { InferResponseType } from "hono/client";
 import { Link } from "react-router";
 import { Empty, Page, Panel } from "~/components/page";
 import { Pagination } from "~/components/pagination";
-import { DateTime } from "~/components/time";
+import { EditSummary } from "~/components/program-edit";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
-import { fieldLabel, formatValue } from "../fields.ts";
 import { beijingYear } from "../../server/modules/programs/time.ts";
 import type { Route } from "./+types/edits.ts";
 
@@ -38,38 +37,17 @@ export default function RecentEdits({ loaderData }: Route.ComponentProps) {
         <Panel flush>
           <ol className="divide-y">
             {edits.items.map((edit) => (
-              <li
-                key={edit.id}
-                className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:px-5"
-              >
-                <p className="min-w-0">
-                  <span className="font-medium">{edit.user.display_name}</span>
+              <li key={edit.id} className="px-4 py-4 text-sm sm:px-5">
+                <Link
+                  to={`/programs/${edit.program.id}#edits`}
+                  className="mb-2 block text-pretty hover:text-primary"
+                >
                   <span className="text-muted-foreground">
-                    {edit.reverts_id === null ? " 修改了 " : ` 撤销了 #${edit.reverts_id}，涉及 `}
+                    {edit.program.school} {edit.program.college}
                   </span>
-                  <Link to={`/programs/${edit.program.id}#edits`} className="link">
-                    {edit.program.school} {edit.program.college} {edit.program.name}
-                  </Link>
-                  <span className="text-muted-foreground"> 的{fieldLabel(edit.field)}</span>
-                </p>
-                <p className="text-xs text-subtle-foreground sm:row-span-2 sm:text-right">
-                  #{edit.id}　<DateTime value={edit.created_at} />
-                </p>
-                <p className="text-[13px]">
-                  <span className="text-muted-foreground line-through decoration-1">
-                    {formatValue(edit.field, edit.old_value, thisYear)}
-                  </span>
-                  <span className="mx-1.5 text-subtle-foreground">→</span>
-                  {formatValue(edit.field, edit.new_value, thisYear)}
-                  {edit.feedback_id !== null && (
-                    <Link to={`/feedback/${edit.feedback_id}`} className="link ml-3">
-                      照修改申请 #{edit.feedback_id}
-                    </Link>
-                  )}
-                  {edit.reason !== null && (
-                    <span className="ml-3 text-muted-foreground">理由：{edit.reason}</span>
-                  )}
-                </p>
+                  <span className="ml-2 font-medium">{edit.program.name}</span>
+                </Link>
+                <EditSummary edit={edit} thisYear={thisYear} />
               </li>
             ))}
           </ol>

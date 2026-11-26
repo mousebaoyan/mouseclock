@@ -1,5 +1,5 @@
 import type { InferResponseType } from "hono/client";
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   data,
   Form,
@@ -10,8 +10,9 @@ import {
   useSearchParams,
 } from "react-router";
 import { ApplicationForm } from "~/components/application";
+import { Dropdown, menuItem } from "~/components/disclosure";
 import { Field, FormMessage } from "~/components/form";
-import { ExternalLink, Quote } from "~/components/icons";
+import { Ellipsis, ExternalLink } from "~/components/icons";
 import { Facts, Page, Panel } from "~/components/page";
 import { SchoolLogo } from "~/components/school-logo";
 import { FeedbackForm, FeedbackLink, WaitingFeedback, type Feedback } from "~/components/feedback";
@@ -21,7 +22,7 @@ import { Subscribe } from "~/components/subscribe";
 import { KindTag, RoleTag, STAGES, Tag, TierTag } from "~/components/tags";
 import { DateTime } from "~/components/time";
 import { Button, buttonVariants } from "~/components/ui/button";
-import { Reveal } from "~/components/ui/reveal";
+import { cn } from "~/cn";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { DEGREES, fieldLabel, MODES } from "../fields.ts";
@@ -199,67 +200,94 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
         </>
       }
       actions={
+        // Where the notice is and where to apply, then one's own: a row of each on phones.
         <>
-          <Subscribe
-            program={program}
-            subscribed={loaderData.subscribed}
-            outlined
-            className="max-sm:order-last"
-          />
-          {!recording && (
-            <Link
-              to="?edit=application"
-              replace
-              preventScrollReset
-              className={buttonVariants({ variant: "outline", className: "max-sm:order-last" })}
-            >
-              {application ? `报名进度：${STAGES[application.stage].label}` : "记报名"}
-            </Link>
-          )}
-          {mayGive && giving !== "program" && (
-            <Link
-              to="?feedback=program"
-              replace
-              preventScrollReset
-              className={buttonVariants({ variant: "ghost", className: "max-sm:order-last" })}
-            >
-              反馈
-            </Link>
-          )}
-          {can?.edit && editing !== "program" && (
-            <Link
-              to="?edit=program"
-              replace
-              preventScrollReset
-              // Phones keep the row for the notice and the apply page, and put this after them.
-              className={buttonVariants({ variant: "ghost", className: "max-sm:order-last" })}
-            >
-              修改基本信息
-            </Link>
-          )}
-          <a
-            href={notice.url}
-            target="_blank"
-            rel="nofollow noopener"
-            className={buttonVariants({
-              variant: applyUrl ? "outline" : "default",
-              className: "max-sm:flex-1",
-            })}
-          >
-            查看通知原文
-            <ExternalLink />
-          </a>
-          {applyUrl && (
+          <div className="flex gap-2 max-sm:w-full">
             <a
-              href={applyUrl}
+              href={notice.url}
               target="_blank"
               rel="nofollow noopener"
-              className={buttonVariants({ className: "max-sm:flex-1" })}
+              className={buttonVariants({
+                variant: applyUrl ? "outline" : "default",
+                className: "max-sm:flex-1",
+              })}
             >
-              报名入口
+              查看通知原文
               <ExternalLink />
             </a>
-          )}
+            {applyUrl && (
+              <a
+                href={applyUrl}
+                target="_blank"
+                rel="nofollow noopener"
+                className={buttonVariants({ className: "max-sm:flex-1" })}
+              >
+                报名入口
+                <ExternalLink />
+              </a>
+            )}
+          </div>
+          <div className="flex gap-2 max-sm:w-full">
+            <Subscribe program={program} subscribed={loaderData.subscribed} outlined />
+            {!recording && (
+              <Link
+                to="?edit=application"
+                replace
+                preventScrollReset
+                aria-label={
+                  application ? `报名进度：${STAGES[application.stage].label}` : undefined
+                }
+                // The one that gives way on a narrow phone, so the menu stays on screen.
+                className={buttonVariants({
+                  variant: "outline",
+                  className: "max-sm:min-w-0 max-sm:shrink",
+                })}
+              >
+                <span className="truncate">
+                  {application ? (
+                    <>
+                      <span className="max-sm:hidden">报名进度：</span>
+                      {STAGES[application.stage].label}
+                    </>
+                  ) : (
+                    "记报名"
+                  )}
+                </span>
+              </Link>
+            )}
+            {(mayGive || can?.edit) && (
+              <div className="max-sm:ml-auto">
+                <Dropdown
+                  label="更多操作"
+                  align="end"
+                  className="min-w-36"
+                  triggerClassName={buttonVariants({ variant: "outline", size: "icon" })}
+                  trigger={<Ellipsis className="size-4.5" />}
+                >
+                  {mayGive && (
+                    <Link to="?feedback=program" replace preventScrollReset className={menuItem}>
+                      反馈
+                    </Link>
+                  )}
+                  {can?.edit && (
+                    <Link to="?edit=program" replace preventScrollReset className={menuItem}>
+                      修改基本信息
+                    </Link>
+                  )}
+                  {can?.admin && (
+                    <Link
+                      to="?delete"
+                      replace
+                      preventScrollReset
+                      className={cn(menuItem, "text-destructive")}
+                    >
+                      删除项目
+                    </Link>
+                  )}
+                </Dropdown>
+              </div>
+            )}
+          </div>
         </>
       }
     >
@@ -290,6 +318,9 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
           <span className="font-medium text-tag-red">有争议：</span>
           有几个人反馈这里可能有错，请以原文为准
         </p>
+      )}
+      {can?.admin && search.has("delete") && (
+        <DeleteForm error={actionData?.intent === "delete" ? actionData.error : undefined} />
       )}
       {editing === "program" && (
         <EditForm field="program" program={program} error={formError("program")} />
@@ -331,7 +362,7 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
                 {rows.map((row) => (
                   <div
                     key={row.field}
-                    className="px-4 py-3.5 sm:grid sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-4 sm:px-5"
+                    className="relative px-4 py-3.5 sm:grid sm:grid-cols-[6.5rem_minmax(0,1fr)] sm:gap-4 sm:px-5"
                   >
                     <dt className="text-[13px] text-muted-foreground sm:pt-px">{row.label}</dt>
                     <dd className="mt-1 min-w-0 text-sm sm:mt-0">
@@ -349,18 +380,16 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
                           error={feedbackError(row.field)}
                         />
                       ) : (
-                        <>
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0 leading-relaxed">
-                              {stated(row) ? row.value : <Missing />}
-                            </div>
-                            <div className="flex shrink-0 gap-0.5">
+                        <FieldValue
+                          row={row}
+                          versions={versions}
+                          actions={
+                            <>
                               {mayGive && stated(row) && <FeedbackLink group={row.field} />}
                               {can?.edit && <EditLink field={row.field} />}
-                            </div>
-                          </div>
-                          {stated(row) && <Evidence parts={row.parts} versions={versions} />}
-                        </>
+                            </>
+                          }
+                        />
                       )}
                     </dd>
                   </div>
@@ -412,12 +441,6 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
               )}
             </Panel>
           )}
-          {can?.admin && (
-            <RemovePanel
-              confirming={search.has("delete")}
-              error={actionData?.intent === "delete" ? actionData.error : undefined}
-            />
-          )}
           <Panel title="版本记录" flush>
             <ol className="divide-y">
               {versions.map((version) => (
@@ -463,9 +486,60 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
   );
 }
 
+// A field's value, with what can be done about it on the right: its sentences from the notice,
+// which open beneath it, then feedback and editing.
+function FieldValue({
+  row,
+  versions,
+  actions,
+}: {
+  row: FieldRow;
+  versions: Version[];
+  actions: ReactNode;
+}) {
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 leading-relaxed">{stated(row) ? row.value : <Missing />}</div>
+        {/* Phones put them on the line of the field's name, leaving its value the width. */}
+        <div className="flex shrink-0 gap-0.5 max-sm:absolute max-sm:top-2 max-sm:right-2.5">
+          {stated(row) && (
+            <button
+              type="button"
+              aria-expanded={open}
+              aria-controls={open ? id : undefined}
+              aria-label="原文证据"
+              onClick={() => setOpen(!open)}
+              className={buttonVariants({
+                variant: "ghost",
+                size: "xs",
+                className: "-my-1 aria-expanded:bg-accent aria-expanded:text-foreground",
+              })}
+            >
+              原文
+            </button>
+          )}
+          {actions}
+        </div>
+      </div>
+      {open && <Evidence id={id} parts={row.parts} versions={versions} />}
+    </>
+  );
+}
+
 // Each part's sentences from the notice, and which version they came from. Parts that rest on the
 // same sentences of the same version, as an event's dates and place often do, show them once.
-function Evidence({ parts, versions }: { parts: FieldRow["parts"]; versions: Version[] }) {
+function Evidence({
+  id,
+  parts,
+  versions,
+}: {
+  id: string;
+  parts: FieldRow["parts"];
+  versions: Version[];
+}) {
   const groups: { key: string; labels: string[]; part: Support }[] = [];
   for (const [label, part] of parts) {
     if (!part) continue;
@@ -475,54 +549,52 @@ function Evidence({ parts, versions }: { parts: FieldRow["parts"]; versions: Ver
     else if (label) group.labels.push(label);
   }
   return (
-    <Reveal label="原文证据" icon={<Quote className="size-3.5" />} className="mt-1.5">
-      <div className="space-y-2.5 rounded-md border bg-muted/50 p-3">
-        {groups.map(({ key, labels, part }) => {
-          const from = part.version;
-          const files = from && versions.find((item) => item.number === from.number)?.attachments;
-          return (
-            <div key={key} className="space-y-1.5">
-              {groups.length > 1 && (
-                <p className="text-xs font-medium text-muted-foreground">{labels.join("、")}</p>
-              )}
-              {part.evidence.map(({ quote, attachment }) => (
-                <blockquote
-                  key={quote}
-                  className="border-l-2 border-primary/50 pl-3 text-[13px] leading-relaxed text-pretty"
-                >
-                  {quote}
-                  {attachment !== undefined && (
-                    <span className="text-muted-foreground">
-                      （附件：
-                      {files?.find((item) => item.position === attachment)?.name ??
-                        `第 ${attachment + 1} 个`}
-                      ）
-                    </span>
-                  )}
-                </blockquote>
-              ))}
-              <p className="text-xs text-muted-foreground">
-                {from ? (
-                  <>
-                    出自第 {from.number} 版：
-                    <Link to={`/snapshots/${from.snapshot_id}`} className="link">
-                      {from.notice.title}
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    来自人工修改，详见
-                    <a href="#edits" className="link">
-                      修改记录
-                    </a>
-                  </>
+    <div id={id} className="mt-2.5 space-y-2.5 rounded-md border bg-muted/50 p-3 drop-in">
+      {groups.map(({ key, labels, part }) => {
+        const from = part.version;
+        const files = from && versions.find((item) => item.number === from.number)?.attachments;
+        return (
+          <div key={key} className="space-y-1.5">
+            {groups.length > 1 && (
+              <p className="text-xs font-medium text-muted-foreground">{labels.join("、")}</p>
+            )}
+            {part.evidence.map(({ quote, attachment }) => (
+              <blockquote
+                key={quote}
+                className="border-l-2 border-primary/50 pl-3 text-[13px] leading-relaxed text-pretty"
+              >
+                {quote}
+                {attachment !== undefined && (
+                  <span className="text-muted-foreground">
+                    （附件：
+                    {files?.find((item) => item.position === attachment)?.name ??
+                      `第 ${attachment + 1} 个`}
+                    ）
+                  </span>
                 )}
-              </p>
-            </div>
-          );
-        })}
-      </div>
-    </Reveal>
+              </blockquote>
+            ))}
+            <p className="text-xs text-muted-foreground">
+              {from ? (
+                <>
+                  出自第 {from.number} 版：
+                  <Link to={`/snapshots/${from.snapshot_id}`} className="link">
+                    {from.notice.title}
+                  </Link>
+                </>
+              ) : (
+                <>
+                  来自人工修改，详见
+                  <a href="#edits" className="link">
+                    修改记录
+                  </a>
+                </>
+              )}
+            </p>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -637,50 +709,41 @@ function rowsOf(fields: Fields, thisYear: number, editor: boolean) {
 
 // For a program that shouldn't be there, such as one made from a notice that isn't about
 // admissions. The address asks for the confirmation, as for revoking someone's edits.
-function RemovePanel({ confirming, error }: { confirming: boolean; error?: string }) {
+function DeleteForm({ error }: { error?: string }) {
   const busy = useNavigation().state !== "idle";
   return (
-    <Panel title="管理">
-      {confirming ? (
-        <Form method="post" preventScrollReset className="space-y-3">
-          <input type="hidden" name="intent" value="delete" />
-          <p className="text-[13px] text-muted-foreground">
-            删除后项目不再显示，待审核条目一并关闭；版本、快照和修改记录保留
-          </p>
-          <Field label="删除理由">
-            <input
-              name="reason"
-              required
-              maxLength={500}
-              placeholder="例如：不属于招生通知"
-              className="field"
-            />
-          </Field>
-          <FormMessage error={error} />
-          <div className="flex gap-2">
-            <Button size="sm" variant="destructive" disabled={busy}>
-              {busy ? "正在删除…" : "确认删除"}
-            </Button>
-            <Link
-              to="."
-              replace
-              preventScrollReset
-              className={buttonVariants({ variant: "outline", size: "sm" })}
-            >
-              取消
-            </Link>
-          </div>
-        </Form>
-      ) : (
+    <Form
+      method="post"
+      preventScrollReset
+      className="space-y-3 rounded-xl border border-destructive/30 bg-card p-4 shadow-card"
+    >
+      <input type="hidden" name="intent" value="delete" />
+      <p className="text-[13px] text-muted-foreground">
+        删除后项目不再显示，待审核条目一并关闭；版本、快照和修改记录保留
+      </p>
+      <Field label="删除理由">
+        <input
+          name="reason"
+          required
+          maxLength={500}
+          placeholder="例如：不属于招生通知"
+          className="field"
+        />
+      </Field>
+      <FormMessage error={error} />
+      <div className="flex gap-2">
+        <Button size="sm" variant="destructive" disabled={busy}>
+          {busy ? "正在删除…" : "确认删除"}
+        </Button>
         <Link
-          to="?delete"
+          to="."
           replace
           preventScrollReset
           className={buttonVariants({ variant: "outline", size: "sm" })}
         >
-          删除项目
+          取消
         </Link>
-      )}
-    </Panel>
+      </div>
+    </Form>
   );
 }

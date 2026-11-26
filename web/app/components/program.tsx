@@ -87,7 +87,7 @@ export function ProgramCard({
   notice?: string;
 }) {
   return (
-    <li className="group relative flex flex-col rounded-xl border bg-card px-4 py-3.5 shadow-card transition-colors hover:border-primary/40 has-[h3_a:focus-visible]:ring-3 has-[h3_a:focus-visible]:ring-ring/30 sm:px-5 sm:py-4">
+    <li className="relative flex flex-col rounded-xl border bg-card px-4 py-3.5 shadow-card transition-colors has-[h3_a:hover]:border-primary/40 has-[h3_a:focus-visible]:ring-3 has-[h3_a:focus-visible]:ring-ring/30 sm:px-5 sm:py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">{place}</div>
         <div className="flex flex-wrap justify-end gap-1.5">
@@ -96,7 +96,7 @@ export function ProgramCard({
           <KindTag kind={program.kind} />
         </div>
       </div>
-      <h3 className="mt-3 mb-4 line-clamp-2 text-[15px] leading-snug font-semibold text-pretty group-hover:text-primary">
+      <h3 className="mt-3 mb-4 line-clamp-2 text-[15px] leading-snug font-semibold text-pretty has-[a:hover]:text-primary">
         <Link
           to={`/programs/${program.id}`}
           className="outline-none after:absolute after:inset-0 after:rounded-xl"

@@ -180,7 +180,7 @@ function SchoolTable({ schools, followed }: { schools: School[]; followed: numbe
               </Td>
             )}
             <Td>
-              <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
                 <Link to={`/colleges/${college.id}`} className="hover:text-primary">
                   {college.name}
                 </Link>
