@@ -18,6 +18,9 @@ const STALE_MS = 30 * DAY_MS;
 const FAILURES_SHOWN = 20;
 const firstFailures = (column: "notice_failures" | "attachment_failures") =>
   sql`jsonb_path_query_array(${sql.ref(column)}, ${`$[0 to ${FAILURES_SHOWN - 1}]`}::jsonpath)`;
+// A source's first round can find hundreds of notices; the ones with programs come first.
+const NEW_SHOWN = 20;
+const CLOCKS_APART = "1 minute";
 
 export async function crawlDay(query: {
   date?: string;
@@ -150,6 +153,71 @@ export async function crawlDay(query: {
       .execute(),
   ]);
 
+  // What each round saw first: the list it sent came in while it ran. Its times are the crawler's
+  // to the second, the notices' the website's, so a minute either side, short of the rounds
+  // before and after: one can start right after another at 18:00 (service.ts). A round still
+  // running, not yet reported, claims nothing.
+  const runIds = runs.map((run) => run.id);
+  const [found, titles] = await Promise.all([
+    sql<{ run_id: number; title: string; url: string; programs: { id: number; name: string }[] }>`
+      select r.id as run_id, seen.title, seen.url, seen.programs
+      from crawl_runs r
+      cross join lateral (
+        select * from (
+          select n.id, n.title, n.url, n.published_on, coalesce((
+            select jsonb_agg(distinct jsonb_build_object('id', p.id, 'name', p.name))
+            from snapshots s
+            join program_versions v on v.snapshot_id = s.id
+            join programs p on p.id = v.program_id
+            where s.notice_id = n.id and p.deleted_at is null
+          ), '[]') as programs
+          from notices n
+          where n.source_id = r.source_id
+            and n.first_seen_at >= greatest(
+              r.started_at - ${CLOCKS_APART}::interval,
+              least(
+                coalesce((
+                  select max(earlier.finished_at) from crawl_runs earlier
+                  where earlier.source_id = r.source_id and earlier.started_at < r.started_at
+                ), '-infinity') + ${CLOCKS_APART}::interval,
+                r.started_at
+              )
+            )
+            and n.first_seen_at < least(
+              r.finished_at + ${CLOCKS_APART}::interval,
+              coalesce((
+                select min(later.started_at) from crawl_runs later
+                where later.source_id = r.source_id and later.started_at > r.started_at
+              ), 'infinity')
+            )
+        ) as notice
+        order by programs = '[]', published_on desc nulls last, id
+        limit least(r.new_count, ${NEW_SHOWN})
+      ) as seen
+      where r.id = any(${runIds})
+    `
+      .execute(db)
+      .then((result) => result.rows),
+    // The failures name their notices by address; their titles read better.
+    db
+      .selectFrom("notices")
+      .select(["source_id", "url", "title"])
+      .where(sql<boolean>`source_id = any(${ids})`)
+      .where(
+        sql<boolean>`url = any(${[
+          ...new Set(
+            runs.flatMap((run) => [
+              ...run.notice_failures.map((failure) => failure.url),
+              ...run.attachment_failures.map((failure) => failure.notice_url),
+            ]),
+          ),
+        ]})`,
+      )
+      .execute(),
+  ]);
+  const titleOf = (sourceId: number, url: string) =>
+    titles.find((notice) => notice.source_id === sourceId && notice.url === url)?.title ?? null;
+
   const used = (id: number) => sourceUsage.find((row) => row.source_id === id);
   return {
     date,
@@ -165,6 +233,17 @@ export async function crawlDay(query: {
           ...run,
           started_at: unix(started_at),
           finished_at: unix(finished_at),
+          new_notices: found
+            .filter((notice) => notice.run_id === run.id)
+            .map(({ title, url, programs }) => ({ title, url, programs })),
+          notice_failures: run.notice_failures.map((failure) => ({
+            ...failure,
+            title: titleOf(source.id, failure.url),
+          })),
+          attachment_failures: run.attachment_failures.map((failure) => ({
+            ...failure,
+            notice_title: titleOf(source.id, failure.notice_url),
+          })),
         })),
       usage: {
         input_tokens: used(source.id)?.input_tokens ?? 0,

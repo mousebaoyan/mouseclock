@@ -188,8 +188,8 @@ export const menuItem =
   "flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left outline-none select-none hover:bg-accent focus-visible:bg-accent pointer-coarse:py-2.5";
 
 // A menu of links or actions under a button, such as the account's, in the page right after its
-// button, so Tab goes through it in order. Callers key it by the path, so going to another page
-// closes it.
+// button, so Tab goes through it in order. Going anywhere closes it, as choosing an item does even
+// when it leads where the page already is.
 export function Dropdown({
   label,
   trigger,
@@ -209,6 +209,12 @@ export function Dropdown({
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const button = useRef<HTMLButtonElement>(null);
+  const { key } = useLocation();
+  const [at, setAt] = useState(key);
+  if (key !== at) {
+    setAt(key);
+    setOpen(false);
+  }
   useDismiss(
     open,
     (escaped) => {

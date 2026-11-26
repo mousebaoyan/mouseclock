@@ -19,10 +19,25 @@ import { PURPOSES } from "./service.ts";
 
 const Tokens = z.object({ input_tokens: Int, output_tokens: Int });
 
+const Title = z.string().nullable().openapi({ description: "通知的标题；为空是没有这条通知" });
+
 const CrawlRun = RunSummary.extend({
-  notice_failures: z.array(NoticeFailure).openapi({ description: "没抓成的通知，最多列 20 条" }),
+  new_notices: z
+    .array(
+      z.object({
+        title: z.string(),
+        url: z.string(),
+        programs: z
+          .array(z.object({ id: Int, name: z.string() }))
+          .openapi({ description: "抽取出的、没有删除的项目；为空是还没抽取、无关或项目已删除" }),
+      }),
+    )
+    .openapi({ description: "这一轮第一次见到的通知，有项目的在前，最多列 20 条" }),
+  notice_failures: z
+    .array(NoticeFailure.extend({ title: Title }))
+    .openapi({ description: "没抓成的通知，最多列 20 条" }),
   attachment_failures: z
-    .array(AttachmentFailure)
+    .array(AttachmentFailure.extend({ notice_title: Title }))
     .openapi({ description: "抓到的通知里没读成的附件，最多列 20 个" }),
 }).openapi("CrawlRun");
 

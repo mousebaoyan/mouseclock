@@ -1,6 +1,7 @@
 import type { InferResponseType } from "hono/client";
 import type { ReactNode } from "react";
 import { Form, Link, useNavigation, useSearchParams } from "react-router";
+import { cn } from "~/cn";
 import type { TimeValue } from "../../server/modules/programs/schemas.ts";
 import type { createApi } from "../api.server.ts";
 import { DEGREES, fieldLabel, formatValue, MODES } from "../fields.ts";
@@ -257,7 +258,7 @@ function Inputs({ field, program }: { field: EditField; program: Program }) {
         name="value"
         rows={4}
         defaultValue={fields[field]?.value.join("\n")}
-        className="field h-auto py-2 leading-relaxed"
+        className="field"
       />
     </Field>
   );
@@ -401,46 +402,7 @@ function EditEntry({
         aria-hidden="true"
         className="absolute top-1.5 -left-[24.5px] size-2 rounded-full border-2 border-card bg-input ring-1 ring-input"
       />
-      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
-        <span className="font-medium">{edit.user.display_name}</span>
-        <span className="text-muted-foreground">
-          {edit.reverts_id === null ? "修改了" : `撤销了 #${edit.reverts_id} 的`}
-          {fieldLabel(edit.field)}
-        </span>
-        {edit.reverted && <Tag color="gray">已撤销</Tag>}
-        <span className="text-xs text-subtle-foreground">
-          #{edit.id}　<DateTime value={edit.created_at} />
-          {edit.via === "agent" && "　通过 Agent"}
-        </span>
-      </p>
-      <div className="mt-1.5 grid gap-1 rounded-md bg-muted/70 px-3 py-2 text-[13px] sm:grid-cols-[3rem_minmax(0,1fr)]">
-        <span className="text-muted-foreground">修改前</span>
-        <span className="text-muted-foreground line-through decoration-1">
-          {formatValue(edit.field, edit.old_value, thisYear)}
-        </span>
-        <span className="text-muted-foreground">修改后</span>
-        <span>{formatValue(edit.field, edit.new_value, thisYear)}</span>
-      </div>
-      {edit.reason !== null && (
-        <p className="mt-1.5 text-[13px] text-muted-foreground">
-          {edit.feedback_id !== null && (
-            <>
-              照
-              <Link to={`/feedback/${edit.feedback_id}`} className="link">
-                修改申请 #{edit.feedback_id}
-              </Link>
-              　
-            </>
-          )}
-          理由：{edit.reason}
-          {edit.basis !== null && (
-            <>
-              　依据：
-              <Basis basis={edit.basis} />
-            </>
-          )}
-        </p>
-      )}
+      <EditSummary edit={edit} thisYear={thisYear} />
       {(canEdit || canAdmin) && (
         <div className="mt-1.5 flex flex-wrap gap-1">
           {canEdit && !edit.reverted && (
@@ -470,6 +432,60 @@ function EditEntry({
         </div>
       )}
     </li>
+  );
+}
+
+// Who changed which field and when, what it was and became, and why: an edit as a program's
+// history and the site's list both show it.
+export function EditSummary({ edit, thisYear }: { edit: Edit; thisYear: number }) {
+  return (
+    <>
+      <p className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-medium">{edit.user.display_name}</span>
+        <span className="text-muted-foreground">
+          {edit.reverts_id === null ? "修改了" : `撤销了 #${edit.reverts_id} 的`}
+          {fieldLabel(edit.field)}
+        </span>
+        {edit.reverted && <Tag color="gray">已撤销</Tag>}
+        <span className="text-xs text-subtle-foreground">
+          #{edit.id}　<DateTime value={edit.created_at} />
+          {edit.via === "agent" && "　通过 Agent"}
+        </span>
+      </p>
+      <div className="mt-1.5 grid grid-cols-[3rem_minmax(0,1fr)] gap-x-2 gap-y-1 rounded-md bg-muted/70 px-3 py-2 text-[13px] leading-relaxed">
+        <span className="text-muted-foreground">修改前</span>
+        <span
+          className={cn(
+            "text-muted-foreground wrap-anywhere",
+            edit.old_value !== null && "line-through decoration-1",
+          )}
+        >
+          {formatValue(edit.field, edit.old_value, thisYear)}
+        </span>
+        <span className="text-muted-foreground">修改后</span>
+        <span className="wrap-anywhere">{formatValue(edit.field, edit.new_value, thisYear)}</span>
+      </div>
+      {edit.reason !== null && (
+        <p className="mt-1.5 text-[13px] text-muted-foreground wrap-anywhere">
+          {edit.feedback_id !== null && (
+            <>
+              照
+              <Link to={`/feedback/${edit.feedback_id}`} className="link">
+                修改申请 #{edit.feedback_id}
+              </Link>
+              　
+            </>
+          )}
+          理由：{edit.reason}
+          {edit.basis !== null && (
+            <>
+              　依据：
+              <Basis basis={edit.basis} />
+            </>
+          )}
+        </p>
+      )}
+    </>
   );
 }
 

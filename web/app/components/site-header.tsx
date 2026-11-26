@@ -1,4 +1,3 @@
-import { useEffect, useSyncExternalStore } from "react";
 import { isRouteErrorResponse, Link, NavLink, useLocation, useRouteError } from "react-router";
 import { cn } from "~/cn";
 import { Drawer, Dropdown, menuItem } from "~/components/disclosure";
@@ -6,6 +5,7 @@ import { Bell, ChevronDown, LogOut, Menu as MenuIcon, User } from "~/components/
 import { LogoMark } from "~/components/logo";
 import { buttonVariants } from "~/components/ui/button";
 import { UserAvatar } from "~/components/user-avatar";
+import { useLeftAt, useRememberLeft } from "../left-at.ts";
 import { SITE_NAME } from "../../server/platform/site.ts";
 
 type Me = {
@@ -47,54 +47,14 @@ function pagesFor(me: Me | null) {
   return { main, admin, mine };
 }
 
-// What opens an editor, a question or a notice on a page, rather than where its list is.
-const OPENED = [
-  "edit",
-  "edit_school",
-  "edit_college",
-  "saved",
-  "probe",
-  "adopt",
-  "revoke",
-  "votes",
-  "delete",
-  "new",
-  "college",
-  "asked",
-];
-
-function unchanging() {
-  return () => {};
-}
-
-// Where each page was last left in this tab: a list's filters, sort and page live in its address
-// (filters.tsx), so the nav goes back to it as it was. An address the page failed on is no place
-// to go back to, so the page starts over. The tab's storage is the browser's, so the page as the
-// server renders it, and as it hydrates, links to the other lists as they start.
-function useLeftAt(failed: boolean) {
-  const { pathname, search } = useLocation();
-  const params = new URLSearchParams(search);
-  for (const name of OPENED) params.delete(name);
-  const here = failed || params.size === 0 ? "" : `?${params}`;
-  const hydrated = useSyncExternalStore(
-    unchanging,
-    () => true,
-    () => false,
-  );
-  useEffect(() => sessionStorage.setItem(`left:${pathname}`, here), [pathname, here]);
-  return (to: string) =>
-    to + (to === pathname ? here : hydrated ? (sessionStorage.getItem(`left:${to}`) ?? "") : "");
-}
-
 // Wide screens: the site's name on the left, the pages in the middle and the account on the
-// right. Phones keep the name and the account, and open the pages from a menu button. The
-// dropdowns are keyed by where the page is, so following a link closes them; the drawer closes
-// itself.
+// right. Phones keep the name and the account, and open the pages from a menu button.
 export function SiteHeader({ me }: { me: Me | null }) {
   const { pathname, search } = useLocation();
   const error = useRouteError();
   const loginNext = isRouteErrorResponse(error) && error.status === 404 ? "/" : pathname + search;
   const pages = pagesFor(me);
+  useRememberLeft(error != null);
   const leftAt = useLeftAt(error != null);
   const inAdmin = pages.admin.some((page) => pathname.startsWith(page.to));
   return (
@@ -116,7 +76,6 @@ export function SiteHeader({ me }: { me: Me | null }) {
           {pages.admin.length > 0 && (
             <div className="flex items-stretch">
               <Dropdown
-                key={pathname}
                 label="管理"
                 align="start"
                 className="min-w-40"
@@ -147,7 +106,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
         <div className="flex items-center gap-1 justify-self-end">
           {me && !me.frozen && <Messages unseen={me.unseen_messages} />}
           {me ? (
-            <Account key={pathname} me={me} />
+            <Account me={me} />
           ) : (
             // A page of the server, not of the router: it goes on to mousehole.
             <a
