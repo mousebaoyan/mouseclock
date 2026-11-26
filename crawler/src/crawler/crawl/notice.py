@@ -3,23 +3,25 @@ import logging
 import mimetypes
 import re
 from collections.abc import Awaitable, Callable
+from pathlib import PurePosixPath
 
 from crawler.crawl.browser import PageSession
 from crawler.crawl.contract import (
     AttachmentFailureKind,
     Failure,
+    PendingNotice,
     ReadAttachment,
     UnreadAttachment,
     Usage,
     WorkSource,
 )
-from crawler.crawl.fetch import FetchError
+from crawler.crawl.fetch import FetchError, Response
 from crawler.crawl.readings import Readings
 from crawler.crawl.rounds import Attachment, NoticePage, StepError
 from crawler.parse import ParseError
 from crawler.parse.files import file_parts
 from crawler.parse.image import Picture
-from crawler.parse.notice import AttachmentLink, parse_notice
+from crawler.parse.notice import FILE_NAME, AttachmentLink, file_name, parse_notice
 from crawler.parse.refusal import refusal
 
 # What the website keeps (docs/api.md §6): 50 attachments to a snapshot, 2 MiB of text to one,
@@ -52,16 +54,30 @@ class ReadNotice:
         self.readings = readings
 
     async def __call__(
-        self, pages: PageSession, _source: WorkSource, url: str, usage: list[Usage]
+        self, pages: PageSession, source: WorkSource, pending: PendingNotice, usage: list[Usage]
     ) -> NoticePage | None:
-        response = await pages.get(url)
-        # Before the status: a login page can answer 401 or even 404 for a notice still there.
-        if reason := refusal(response.body, response.url, response.content_type):
-            raise StepError("restricted", reason)
-        if response.status in {404, 410}:
+        url = pending.url
+        # A notice that is a file and nothing more is fetched as attachments are, as a browser
+        # would download it rather than open it.
+        file = FILE_NAME.search(file_name(url)) is not None
+        response = await (
+            pages.download(url, page_url=source.url, max_size=MAX_FILE) if file else pages.get(url)
+        )
+        if _gone(response):
             return None
-        if not 200 <= response.status < 300:
-            raise StepError("http_status", f"HTTP {response.status}")
+        if file and not _NOT_A_FILE.match(response.body):
+            # The file is the notice's one attachment, named for the notice, as its own name is
+            # often just a number; its type is the one where it ended up, if that says.
+            names = [file_name(response.url), file_name(url)]
+            suffix = next(PurePosixPath(n).suffix for n in names if FILE_NAME.search(n))
+            link = AttachmentLink(pending.title[: 500 - len(suffix)] + suffix, url)
+            return NoticePage("", "", (), [await self._read(link, response.body, usage)])
+        if file:
+            # Named like a file but a page, such as a viewer: opened as any other, which a source
+            # needing a browser renders.
+            response = await pages.get(url)
+            if _gone(response):
+                return None
         try:
             notice = parse_notice(response.body, response.url, response.content_type)
         except ParseError as error:
@@ -84,32 +100,27 @@ class ReadNotice:
     async def _attachment(
         self, pages: PageSession, link: AttachmentLink, page_url: str, usage: list[Usage]
     ) -> Attachment:
-        content_type = (
-            _TYPES.guess_file_type(link.name)[0]
-            or _TYPES.guess_type(link.url)[0]
-            or "application/octet-stream"
-        )
-        data = None
         try:
             data = await _download(pages, link.url, page_url)
-            text, pictures = await self._text(link.url, data, usage)
         except _DownloadError as error:
-            failure, detail = error.failure, error.detail
+            return Attachment(_unread(link, error.failure, error.detail), None)
+        return await self._read(link, data, usage)
+
+    async def _read(self, link: AttachmentLink, data: bytes, usage: list[Usage]) -> Attachment:
+        if len(data) > MAX_FILE:
+            return Attachment(_unread(link, "too_large"), None)
+        try:
+            text, pictures = await self._text(link.url, data, usage)
         except ParseError as error:
-            failure, detail = "unreadable", str(error)
-        else:
-            info = ReadAttachment(
-                name=link.name,
-                url=link.url,
-                content_type=content_type,
-                text=text[:MAX_TEXT],
-                read_from_pictures=pictures,
-            )
-            return Attachment(info, data)
-        unread = UnreadAttachment(
-            name=link.name, url=link.url, content_type=content_type, failure=failure, detail=detail
+            return Attachment(_unread(link, "unreadable", str(error)), data)
+        info = ReadAttachment(
+            name=link.name,
+            url=link.url,
+            content_type=_content_type(link),
+            text=text[:MAX_TEXT],
+            read_from_pictures=pictures,
         )
-        return Attachment(unread, data)
+        return Attachment(info, data)
 
     async def _text(self, url: str, data: bytes, usage: list[Usage]) -> tuple[str, bool]:
         """The file's words, and whether the LLM read any of them from pictures."""
@@ -127,6 +138,38 @@ class ReadNotice:
         if pictures:
             self.readings.keep(url, data, text)
         return text, pictures
+
+
+def _gone(response: Response) -> bool:
+    """Whether the notice is gone; raises when the site keeps it back or answers with an error."""
+    # Before the status: a login page can answer 401 or even 404 for a notice still there.
+    if reason := refusal(response.body, response.url, response.content_type):
+        raise StepError("restricted", reason)
+    if response.status in {404, 410}:
+        return True
+    if not 200 <= response.status < 300:
+        raise StepError("http_status", f"HTTP {response.status}")
+    return False
+
+
+def _content_type(link: AttachmentLink) -> str:
+    return (
+        _TYPES.guess_file_type(link.name)[0]
+        or _TYPES.guess_type(link.url)[0]
+        or "application/octet-stream"
+    )
+
+
+def _unread(
+    link: AttachmentLink, failure: AttachmentFailureKind, detail: str | None = None
+) -> UnreadAttachment:
+    return UnreadAttachment(
+        name=link.name,
+        url=link.url,
+        content_type=_content_type(link),
+        failure=failure,
+        detail=detail,
+    )
 
 
 class _DownloadError(Exception):
@@ -147,6 +190,4 @@ async def _download(pages: PageSession, url: str, page_url: str) -> bytes:
             refusal(response.body, response.url, response.content_type)
             or (f"HTTP {response.status}" if response.status != 200 else "返回的是网页"),
         )
-    if len(response.body) > MAX_FILE:
-        raise _DownloadError("too_large")
     return response.body

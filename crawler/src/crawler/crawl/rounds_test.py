@@ -184,8 +184,9 @@ def test_a_round_screens_the_new_fetches_what_needs_it_and_reports() -> None:
     with_files.attachments.append(behind_captcha)
 
     async def read(
-        _pages: PageSession, _source: WorkSource, url: str, usage: list[Usage]
+        _pages: PageSession, _source: WorkSource, notice: PendingNotice, usage: list[Usage]
     ) -> NoticePage | None:
+        url = notice.url
         if url == "http://a/3.htm":
             # Its pictures were read again, but there is nothing new to extract.
             usage.append(Usage(model="deepseek-flash", input_tokens=6000, output_tokens=1000))
@@ -270,7 +271,7 @@ def test_a_round_lists_the_first_attachments_not_read_and_counts_them_all() -> N
     ]
 
     async def read(
-        _pages: PageSession, _source: WorkSource, _url: str, _usage: list[Usage]
+        _pages: PageSession, _source: WorkSource, _notice: PendingNotice, _usage: list[Usage]
     ) -> NoticePage | None:
         return NoticePage(html="", text="通知", hyperlinks=(), attachments=unread)
 
@@ -351,7 +352,7 @@ def test_real_extractor_is_wired_into_a_round_with_notice_title_and_usage() -> N
     )
 
     async def read(
-        _pages: PageSession, _source: WorkSource, _url: str, usage: list[Usage]
+        _pages: PageSession, _source: WorkSource, _notice: PendingNotice, usage: list[Usage]
     ) -> NoticePage:
         notice = page("报名截止6月30日24点。")
         notice.attachments.append(picture)
@@ -388,8 +389,9 @@ def test_notices_that_fail_are_reported_and_the_round_goes_on() -> None:
     site = FakeWebsite([pending(n, "fetch") for n in range(1, 5)], extracted=frozenset())
 
     async def read(
-        _pages: PageSession, _source: WorkSource, url: str, usage: list[Usage]
+        _pages: PageSession, _source: WorkSource, notice: PendingNotice, usage: list[Usage]
     ) -> NoticePage | None:
+        url = notice.url
         if url == "http://a/1.htm":
             raise FetchError("timeout", url)
         if url == "http://a/2.htm":
@@ -424,7 +426,7 @@ def test_an_extraction_the_website_refuses_fails_only_its_notice() -> None:
     )
 
     async def read(
-        _pages: PageSession, _source: WorkSource, _url: str, _usage: list[Usage]
+        _pages: PageSession, _source: WorkSource, _notice: PendingNotice, _usage: list[Usage]
     ) -> NoticePage:
         return page("冬令营")
 
@@ -452,7 +454,7 @@ def test_notices_screening_failed_for_are_reported_and_the_round_goes_on() -> No
         raise StepError("error", "http_429")
 
     async def read(
-        _pages: PageSession, _source: WorkSource, _url: str, _usage: list[Usage]
+        _pages: PageSession, _source: WorkSource, _notice: PendingNotice, _usage: list[Usage]
     ) -> NoticePage | None:
         return page("冬令营")
 

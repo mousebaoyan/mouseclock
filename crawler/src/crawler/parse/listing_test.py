@@ -6,7 +6,7 @@ import pytest
 from pydantic import JsonValue
 
 from crawler.crawl.browser import Browser, PageSession
-from crawler.crawl.contract import Usage, WorkSource
+from crawler.crawl.contract import PendingNotice, Usage, WorkSource
 from crawler.crawl.fetch import Fetcher
 from crawler.crawl.fetch_test import FakeSites
 from crawler.crawl.listing import list_items
@@ -414,7 +414,7 @@ def test_bad_configuration_is_recorded_by_the_round(
     website = FakeWebsite([], frozenset())
 
     async def read(
-        _pages: PageSession, _source: WorkSource, _url: str, _usage: list[Usage]
+        _pages: PageSession, _source: WorkSource, _notice: PendingNotice, _usage: list[Usage]
     ) -> NoticePage:
         raise AssertionError("a failed list must not read notices")
 
