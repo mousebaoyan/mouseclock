@@ -81,6 +81,54 @@ VSB_FILE = "https://example.edu.cn/system/_content/download.jsp?urltype=news.Dow
                 ("图片", "https://mmbiz.qpic.cn/mmbiz_png/example/640?wx_fmt=png"),
             ],
         ),
+        (
+            "drupal",
+            "示例学院位于示例校区。\n一、招收对象\n附件\uff1a示例申请表.docx",
+            [
+                (
+                    "示例申请表.docx",
+                    "https://example.edu.cn/sites/default/files/2026-06/example.docx",
+                )
+            ],
+        ),
+        (
+            "gpower-page-article",
+            "欢迎优秀应届本科毕业生推荐免试攻读示例学院研究生。\n一、招收类别",
+            [],
+        ),
+        (
+            "trs-editor",
+            "根据示例大学2027年推免工作安排\uff0c现将有关事项通知如下。\n学院\t网址\n示例学院\thttps://example.edu.cn/",
+            [],
+        ),
+        ("tinymce", "院系代码\t院系名称\n010\t示例学院", []),
+        (
+            "sustech",
+            "示例系2027年接收推荐免试研究生预报名现已开始。\n示例报名表.pdf",
+            [("示例报名表.pdf", "https://example.edu.cn/upload/example.pdf")],
+        ),
+        (
+            "newsinfo",
+            "示例学院现面向本校2027届本科毕业生开展推免选拔。\n示例名额表.xlsx",
+            [("示例名额表.xlsx", "https://example.edu.cn/upload/2026/example.xlsx")],
+        ),
+        ("article-content", "根据示例文件\uff0c现将示例计划有关事项通知如下。", []),
+        (
+            "embedded-file",
+            "",
+            [
+                (
+                    "示例通知.pdf",
+                    "https://example.edu.cn/Assets/userfiles/files/%E7%A4%BA%E4%BE%8B%E9%80%9A%E7%9F%A5.pdf",
+                )
+            ],
+        ),
+        ("vsb-id", "示例学院\t示例研究院", []),
+        (
+            "blog",
+            "经学生申请、学院考核\uff0c同意以下12名学生进入示例计划\uff0c现予公示。\n示例名单.pdf",
+            [("示例名单.pdf", "https://example.edu.cn/upload/2025/example.pdf")],
+        ),
     ],
 )
 def test_site_system_templates_keep_the_body_and_its_attachments_in_order(
@@ -89,6 +137,52 @@ def test_site_system_templates_keep_the_body_and_its_attachments_in_order(
     notice = parse_notice((FIXTURES / f"{name}.html").read_bytes(), URL, None)
     assert notice.text == text
     assert notice.attachments == [AttachmentLink(*attachment) for attachment in attachments]
+
+
+@pytest.mark.parametrize(
+    ("page", "text"),
+    [
+        # A system's own mark comes before an editor's within it, which would lose the rest.
+        (
+            '<div class="gp-content"><div class="TRS_Editor"><p>编辑器里的段落</p></div>'
+            '<p><a href="/a.doc">报名表.doc</a></p></div>',
+            "编辑器里的段落\n报名表.doc",
+        ),
+        # A mark that sits elsewhere than its system puts it is no body.
+        (
+            '<div class="side"><div class="article-content">侧栏</div></div>'
+            '<div class="wrapArticle"><div class="article">正文</div></div>',
+            "正文",
+        ),
+        (
+            '<div class="pageArticle"><div class="side"><div class="article">侧栏</div></div>'
+            '<div class="wrapArticle"><div class="article">正文</div></div></div>',
+            "正文",
+        ),
+        ('<div class="wrapArticle"><div class="article">正文</div></div>', "正文"),
+    ],
+)
+def test_where_systems_mark_their_bodies_decides_between_marks(page: str, text: str) -> None:
+    assert parse_notice(page.encode(), URL, None).text == text
+
+
+def test_a_shell_without_its_body_is_no_body() -> None:
+    page = '<div class="detail-sticky-left-content"><h2>标题</h2><p>发布日期</p></div>'
+    with pytest.raises(ParseError):
+        parse_notice(page.encode(), URL, None)
+
+
+def test_only_files_framed_in_the_body_are_attachments_named_by_their_files() -> None:
+    page = (
+        '<div class="view-cnt"><iframe src="/files/%E9%80%9A%E7%9F%A5.pdf" title="预览"></iframe>'
+        '<iframe src="/embed/player" title="讲座资料.pdf"></iframe>'
+        '<iframe src="/viewer.html" pdfsrc="/files/b.pdf"></iframe></div>'
+        '<div class="Annex"><iframe src="/outside.pdf"></iframe></div>'
+    )
+    assert parse_notice(page.encode(), URL, None).attachments == [
+        AttachmentLink("通知.pdf", "https://example.edu.cn/files/%E9%80%9A%E7%9F%A5.pdf"),
+        AttachmentLink("b.pdf", "https://example.edu.cn/files/b.pdf"),
+    ]
 
 
 def test_links_keep_where_their_words_are_and_resolve_against_the_final_address() -> None:

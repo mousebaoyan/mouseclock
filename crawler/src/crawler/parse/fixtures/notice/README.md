@@ -1,6 +1,6 @@
 # 通知页结构样例
 
-2026-11-09 通过 `Fetcher` 各读一页通知，只照抄正文和附件附近的结构。正文、标题、文件名、链接和图片地址全部换成自编的内容；没有通知原文、附件或学生信息。
+2026-11-09 和 2026-11-26 通过 `Fetcher`（要浏览器的网站用抓取节点的浏览器设置）各读一页通知，只照抄正文和附件附近的结构。正文、标题、文件名、链接和图片地址全部换成自编的内容；没有通知原文、附件或学生信息。
 
 | 样例 | 系统及结构依据 | 结构来源 |
 | --- | --- | --- |
@@ -14,5 +14,15 @@
 | `ucas-unit.html` | 国科大研招网的招生单位页：没有 `b-abody`，正文是整个 `b-pagecontent` | [计算所硕士招生](https://www.ict.ac.cn/yjsjy/zsxx/sszs/)链到的招生目录 |
 | `abody.html` | 国科大前沿交叉科学学院：正文在 `abody` | [国科大前沿交叉科学学院](https://sais.ucas.ac.cn/index.php/zh/xwgs/tgzs) |
 | `wechat.html` | 公众号文章：正文在 `rich_media_content`（`js_content`），标题和公众号名在正文外；图片懒加载，`src` 是 `data:` 占位图，地址在 `data-src`，带 `#imgIndex=` 片段 | 2026-11-17 用浏览器打开北科计算机与通信工程学院通知列表链到的一篇公众号文章 |
+| `drupal.html` | Drupal 10：通知是全文展示的节点 `node--view-mode-full`，正文是其中的 `field-body`；页面上的横幅、学院简介这些区块也有 `field-body`，在节点外面 | [中山大学智能工程学院](https://ise.sysu.edu.cn/)、[计算机学院](https://cse.sysu.edu.cn/)等 7 个网站 |
+| `gpower-page-article.html` | GPower 的另几种主题：正文只标成紧挨在 `pageArticle`、`page_article` 或 `gp-container` 里的 `article`，标题、日期和「审核」这些在它外面；北科研究生院（`ustb-graduate.html`）是紧挨在 `wrapArticle` 里的，先认它 | [北理工计算机学院](https://cs.bit.edu.cn/tzgg/)、[北交计算机学院](http://cs.bjtu.edu.cn/)、[北医基础医学院](https://sbms.bjmu.edu.cn/tzgg/) |
+| `trs-editor.html` | TRS 的老编辑器：正文在 `TRS_Editor`，有的套在表格里；编辑器的标记在别的规则都不中时才试，免得在别的系统的正文里只取到编辑器那一段 | [武汉理工信息学院](http://wutinfo.whut.edu.cn/)、[天大研招网](https://yzb.tju.edu.cn/) |
+| `tinymce.html` | TinyMCE 编辑出的正文 `mce-content-body` | [上交研招网](https://yzb.sjtu.edu.cn/) |
+| `sustech.html` | 南科大各院系的网站：`detail-sticky-left-content` 里是标题、日期，正文是紧挨着的 `news-info` | [南科大计算机系](https://cse.sustech.edu.cn/notices/)、[电子系](https://eee.sustech.edu.cn/) |
+| `newsinfo.html` | 正文是 `newsInfo` 里紧挨着的 `newsInfoCon` | [上交人工智能学院](https://soai.sjtu.edu.cn/) |
+| `article-content.html` | 正文是 `boxcontent` 里紧挨着的 `article-content` | [北师大研招网](https://yz.bnu.edu.cn/) |
+| `embedded-file.html` | 正文在 `view-cnt`，外面是没有标记的 div，所以这个类名在别的规则都不中时才试；正文只有一个 `iframe` 嵌着通知的 PDF，附件名取文件名 | [复旦信息学院](https://fit.fudan.edu.cn/) |
+| `vsb-id.html` | 博达的另一种：正文只标了 `id="vsb_content"`，没有 `v_news_content` | [西交研招网](https://yz.xjtu.edu.cn/) |
+| `blog.html` | Bootstrap 博客主题：正文是 `blog-single-inner` 里紧挨着的 `blog-inner-text`，要用浏览器打开 | [兰大研招网](https://yz.lzu.edu.cn/) |
 
 导航、页脚、侧栏的「常用下载」和二维码图片这些正文以外的链接，`vsb.html` 里留了几个，测试它们不被当成附件。下载、跳转、验证码页和失败的情况在 `crawl/notice_test.py` 里用自编的页面和现生成的附件测，不访问外网。
