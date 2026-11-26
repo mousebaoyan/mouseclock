@@ -1,12 +1,16 @@
+import type { z } from "@hono/zod-openapi";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
 import { Check } from "~/components/icons";
 import {
   KIND_LABELS,
+  TAG_THRESHOLD,
   type Kind,
   type Role,
   type Stage,
+  type ShownTags,
+  type TAG_COLORS,
 } from "../../server/modules/programs/schemas.ts";
 import type { RequestStatus } from "../../server/modules/sources/schemas.ts";
 import { TIERS } from "../tiers.ts";
@@ -49,15 +53,29 @@ const COLORS = {
     tag: "bg-tag-gray/10 text-tag-gray",
     on: "border-tag-gray/60 bg-tag-gray/8 text-foreground",
   },
-};
+} satisfies Record<(typeof TAG_COLORS)[number], { tag: string; on: string }>;
 export type TagColor = keyof typeof COLORS;
 
-export function Tag({ color, children }: { color: TagColor; children: ReactNode }) {
+// A choice picked, such as a filter's chip or a college tag one put on.
+export function pickedColor(color: TagColor) {
+  return COLORS[color].on;
+}
+
+export function Tag({
+  color,
+  className,
+  children,
+}: {
+  color: TagColor;
+  className?: string;
+  children: ReactNode;
+}) {
   return (
     <span
       className={cn(
         "inline-flex h-5 items-center rounded-sm px-1.5 text-xs font-medium whitespace-nowrap",
         COLORS[color].tag,
+        className,
       )}
     >
       {children}
@@ -88,7 +106,7 @@ export function Chip({
       className={cn(
         "inline-flex h-7 items-center gap-1 rounded-md border px-2.5 text-[13px] whitespace-nowrap pointer-coarse:h-9",
         on
-          ? cn("font-medium", COLORS[color].on)
+          ? cn("font-medium", pickedColor(color))
           : "border-border bg-card text-foreground/80 hover:border-input hover:text-foreground",
       )}
     >
@@ -101,11 +119,21 @@ export function Chip({
   );
 }
 
-// The tags that count as a college's (design §9.3), in gray: impressions, not facts.
-export function CollegeTags({ tags }: { tags: string[] }) {
+// The tags put on a college (design §9.3), each in its preset's hue with how many put it on;
+// those too few put on to count as the college's are only outlined. The words keep their full
+// hue either way, so they stay readable.
+export function CollegeTags({ tags }: { tags: z.infer<typeof ShownTags> }) {
   return tags.map((tag) => (
-    <Tag key={tag} color="gray">
-      {tag}
+    <Tag
+      key={tag.name}
+      color={tag.color}
+      className={cn(
+        "h-auto min-h-5 max-w-full gap-1 whitespace-normal wrap-anywhere",
+        tag.count < TAG_THRESHOLD && "border border-dashed border-current/40 bg-transparent",
+      )}
+    >
+      {tag.name}
+      <span className="shrink-0 font-normal tabular-nums">{tag.count}</span>
     </Tag>
   ));
 }

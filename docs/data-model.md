@@ -90,8 +90,8 @@
 
 | 表 | 关键字段 | 说明 |
 | --- | --- | --- |
-| `college_tags` | `name`、`description`、`sort` | 管理员预设的标签和说明。`name` 唯一；`sort` 从 1 起连着排，调一个的位置，别的跟着挪 |
-| `college_tag_votes` | `college_id`、`tag_id`、`user_id`、`created_at` | 每人每个标签一票，`(college_id, tag_id, user_id)` 唯一；3 人以上贴的才算学院的标签（[总体设计 §9.3](design.md#93-学院标签)）：写在院校清单和学院页上，总表和院校清单按它筛选，总表的 `tableVersion` 算上这张表。删预设连同它的票一起删 |
+| `college_tags` | `name`、`description`、`color`、`sort` | 管理员预设的标签和说明。`name` 唯一；`color` 是页面上标签的一种颜色（`red`、`orange`、`amber`、`green`、`teal`、`sky`、`blue`、`violet`、`pink`、`gray`）；`sort` 从 1 起连着排，调一个的位置，别的跟着挪 |
+| `college_tag_votes` | `college_id`、`tag_id`、`user_id`、`created_at` | 每人每个标签一票，`(college_id, tag_id, user_id)` 唯一；有人贴的都带着人数写在院校清单和学院页上，3 人以上贴的才算学院的标签（[总体设计 §9.3](design.md#93-学院标签)），总表和院校清单按它筛选，总表的 `tableVersion` 算上这张表。删预设连同它的票一起删 |
 
 ### 反馈、修改申请和争议（`review`）
 

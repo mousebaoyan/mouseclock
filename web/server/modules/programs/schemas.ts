@@ -193,6 +193,10 @@ export const ProgramFilterQuery = ProgramTableQuery.extend({
 });
 export type ProgramFilters = z.infer<typeof ProgramFilterQuery>;
 
+// 学院标签 (design §9.3): one member's view isn't the members' impression, so a tag counts as the
+// college's, and filters, once this many put it on.
+export const TAG_THRESHOLD = 3;
+
 // A row of the table (design §10): only what the table shows, filters and sorts by. `apply` is
 // what the page shows; the two instants are for status, countdowns and sorting.
 export const TableProgram = z
@@ -209,7 +213,9 @@ export const TableProgram = z
       name: z.string(),
       region: z.string(),
       directions: z.array(z.string()),
-      tags: z.array(z.string()).openapi({ description: "算数的学院标签：3 人以上贴的" }),
+      tags: z
+        .array(z.string())
+        .openapi({ description: `算数的学院标签：${TAG_THRESHOLD} 人以上贴的` }),
     }),
     kind: Kind,
     name: z.string(),
@@ -440,11 +446,26 @@ export const Applications = z
   })
   .openapi("Applications");
 
-// What members make of a college (design §9.3), from the admins' presets.
+// What members make of a college (design §9.3), from the admins' presets, each in a hue of the
+// pages' tags (app/components/tags.tsx).
+export const TAG_COLORS = [
+  "red",
+  "orange",
+  "amber",
+  "green",
+  "teal",
+  "sky",
+  "blue",
+  "violet",
+  "pink",
+  "gray",
+] as const;
+export const TagColor = z.enum(TAG_COLORS, named("颜色")).openapi("TagColor");
 export const TagInput = z
   .strictObject({
     name: z.string(named("标签名")).trim().min(1).max(20),
     description: z.string(named("说明")).trim().min(1).max(200),
+    color: TagColor,
   })
   .openapi("TagInput");
 export const TagPatch = TagInput.extend({
@@ -454,7 +475,7 @@ export const TagPatch = TagInput.extend({
   .refine((value) => Object.keys(value).length > 0, "请填写要修改的字段")
   .openapi("TagPatch");
 export const CollegeTag = z
-  .object({ id: Int, name: z.string(), description: z.string(), sort: Int })
+  .object({ id: Int, name: z.string(), description: z.string(), color: TagColor, sort: Int })
   .openapi("CollegeTag");
 export const AdminTag = CollegeTag.extend({
   voters: Int.openapi({ description: "在各学院贴过它的有几个人，删除前提示用" }),
@@ -463,6 +484,11 @@ export const AdminTag = CollegeTag.extend({
 export const CollegeTagCount = CollegeTag.omit({ sort: true })
   .extend({ count: Int, mine: z.boolean() })
   .openapi("CollegeTagCount");
+export const ShownTags = z
+  .array(z.object({ name: z.string(), color: TagColor, count: Int }))
+  .openapi({
+    description: `有人贴的学院标签和人数，按预设的顺序；${TAG_THRESHOLD} 人以上贴的才算学院的标签，能用来筛选`,
+  });
 export const TagVote = z
   .object({
     id: Int,

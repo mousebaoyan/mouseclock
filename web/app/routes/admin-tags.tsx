@@ -1,11 +1,12 @@
 import type { InferResponseType } from "hono/client";
 import { data, Form, Link, redirect, useNavigation } from "react-router";
-import { TagInput, TagPatch } from "../../server/modules/programs/schemas.ts";
+import { TAG_COLORS, TagInput, TagPatch } from "../../server/modules/programs/schemas.ts";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { Field, FormMessage } from "../components/form.tsx";
 import { List, Row } from "../components/list.tsx";
 import { Page, Panel } from "../components/page.tsx";
+import { Tag } from "../components/tags.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
 import { forgetTable } from "../table-cache.ts";
 import type { Route } from "./+types/admin-tags.ts";
@@ -39,7 +40,11 @@ export async function action({ request, context }: Route.ActionArgs) {
   } else if (intent === "move") {
     res = await api[":id"].$patch({ param, json: { sort: Number(formText(form, "sort")) } });
   } else {
-    const values = { name: formText(form, "name"), description: formText(form, "description") };
+    const values = {
+      name: formText(form, "name"),
+      description: formText(form, "description"),
+      color: formText(form, "color"),
+    };
     if (intent === "create") {
       const input = TagInput.safeParse(values);
       if (!input.success) return data({ error: input.error.issues[0].message }, 400);
@@ -82,7 +87,14 @@ export default function AdminTags({ loaderData, actionData }: Route.ComponentPro
           {tags.map((tag, i) => (
             <Row
               key={tag.id}
-              title={<span className="font-medium">{tag.name}</span>}
+              title={
+                <Tag
+                  color={tag.color}
+                  className="h-auto min-h-5 max-w-full whitespace-normal wrap-anywhere"
+                >
+                  {tag.name}
+                </Tag>
+              }
               meta={
                 <>
                   <span className="min-w-0 wrap-anywhere">{tag.description}</span>
@@ -122,7 +134,7 @@ export default function AdminTags({ loaderData, actionData }: Route.ComponentPro
               }
             >
               {editing === tag.id && (
-                <TagForm tag={tag} busy={busy} cancel="?" key={`edit-${tag.id}`} />
+                <TagForm tag={tag} tags={tags} busy={busy} cancel="?" key={`edit-${tag.id}`} />
               )}
               {deleting === tag.id && (
                 <Form method="post" className="mt-3 space-y-3 rounded-md border bg-muted/50 p-3">
@@ -150,21 +162,39 @@ export default function AdminTags({ loaderData, actionData }: Route.ComponentPro
       </Panel>
       <Panel title="新增标签" description="用词要中性；说明讲清楚贴它是什么意思">
         {/* Empty again once one is added. */}
-        <TagForm tag={null} busy={busy} key={tags.map((t) => t.id).join()} />
+        <TagForm tag={null} tags={tags} busy={busy} key={tags.map((t) => t.id).join()} />
       </Panel>
     </Page>
   );
 }
 
+const COLOR_NAMES: Record<(typeof TAG_COLORS)[number], string> = {
+  red: "红",
+  orange: "橙",
+  amber: "黄",
+  green: "绿",
+  teal: "青",
+  sky: "天蓝",
+  blue: "蓝",
+  violet: "紫",
+  pink: "粉",
+  gray: "灰",
+};
+
+// A new preset starts in a hue none of the others has, so tags are told apart.
 function TagForm({
   tag,
+  tags,
   busy,
   cancel,
 }: {
   tag: Tags["tags"][number] | null;
+  tags: Tags["tags"];
   busy: boolean;
   cancel?: string;
 }) {
+  const color =
+    tag?.color ?? TAG_COLORS.find((c) => tags.every((t) => t.color !== c)) ?? TAG_COLORS[0];
   return (
     <Form method="post" className="mt-3 space-y-3 first:mt-0">
       <input type="hidden" name="intent" value={tag ? "update" : "create"} />
@@ -189,6 +219,27 @@ function TagForm({
           />
         </Field>
       </div>
+      {/* Picked again when another preset takes the color this one started in. */}
+      <fieldset key={color}>
+        <legend className="mb-1.5 text-[13px] font-medium">颜色</legend>
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {TAG_COLORS.map((c) => (
+            <label
+              key={c}
+              className="flex items-center gap-1.5 pointer-coarse:min-h-11 pointer-coarse:min-w-11"
+            >
+              <input
+                type="radio"
+                name="color"
+                value={c}
+                defaultChecked={c === color}
+                className="accent-primary"
+              />
+              <Tag color={c}>{COLOR_NAMES[c]}</Tag>
+            </label>
+          ))}
+        </div>
+      </fieldset>
       <div className="flex gap-2">
         <Button size="sm" disabled={busy}>
           {tag ? "保存" : "添加"}

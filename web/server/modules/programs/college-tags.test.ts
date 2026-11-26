@@ -24,9 +24,9 @@ beforeEach(async () => {
   presets = await db
     .insertInto("college_tags")
     .values([
-      { name: "有机试", description: "考核里有上机编程", sort: 1 },
-      { name: "看重科研", description: "考核看重论文和科研经历", sort: 2 },
-      { name: "看重竞赛", description: "考核看重竞赛获奖", sort: 3 },
+      { name: "有机试", description: "考核里有上机编程", color: "teal", sort: 1 },
+      { name: "看重科研", description: "考核看重论文和科研经历", color: "blue", sort: 2 },
+      { name: "看重竞赛", description: "考核看重竞赛获奖", color: "violet", sort: 3 },
     ])
     .returning(["id", "name"])
     .execute();
@@ -66,7 +66,7 @@ async function listed(as: As) {
   return (await res.json()).schools.flatMap((s) => s.colleges.map((c) => c.tags));
 }
 
-test("a tag counts as the college's once three members put it on, one vote each", async () => {
+test("a tag shows once put on and counts as the college's once three did, one vote each", async () => {
   const id = await college();
   const [exam, research] = presets;
   const [one, two, three] = await Promise.all(fakeUsers.slice(0, 3).map(writer));
@@ -75,7 +75,10 @@ test("a tag counts as the college's once three members put it on, one vote each"
   await tag(two, id, exam.id);
   await tag(one, id, research.id);
   expect(await page(one, id)).toEqual({
-    tags: [],
+    tags: [
+      { name: "有机试", color: "teal", count: 2 },
+      { name: "看重科研", color: "blue", count: 1 },
+    ],
     counts: [
       ["有机试", 2, true],
       ["看重科研", 1, true],
@@ -84,8 +87,9 @@ test("a tag counts as the college's once three members put it on, one vote each"
   });
 
   await tag(three, id, exam.id);
-  expect((await page(three, id)).tags).toEqual(["有机试"]);
-  expect(await listed(one)).toEqual([["有机试"]]);
+  expect((await page(three, id)).tags[0]).toEqual({ name: "有机试", color: "teal", count: 3 });
+  // The list and the page agree.
+  expect(await listed(one)).toEqual([(await page(one, id)).tags]);
 
   const untag = () => api.colleges[":id"].tags[":tag"].$delete({ param: param(id, exam.id) }, one);
   expect((await untag()).status).toBe(204);
@@ -171,14 +175,19 @@ test("admins keep the presets: rename keeping the votes, reorder, delete with th
   const patch = (tagId: number, json: z.input<typeof TagPatch>) =>
     api.admin.tags[":id"].$patch({ param: { id: String(tagId) }, json }, admin);
 
-  const json = { name: "有夏令营机试", description: "夏令营考核里有上机编程" };
+  const json = {
+    name: "有夏令营机试",
+    description: "夏令营考核里有上机编程",
+    color: "sky",
+  } as const;
   expect((await api.admin.tags.$post({ json }, one)).status).toBe(403);
   expect((await api.admin.tags.$post({ json }, admin)).status).toBe(201);
   expect((await api.admin.tags.$post({ json }, admin)).status).toBe(409);
   expect((await patch(research.id, { name: "有夏令营机试" })).status).toBe(409);
 
-  expect((await patch(exam.id, { name: "要机试" })).status).toBe(204);
+  expect((await patch(exam.id, { name: "要机试", color: "red" })).status).toBe(204);
   expect((await page(one, id)).counts[0]).toEqual(["要机试", 1, true]);
+  expect((await page(one, id)).tags).toEqual([{ name: "要机试", color: "red", count: 1 }]);
 
   expect((await patch(contest.id, { sort: 1 })).status).toBe(204);
   expect(await order()).toEqual(["1看重竞赛", "2要机试", "3看重科研", "4有夏令营机试"]);

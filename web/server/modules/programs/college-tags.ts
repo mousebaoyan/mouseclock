@@ -6,16 +6,18 @@ import { recordAudit } from "../../platform/audit.ts";
 import { db, explainConflict } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
-import type { TagInput, TagPatch } from "./schemas.ts";
+import {
+  TAG_THRESHOLD,
+  type ShownTags,
+  type TagColor,
+  type TagInput,
+  type TagPatch,
+} from "./schemas.ts";
 
 // 学院标签 (design §9.3): members put the admins' presets on colleges, one vote each; a tag counts
 // as the college's once enough of them did.
 
-// One member's view isn't the members' impression.
-export const TAG_THRESHOLD = 3;
-
-// The tags that count as the college's, in the presets' order: on the table's programs, in 院校清单
-// and on its page, where they are shown and filtered by.
+// The tags that count as the college's, in the presets' order, which the table filters by.
 export function tagsOf(college: string) {
   return sql<string[]>`array(
     select t.name from college_tags as t
@@ -27,6 +29,27 @@ export function tagsOf(college: string) {
   )`;
 }
 
+// The column holds only these: a check in the table.
+function colorOf(column: string) {
+  return sql<z.infer<typeof TagColor>>`${sql.ref(column)}`.as("color");
+}
+
+// Every tag someone put on the college, with how many did, in the presets' order: 院校清单 shows
+// them all, and filters by those that count.
+export function shownTagsOf(college: string) {
+  return sql<z.infer<typeof ShownTags>>`coalesce((
+    select json_agg(
+      json_build_object('name', t.name, 'color', t.color, 'count', v.count) order by t.sort
+    )
+    from college_tags as t
+    cross join lateral (
+      select count(*)::int as count from college_tag_votes as v
+      where v.college_id = ${sql.ref(college)} and v.tag_id = t.id
+    ) as v
+    where v.count > 0
+  ), '[]')`;
+}
+
 // Every preset on a college's page: how many put it on, and whether `userId` did.
 export async function collegeTagCounts(collegeId: number, userId: number) {
   return db
@@ -34,7 +57,7 @@ export async function collegeTagCounts(collegeId: number, userId: number) {
     .leftJoin("college_tag_votes as v", (join) =>
       join.onRef("v.tag_id", "=", "t.id").on("v.college_id", "=", collegeId),
     )
-    .select(["t.id", "t.name", "t.description"])
+    .select(["t.id", "t.name", "t.description", colorOf("t.color")])
     .select((eb) => [
       eb.fn.count<number>("v.id").as("count"),
       sql<boolean>`coalesce(bool_or(v.user_id = ${userId}), false)`.as("mine"),
@@ -130,7 +153,7 @@ export async function listTags() {
   return db
     .selectFrom("college_tags as t")
     .leftJoin("college_tag_votes as v", "v.tag_id", "t.id")
-    .select(["t.id", "t.name", "t.description", "t.sort"])
+    .select(["t.id", "t.name", "t.description", colorOf("t.color"), "t.sort"])
     .select((eb) => eb.fn.count<number>("v.user_id").distinct().as("voters"))
     .groupBy("t.id")
     .orderBy("t.sort")
@@ -159,7 +182,7 @@ export async function createTag(actor: Actor, values: z.infer<typeof TagInput>) 
     const tag = await trx
       .insertInto("college_tags")
       .values({ ...values, sort: last + 1 })
-      .returning(["id", "name", "description", "sort"])
+      .returning(["id", "name", "description", "color", "sort"])
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
       user_id: actor.user_id,
@@ -181,7 +204,7 @@ export async function updateTag(
   await writeTags(async (trx) => {
     const tags = await trx
       .selectFrom("college_tags")
-      .select(["id", "name", "description", "sort"])
+      .select(["id", "name", "description", "color", "sort"])
       .orderBy("sort")
       .execute();
     const before = tags.find((t) => t.id === id);
@@ -204,7 +227,7 @@ export async function updateTag(
     }
     const after = await trx
       .selectFrom("college_tags")
-      .select(["id", "name", "description", "sort"])
+      .select(["id", "name", "description", "color", "sort"])
       .where("id", "=", id)
       .executeTakeFirstOrThrow();
     await recordAudit(trx, {
@@ -223,7 +246,7 @@ export async function deleteTag(actor: Actor, id: number) {
     // Locked, so no one puts it on between counting the votes and deleting them.
     const before = await trx
       .selectFrom("college_tags")
-      .select(["id", "name", "description", "sort"])
+      .select(["id", "name", "description", "color", "sort"])
       .where("id", "=", id)
       .forUpdate()
       .executeTakeFirst();

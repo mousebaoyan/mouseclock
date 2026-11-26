@@ -81,6 +81,7 @@ export interface Colleges {
 }
 
 export interface CollegeTags {
+  color: string;
   description: string;
   id: Generated<number>;
   name: string;

@@ -44,7 +44,7 @@
 | | `GET /programs/{id}/versions` | 版本：各版的通知、作用、改了哪些字段、快照和附件，最新的在前 |
 | | `GET /snapshots/{id}`、`GET /snapshots/{id}/attachments/{position}` | 快照：净化过的正文和附件列表；下载附件 |
 | | `GET /programs/{id}/edits` | 修改记录：修改、撤销和争议的复核，最新的在前 |
-| 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页。学院带 3 人以上贴的标签；学院页还带关注人数、每个标签几个人贴了，以及自己关注没有、贴了哪些 |
+| 学院 | `GET /colleges`、`GET /colleges/{id}` | 院校清单、学院页。学院带有人贴的标签、颜色和人数；学院页还带关注人数、每个预设几个人贴了，以及自己关注没有、贴了哪些 |
 | | `GET /schools/{id}/logo` | 校徽图片，不用登录。学校的 `logo` 字段就是这个地址，带着最后修改的时间（`?v=`），换了图片地址就变，所以响应可以一直缓存；SVG 加了 `sandbox`，单独打开也不会运行脚本 |
 | 消息 | `GET /messages` | 自己的消息，最新的在前，分页；每条带 `seen`，这一次新来的为 `false`（[总体设计 §11.1](design.md#111-站内消息)） |
 | | `POST /messages/seen` | `{ up_to }`：把这一条和更早的标成看过了；消息页打开后，用页上最新的那条调，之后才到的不受影响 |
@@ -90,7 +90,7 @@
 | | `POST /admin/users/{id}/revoke-edits` | 撤销某人的全部修改，收回这个人在鼠钟的修改权限 |
 | | `GET /admin/users`，`POST /admin/users/{id}/restore-edits` | 管理员查看收回了修改权限的人，恢复某人的修改权限：收回时撤销的修改不跟着回来；没被收回的返回 `409 not_revoked`。恢复记进操作日志 |
 | | `GET`、`POST /admin/crawler-tokens`，`POST /admin/crawler-tokens/{id}/revoke` | 站长查询、生成、作废抓取节点令牌：生成时返回的令牌只出现这一次，作废马上生效；生成和作废记进操作日志 |
-| | `GET`、`POST /admin/tags`，`PATCH`、`DELETE /admin/tags/{id}` | 管理员管学院标签的预设：名字、说明、顺序；删除连同大家贴的一起删。都记进操作日志 |
+| | `GET`、`POST /admin/tags`，`PATCH`、`DELETE /admin/tags/{id}` | 管理员管学院标签的预设：名字、说明、颜色、顺序；删除连同大家贴的一起删。都记进操作日志 |
 | | `GET`、`PUT /admin/email-rules` | 站长查看、设定每类消息的邮件规则：默认发、默认不发、不发；记进操作日志 |
 | | `GET`、`PUT /admin/mail-accounts`，`POST /admin/mail-accounts/test` | 站长查看、保存发信邮箱，按顺序整个替换；密码只写不读，返回时只说设没设过。测试时填站长自己的 QQ 号，每个邮箱各给它发一封，返回各自成没成。保存记进操作日志 |
 
