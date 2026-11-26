@@ -20,6 +20,7 @@ from crawler.parse import ParseError
 from crawler.parse.files import file_parts
 from crawler.parse.image import Picture
 from crawler.parse.notice import AttachmentLink, parse_notice
+from crawler.parse.refusal import refusal
 
 # What the website keeps (docs/api.md §6): 50 attachments to a snapshot, 2 MiB of text to one,
 # files up to 10 MiB.
@@ -30,7 +31,7 @@ MAX_FILE = 10 * 1024 * 1024
 _TYPES = mimetypes.MimeTypes()
 # An empty answer, or a web page in place of the file: an error, or a captcha the crawler doesn't
 # solve (design §7.2).
-_NOT_A_FILE = re.compile(rb"\s*(?:<|\Z)")
+_NOT_A_FILE = re.compile(rb"(?:\xef\xbb\xbf)?\s*(?:<|\Z)")
 # Why a download failed, as the dashboard and the review page show it.
 _FETCH_FAILURES: dict[Failure, str] = {
     "timeout": "请求超时",
@@ -54,6 +55,9 @@ class ReadNotice:
         self, pages: PageSession, _source: WorkSource, url: str, usage: list[Usage]
     ) -> NoticePage | None:
         response = await pages.get(url)
+        # Before the status: a login page can answer 401 or even 404 for a notice still there.
+        if reason := refusal(response.body, response.url, response.content_type):
+            raise StepError("restricted", reason)
         if response.status in {404, 410}:
             return None
         if not 200 <= response.status < 300:
@@ -137,10 +141,12 @@ async def _download(pages: PageSession, url: str, page_url: str) -> bytes:
         response = await pages.download(url, page_url=page_url, max_size=MAX_FILE)
     except FetchError as error:
         raise _DownloadError("download_failed", _FETCH_FAILURES[error.failure]) from error
-    if response.status != 200:
-        raise _DownloadError("download_failed", f"HTTP {response.status}")
-    if _NOT_A_FILE.match(response.body):
-        raise _DownloadError("download_failed", "返回的是网页")
+    if response.status != 200 or _NOT_A_FILE.match(response.body):
+        raise _DownloadError(
+            "download_failed",
+            refusal(response.body, response.url, response.content_type)
+            or (f"HTTP {response.status}" if response.status != 200 else "返回的是网页"),
+        )
     if len(response.body) > MAX_FILE:
         raise _DownloadError("too_large")
     return response.body

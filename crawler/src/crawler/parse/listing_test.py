@@ -610,3 +610,37 @@ def test_repeated_links_can_be_the_list_rows() -> None:
         ("通知甲", date(2026, 9, 10)),
         ("通知乙", date(2026, 9, 9)),
     ]
+
+
+def test_a_list_behind_a_login_says_so() -> None:
+    login = "https://pass.example.edu.cn/tpass/login?service=x"
+    sites = FakeSites(
+        {
+            BASE: httpx.Response(302, headers={"location": login}),
+            login: httpx.Response(200, html="<ul><li><a href='/a.htm'>统一身份认证</a></li></ul>"),
+        }
+    )
+    with pytest.raises(StepError) as caught:
+        sites.run(lambda f: list_items(PageSession(f, None), source(), clock=lambda: 0.0))
+    assert (caught.value.failure, caught.value.detail) == ("restricted", "要登录")
+
+
+def test_a_later_page_kept_back_ends_the_list_with_what_came_before() -> None:
+    refused = '<!--No Permission--><div class="wp_error_msg">该信息仅允许校内地址访问</div>'
+    sites = FakeSites(
+        {
+            BASE: httpx.Response(
+                200, content=page([("1", "2026-09-10"), ("2", "2025-09-09")], "p2")
+            ),
+            "https://example.edu.cn/p2": httpx.Response(200, html=refused),
+        }
+    )
+    result = sites.run(
+        lambda f: list_items(
+            PageSession(f, None),
+            source(backfill=True),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
+    assert [item.title for item in result] == ["自编通知1", "自编通知2"]
+    assert len(sites.requests) == 2

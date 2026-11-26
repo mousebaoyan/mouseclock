@@ -15,12 +15,13 @@ export const FAILURES = [
   "too_many_redirects",
   "http_status",
   "no_items",
+  "restricted",
   "error",
 ] as const;
 export type Failure = (typeof FAILURES)[number];
 export const Failure = z.enum(FAILURES).openapi("Failure", {
   description:
-    "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误",
+    "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；restricted：源站要登录、只许校内访问或要验证码，detail 写它怎么说的；error：其他错误",
 });
 // A notice as a list page shows it, from a source's round or a probe.
 export const ListedItem = z

@@ -134,6 +134,89 @@ def test_no_nul_from_a_picture_or_a_link_reaches_the_snapshot(readings: Readings
     )
 
 
+WEBPLUS_REFUSED = (
+    '<title>提示信息</title><!--No Permission--><div class="wp_error"><div class="wp_error_msg">'
+    "<span>提示\uff1a您当前ip并非校内地址\uff0c该信息仅允许校内地址访问</span></div></div>"
+)
+LOGIN = "https://pass.example.edu.cn/tpass/login?service=https%3A%2F%2Fexample.edu.cn%2F"
+
+
+@pytest.mark.parametrize(
+    ("page", "failure", "detail"),
+    [
+        (WEBPLUS_REFUSED, "restricted", "您当前ip并非校内地址\uff0c该信息仅允许校内地址访问"),
+        # WebPlus shows other errors on the same page; only this mark says the article is kept.
+        (WEBPLUS_REFUSED.replace("<!--No Permission-->", ""), "error", "认不出正文"),
+    ],
+)
+def test_a_notice_kept_for_the_campus_says_so(
+    page: str, failure: str, detail: str, readings: Readings
+) -> None:
+    psp = PAGE.replace(".htm", ".psp")
+    pages = {
+        PAGE: httpx.Response(302, headers={"location": psp}),
+        psp: httpx.Response(200, html=page),
+    }
+    with pytest.raises(StepError) as caught:
+        read(pages, readings)
+    assert (caught.value.failure, caught.value.detail) == (failure, detail)
+
+
+@pytest.mark.parametrize(
+    ("to", "status", "detail"),
+    [
+        (LOGIN, 200, "要登录"),
+        # Not that the notice is gone.
+        (LOGIN, 404, "要登录"),
+        ("https://mp.weixin.qq.com/mp/wappoc_appmsgcaptcha?poc_token=x", 200, "要验证码"),
+    ],
+)
+def test_a_notice_behind_a_login_or_a_captcha_says_so(
+    to: str, status: int, detail: str, readings: Readings
+) -> None:
+    pages = {
+        PAGE: httpx.Response(302, headers={"location": to}),
+        to: httpx.Response(status, html='<div class="content"><form>统一身份认证</form></div>'),
+    }
+    with pytest.raises(StepError) as caught:
+        read(pages, readings)
+    assert (caught.value.failure, caught.value.detail) == ("restricted", detail)
+
+
+def test_an_attachment_behind_a_captcha_or_a_login_says_so(readings: Readings) -> None:
+    body = (
+        '<div class="v_news_content"><p>正文。</p><a href="a.pdf">简章.pdf</a>'
+        '<a href="b.pdf">名单.pdf</a><a href="captcha-guide.pdf">日程.pdf</a>'
+        '<a href="login.pdf">登录说明.pdf</a></div>'
+    )
+    files = "https://example.edu.cn/info/1001"
+    captcha = '<h1>请输入验证码下载附件</h1><input type="text" id="codeValue">'
+    pages = {
+        PAGE: httpx.Response(200, html=body),
+        f"{files}/a.pdf": httpx.Response(200, content="\ufeff".encode() + captcha.encode()),
+        f"{files}/b.pdf": httpx.Response(302, headers={"location": LOGIN}),
+        LOGIN: httpx.Response(403, html="<form>统一身份认证</form>"),
+        f"{files}/captcha-guide.pdf": httpx.Response(200, html="<p>系统繁忙</p>"),
+    }
+    page = read(pages, readings)
+    assert page is not None
+    assert [a.info for a in page.attachments] == [
+        UnreadAttachment(
+            name=name,
+            url=f"{files}/{file}",
+            content_type="application/pdf",
+            failure="download_failed",
+            detail=detail,
+        )
+        for name, file, detail in [
+            ("简章.pdf", "a.pdf", "要验证码"),
+            ("名单.pdf", "b.pdf", "要登录"),
+            ("日程.pdf", "captcha-guide.pdf", "返回的是网页"),
+            ("登录说明.pdf", "login.pdf", "HTTP 404"),
+        ]
+    ]
+
+
 def test_attachments_keep_their_order_and_the_ones_not_read_say_why(readings: Readings) -> None:
     body = (
         '<div class="v_news_content"><p>自编的通知正文。</p>'
