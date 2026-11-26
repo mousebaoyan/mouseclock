@@ -101,3 +101,27 @@ def test_a_file_over_the_limit_is_not_downloaded_whole() -> None:
 
     assert len(file.body) > 5000
     assert sum(sent) < 10_000
+
+
+def test_only_the_notice_page_s_own_site_is_told_where_an_attachment_was_linked_from() -> None:
+    hops = {
+        "https://a/file": "https://a/moved",
+        "https://a/moved": "https://b/file",
+        "https://b/file": "http://a/file",
+    }
+    referers: list[str | None] = []
+
+    def serve(request: httpx.Request) -> httpx.Response:
+        referers.append(request.headers.get("referer"))
+        if location := hops.get(str(request.url)):
+            return httpx.Response(302, headers={"location": location})
+        return httpx.Response(200)
+
+    async def main() -> None:
+        async with Fetcher(httpx.MockTransport(serve), FakeSites({}).clock, asyncio.sleep) as f:
+            await f.get("https://a/file", page_url="https://a/notice.htm#top")
+
+    asyncio.run(main())
+
+    # Not to another site, nor to its own site over plain HTTP.
+    assert referers == ["https://a/notice.htm", "https://a/notice.htm", None, None]

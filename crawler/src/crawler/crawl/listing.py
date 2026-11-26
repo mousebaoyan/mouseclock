@@ -60,7 +60,9 @@ async def list_items(
         for item in page.items:
             if not source.backfill or item.published_on is None or item.published_on >= cutoff:
                 items.setdefault(item.url, item)
-        if not source.backfill or page.next_url is None:
+        # A list configured without dates can't tell where two years back is.
+        undated = config.selectors is not None and config.selectors.date is None
+        if not source.backfill or page.next_url is None or undated:
             break
         current = request_url(page.next_url)
     return list(items.values())

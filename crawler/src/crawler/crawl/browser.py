@@ -30,6 +30,7 @@ from crawler.crawl.fetch import (
     Fetcher,
     FetchError,
     Response,
+    referer,
 )
 
 PAGE_TIMEOUT = 300.0
@@ -148,7 +149,7 @@ class BrowserSession:
                 try:
                     response = await self._context.request.get(
                         url,
-                        headers={"Referer": page_url},
+                        headers=referer(url, page_url),
                         timeout=TIMEOUT * 1000,
                         max_redirects=0,
                         max_retries=0,
@@ -207,4 +208,5 @@ class PageSession:
         if self._browser_session is not None:
             # Playwright reads a body whole; its timeout bounds how much.
             return await self._browser_session.download(url, page_url=page_url)
-        return await self._fetcher.get(url, max_size)
+        # As a browser would: some sites answer a bare request for an attachment with a captcha.
+        return await self._fetcher.get(url, max_size, page_url)

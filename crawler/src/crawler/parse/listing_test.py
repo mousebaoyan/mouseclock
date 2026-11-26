@@ -97,6 +97,37 @@ def test_a_link_too_broken_to_read_is_skipped_and_the_rest_kept() -> None:
     assert [item.title for item in result.items] == ["好链接"]
 
 
+def test_a_script_inside_the_link_is_not_the_title() -> None:
+    card = (
+        '<div class="card"><a href="/2026/09{day}/c1a{day}/page.htm"><script>var pic="";'
+        " document.write('<img>');</script></a><h5><a href=\"/2026/09{day}/c1a{day}/page.htm\">"
+        "{title}</a></h5><p><time>发布时间 2026-09-{day}</time></p></div>"
+    )
+    body = card.format(day="10", title="示例招生通知甲") + card.format(
+        day="09", title="示例招生通知乙"
+    )
+    result = parse_listing(body.encode(), BASE, None, "text/html; charset=utf-8")
+    assert [(item.title, item.published_on) for item in result.items] == [
+        ("示例招生通知甲", date(2026, 9, 10)),
+        ("示例招生通知乙", date(2026, 9, 9)),
+    ]
+
+
+@pytest.mark.parametrize(
+    ("shown", "published"),
+    [("2026-09<span>10</span>", date(2026, 9, 10)), ("第2026-09期 10", None)],
+)
+def test_a_configured_date_shown_with_the_day_below_its_year_and_month(
+    shown: str, published: date | None
+) -> None:
+    body = (
+        f'<ul><li><div class="date">{shown}</div><a href="/info/1/1.htm">示例招生通知</a></li></ul>'
+    )
+    selectors = Selectors(items="//li", title=".//a", link=".//a/@href", date=".//div")
+    [item] = parse_listing(body.encode(), BASE, selectors, "text/html; charset=utf-8").items
+    assert item.published_on == published
+
+
 def test_rows_with_only_the_month_and_day_take_the_year_from_their_group_title() -> None:
     selectors = Selectors(
         items="//li[contains(@class,'list-group-item')]",
@@ -204,6 +235,65 @@ def test_backfill_keeps_boundary_and_unknown_dates_and_ignores_repeated_pinned_r
         else ["自编通知1", "自编通知2", "自编通知9"]
     )
     assert len(sites.requests) == (3 if backfill else 1)
+
+
+def test_backfill_does_not_page_back_through_a_list_configured_without_dates() -> None:
+    config: dict[str, JsonValue] = {
+        "selectors": {
+            "items": "//li",
+            "title": ".//a",
+            "link": ".//a/@href",
+            "next": "//a[@rel='next']/@href",
+        }
+    }
+    sites = FakeSites(
+        {
+            BASE: httpx.Response(200, content=page([("1", None), ("2", None)], "must-not-fetch")),
+        }
+    )
+    result = sites.run(
+        lambda f: list_items(
+            PageSession(f, None),
+            source(backfill=True, config=config),
+            clock=lambda: datetime(2026, 11, 7, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
+    assert [item.title for item in result] == ["自编通知1", "自编通知2"]
+    assert len(sites.requests) == 1
+
+
+def test_backfill_pages_on_past_a_page_whose_new_rows_lack_dates() -> None:
+    config: dict[str, JsonValue] = {
+        "selectors": {
+            "items": "//li",
+            "title": ".//a",
+            "link": ".//a/@href",
+            "date": ".//span[@class='date']",
+            "next": "//a[@rel='next']/@href",
+        }
+    }
+    sites = FakeSites(
+        {
+            BASE: httpx.Response(
+                200, content=page([("1", "2026-09-10"), ("2", "2026-09-09")], "p2")
+            ),
+            "https://example.edu.cn/p2": httpx.Response(
+                200, content=page([("1", "2026-09-10"), ("3", None)], "p3")
+            ),
+            "https://example.edu.cn/p3": httpx.Response(
+                200, content=page([("4", "2026-09-02"), ("5", "2020-01-01")])
+            ),
+        }
+    )
+    result = sites.run(
+        lambda f: list_items(
+            PageSession(f, None),
+            source(backfill=True, config=config),
+            clock=lambda: datetime(2026, 11, 26, tzinfo=timezone(timedelta(hours=8))).timestamp(),
+        )
+    )
+    assert [item.title for item in result] == ["自编通知1", "自编通知2", "自编通知3", "自编通知4"]
+    assert len(sites.requests) == 3
 
 
 def test_leap_day_backfill_uses_calendar_years() -> None:

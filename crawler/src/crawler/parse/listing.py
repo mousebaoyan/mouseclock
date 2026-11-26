@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 
 from crawler.crawl.contract import ListedItem
 from crawler.parse import ParseError
-from crawler.parse.webpage import absolute_url, parse_webpage
+from crawler.parse.webpage import absolute_url, page_without_scripts
 
 
 class Selectors(BaseModel):
@@ -43,6 +43,9 @@ _DATE = re.compile(r"(?<!\d)(\d{4})\s*[-./年]\s*(\d{1,2})\s*[-./月]\s*(\d{1,2}
 _YEAR_LAST_DATE = re.compile(r"(?<!\d)(\d{1,2})[-./](\d{1,2})\s+(\d{4})(?!\d)")
 _YEAR_FIRST_DATE = re.compile(r"(?<!\d)(\d{4})\s+(\d{1,2})[-./](\d{1,2})(?!\d)")
 _SPLIT_DATE = re.compile(r"(?<!\d)(\d{1,2})\s+(\d{4})[-./](\d{1,2})(?!\d)")
+# The year and month above a big day: 2026-11 18. Only as a configured date field: elsewhere such
+# numbers are as likely an issue number or a count.
+_DAY_BELOW = re.compile(r"(?<!\d)(\d{4})\s*[-./]\s*(\d{1,2})\s+(\d{1,2})(?!\d)")
 # A date field that is just the month and day: 09-10, 9/10, 9月10日, 九月 10, 10 九月.
 _MONTH_NAME = "十[一二]?|[一二三四五六七八九]"
 _MONTH_DAY = re.compile(rf"(\d{{1,2}}|{_MONTH_NAME})\s*[-/月]\s*(\d{{1,2}})日?")
@@ -100,7 +103,11 @@ def _date(text: str) -> date | None:
         day, year, month = map(int, match.groups())
     elif match := _YEAR_LAST_DATE.search(text):
         month, day, year = map(int, match.groups())
-    elif (match := _YEAR_FIRST_DATE.search(text)) or (match := _DATE.search(text)):
+    elif (
+        (match := _YEAR_FIRST_DATE.search(text))
+        or (match := _DATE.search(text))
+        or (match := _DAY_BELOW.fullmatch(text.strip()))
+    ):
         year, month, day = map(int, match.groups())
     else:
         return None
@@ -192,7 +199,7 @@ def parse_listing(
 ) -> ListPage:
     if not body.strip():
         return ListPage([], None)
-    root = parse_webpage(body, content_type)
+    root = page_without_scripts(body, content_type)
     try:
         if selectors is not None:
             items: dict[str, ListedItem] = {}

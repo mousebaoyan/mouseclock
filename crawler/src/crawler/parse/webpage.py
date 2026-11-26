@@ -33,10 +33,17 @@ def absolute_url(base: str, href: str) -> str | None:
         return None
 
 
-def page_without_scripts(body: bytes, content_type: str | None) -> str:
-    """The page's HTML with its scripts and styles emptied."""
+def page_without_scripts(body: bytes, content_type: str | None) -> HtmlElement:
+    """The page with its scripts and styles emptied: lists are read, and their configurations
+    written, without the code some sites put inside a notice's link."""
     root = parse_webpage(body, content_type)
     # Keep the nodes themselves so positional XPath still addresses the original page.
     for node in root.iter("script", "style"):
         node.text = None
-    return etree.tostring(root, encoding="unicode", method="html")
+    return root
+
+
+def html_without_scripts(body: bytes, content_type: str | None) -> str:
+    return etree.tostring(
+        page_without_scripts(body, content_type), encoding="unicode", method="html"
+    )
