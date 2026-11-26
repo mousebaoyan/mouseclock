@@ -10,7 +10,7 @@ import { DateTime } from "../components/time.tsx";
 import { CopyButton } from "../components/copy-button.tsx";
 import { Downloads } from "../components/downloads.tsx";
 import { Button, buttonVariants } from "../components/ui/button.tsx";
-import { currentCohort } from "../time.ts";
+import { cohortChoices, currentCohort } from "../time.ts";
 import { SCOPES } from "../../server/platform/access.ts";
 import type { Route } from "./+types/me-agent.ts";
 
@@ -38,7 +38,7 @@ export async function loader({ request, context }: Route.LoaderArgs) {
     ...tokens,
     revoking: Number(url.searchParams.get("revoke")),
     origin: url.origin,
-    cohort: currentCohort(new Date()),
+    cohorts: cohortChoices(currentCohort(new Date())),
   };
 }
 
@@ -62,9 +62,9 @@ export async function action({ request, context }: Route.ActionArgs) {
   return { token: (await res.json()).token, name };
 }
 
-// Personal tokens for one's own Agent, and downloading a cohort (design §13).
+// Personal tokens for one's own Agent, and downloading the cohorts (design §13).
 export default function Agent({ loaderData, actionData }: Route.ComponentProps) {
-  const { tokens, limit, unused_days, revoking, origin, cohort } = loaderData;
+  const { tokens, limit, unused_days, revoking, origin, cohorts } = loaderData;
   const busy = useNavigation().state !== "idle";
   const made = actionData && "token" in actionData ? actionData : null;
   // Connecting an Agent, the token filled in (design §13).
@@ -200,11 +200,12 @@ export default function Agent({ loaderData, actionData }: Route.ComponentProps) 
           </List>
         )}
       </Panel>
-      <Panel
-        title="下载项目"
-        description="一届的全部项目，Agent 也可以用令牌调接口下载；别的届在总表底部下载"
-      >
-        <Downloads cohort={cohort} />
+      <Panel title="下载项目" description="一届的全部项目，Agent 也可以用令牌调接口下载">
+        <div className="space-y-2">
+          {cohorts.map((cohort) => (
+            <Downloads key={cohort} cohort={cohort} />
+          ))}
+        </div>
       </Panel>
     </div>
   );
