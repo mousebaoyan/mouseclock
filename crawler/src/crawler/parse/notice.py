@@ -25,6 +25,26 @@ _BODIES = (
     "abody",
     "rich_media_content",
 )
+# Bodies marked only by where they sit: a class right within one of its parent's.
+_NESTED_BODIES = (
+    # GPower, as USTB's graduate school has it, then its other themes.
+    ("wrapArticle", "article"),
+    ("pageArticle", "article"),
+    ("page_article", "article"),
+    ("gp-container", "article"),
+    ("newsInfo", "newsInfoCon"),
+    ("boxcontent", "article-content"),
+    ("detail-sticky-left-content", "news-info"),
+    ("blog-single-inner", "blog-inner-text"),
+)
+# Drupal gives blocks around the page, such as a banner or a word about the college, a body field
+# as well; the notice's own is the one in the node shown in full.
+_DRUPAL_BODY = "field-body"
+# VSB marks some bodies only by this id.
+_VSB_BODY = "vsb_content"
+# Editors' marks, tried after all the rest: TRS's older editor and TinyMCE, and Fudan's body,
+# which sits in a plain div.
+_LATE_BODIES = ("TRS_Editor", "mce-content-body", "view-cnt")
 # Where some systems list the attachments, apart from the body.
 _ATTACHMENT_AREAS = ("Annex", "wrap-appendix", "cas-wrap-appendix")
 # VSB's links to a notice's attachments, in the body or listed after it.
@@ -117,15 +137,19 @@ def _body(root: HtmlElement) -> HtmlElement | None:
     for name in _BODIES:
         if found := root.find_class(name):
             return found[0]
-    # USTB's graduate school marks its body only as the article in wrapArticle.
-    return next(
-        (
-            element
-            for element in root.find_class("article")
-            if (parent := element.getparent()) is not None and "wrapArticle" in parent.classes
-        ),
-        None,
-    )
+    for parent, name in _NESTED_BODIES:
+        for element in root.find_class(name):
+            if (above := element.getparent()) is not None and parent in above.classes:
+                return element
+    for node in root.find_class("node--view-mode-full"):
+        if found := node.find_class(_DRUPAL_BODY):
+            return found[0]
+    if (found := root.get_element_by_id(_VSB_BODY, None)) is not None:
+        return found
+    for name in _LATE_BODIES:
+        if found := root.find_class(name):
+            return found[0]
+    return None
 
 
 def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[AttachmentLink]:
@@ -158,6 +182,14 @@ def _attachments(root: HtmlElement, content: HtmlElement, url: str) -> list[Atta
                 and (target := absolute_url(url, src))
             ):
                 links.setdefault(target, _name(element, target))
+            continue
+        if element.tag == "iframe" and not element.get("pdfsrc"):
+            # A file the body shows in a frame, such as a notice that is a PDF and nothing more.
+            src = element.get("src")
+            if src and element in in_body and (target := absolute_url(url, src)):
+                name = without_nul(unquote(PurePosixPath(urlsplit(target).path).name))
+                if _FILE.search(name):
+                    links.setdefault(target, name[:500])
             continue
         # WebPlus embeds a PDF as a player with its address in pdfsrc.
         href = element.get("pdfsrc") or (element.get("href") if element.tag == "a" else None)
