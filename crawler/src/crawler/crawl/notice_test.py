@@ -5,6 +5,7 @@ from collections.abc import Iterator
 from contextlib import closing
 from itertools import batched
 from pathlib import Path
+from urllib.parse import urljoin
 
 import docx
 import httpx
@@ -105,6 +106,32 @@ def test_a_page_that_cant_be_read_fails_the_notice(
     with pytest.raises(StepError) as caught:
         read({PAGE: response}, readings)
     assert (caught.value.failure, caught.value.detail) == (failure, detail)
+
+
+def test_no_nul_from_a_picture_or_a_link_reaches_the_snapshot(readings: Readings) -> None:
+    class Model(FakeModel):
+        def handle(self, request: httpx.Request) -> httpx.Response:
+            super().handle(request)
+            text = "报名截止9月1\x002日"
+            return httpx.Response(200, json=completion(text, input_tokens=1, output_tokens=1))
+
+    body = (
+        '<div class="v_news_content"><p>自编的通知正文。</p><p><a href="pl%00an.png"></a></p></div>'
+    )
+    picture = httpx.Response(200, content=png_file("white"))
+    page = read(
+        {PAGE: httpx.Response(200, html=body), urljoin(PAGE, "pl%00an.png"): picture},
+        readings,
+        model=Model(),
+    )
+
+    assert page is not None
+    [attachment] = page.attachments
+    assert isinstance(attachment.info, ReadAttachment)
+    assert (attachment.info.name, attachment.info.text) == (
+        "pl\ufffdan.png",
+        "报名截止9月1\ufffd2日",
+    )
 
 
 def test_attachments_keep_their_order_and_the_ones_not_read_say_why(readings: Readings) -> None:

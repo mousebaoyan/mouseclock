@@ -5,6 +5,7 @@ import docx
 import openpyxl
 import pytest
 from PIL import Image
+from pypdf import PdfReader, PdfWriter
 
 from crawler.parse import ParseError, files
 from crawler.parse.files import file_parts
@@ -88,6 +89,34 @@ def test_pdf_characters_mapped_to_look_alike_radicals_read_as_the_common_ones() 
     )
     data = pdf_file(b"BT /F1 12 Tf 10 50 Td (AB) Tj ET", to_unicode)
     assert file_parts(data) == ["学生"]
+
+
+# The font gives a glyph, such as a dash between two numbers or a minus in a formula, no character.
+UNMAPPED_DASH = (
+    b"/CIDInit /ProcSet findresource begin 12 dict begin begincmap"
+    b" /CMapName /Example def 1 begincodespacerange <00> <FF> endcodespacerange"
+    b" 3 beginbfchar <41> <0031> <42> <0000> <43> <0032> endbfchar"
+    b" endcmap CMapName currentdict /CMap defineresource pop end end"
+)
+
+
+def test_a_pdf_glyph_mapped_to_nothing_keeps_the_words_on_either_side_apart() -> None:
+    data = pdf_file(b"BT /F1 12 Tf 10 50 Td (ABC) Tj ET", UNMAPPED_DASH)
+    assert file_parts(data) == ["1\ufffd2"]
+
+
+def test_a_scanned_page_whose_only_text_is_glyphs_mapped_to_nothing_is_a_picture() -> None:
+    scan = io.BytesIO()
+    Image.new("RGB", (600, 300), "white").save(scan, format="PDF")
+    writer = PdfWriter(clone_from=scan)
+    text_layer = pdf_file(b"BT /F1 12 Tf 10 50 Td (B) Tj ET", UNMAPPED_DASH)
+    writer.pages[0].merge_page(PdfReader(io.BytesIO(text_layer)).pages[0])
+    stream = io.BytesIO()
+    writer.write(stream)
+
+    [part] = file_parts(stream.getvalue())
+
+    assert isinstance(part, Picture)
 
 
 def test_files_with_no_words_to_read_give_none() -> None:
