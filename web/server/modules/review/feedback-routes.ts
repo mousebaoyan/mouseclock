@@ -10,6 +10,7 @@ import {
 import {
   acceptFeedback,
   AGENT_FEEDBACK_PER_DAY,
+  FEEDBACK_PER_DAY,
   getFeedback,
   giveFeedback,
   listDisputes,
@@ -63,7 +64,7 @@ export const feedbackRoutes = createRouter()
         403: errorResponse("账号已冻结或禁言中"),
         404: errorResponse("项目不存在"),
         429: errorResponse(
-          `通过 Agent 一天内已经提了 ${AGENT_FEEDBACK_PER_DAY} 条（\`agent_feedback_limit\`）`,
+          `这一种一天内已经提了 ${FEEDBACK_PER_DAY} 条（\`daily_limit\`），或者通过 Agent 一天内已经提了 ${AGENT_FEEDBACK_PER_DAY} 条（\`agent_feedback_limit\`）`,
         ),
       },
     }),

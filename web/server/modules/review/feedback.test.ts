@@ -351,10 +351,46 @@ test("feedback through an Agent says so, and is ten a day", async () => {
   expect((await give(agent, { kind: "problem", field: "materials", reason: "不对" })).status).toBe(
     429,
   );
-  // On the web, as many as one likes.
+  // The Agent's ten don't hold back the web.
   expect((await give(member, { kind: "problem", field: "materials", reason: "不对" })).status).toBe(
     201,
   );
   const given = await db.selectFrom("feedback").select("via").orderBy("id").execute();
   expect(given.map((f) => f.via)).toEqual([...places.map(() => "agent"), "web"]);
+});
+
+test("twenty of each kind a day, so one person can't bury the reviewers", async () => {
+  const { id: userId } = await db
+    .selectFrom("users")
+    .select("id")
+    .where("mousehole_id", "=", fakeUsers[0].id)
+    .executeTakeFirstOrThrow();
+  await db
+    .insertInto("feedback")
+    .values(
+      Array.from({ length: 20 }, () => ({
+        program_id: programId,
+        user_id: userId,
+        kind: "problem",
+        reason: "不对",
+        status: "withdrawn",
+        via: "web",
+      })),
+    )
+    .execute();
+  const over = await api.programs[":id"].feedback.$post(
+    { param: { id: String(programId) }, json: { kind: "problem", field: null, reason: "不对" } },
+    member,
+  );
+  expect(over.status).toBe(429);
+  expect(await over.json()).toMatchObject({ error: { code: "daily_limit" } });
+  // Edit requests count apart.
+  const edit = await give(member, { kind: "edit", field: "apply:end", value: later, ...why });
+  expect(edit.status).toBe(201);
+
+  await db
+    .updateTable("feedback")
+    .set({ created_at: new Date(Date.now() - 25 * 3600_000) })
+    .execute();
+  expect((await give(member, { kind: "problem", field: null, reason: "不对" })).status).toBe(201);
 });

@@ -122,6 +122,8 @@ export async function resolveSession(token: string) {
 export const TOKENS_EACH = 10;
 export const TOKEN_UNUSED_DAYS = 90;
 export const TOKEN_REQUESTS_PER_MINUTE = 60;
+// What a member submits on the site a minute, more than anyone clicking does (api.md §1).
+export const WRITES_PER_MINUTE = 30;
 
 // Not revoked, and used, or made, within TOKEN_UNUSED_DAYS.
 function liveTokens(from: Kysely<DB> = db) {

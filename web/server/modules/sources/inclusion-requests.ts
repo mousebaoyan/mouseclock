@@ -133,6 +133,10 @@ export function crawled(executor: Kysely<DB>, collegeId: number) {
     .executeTakeFirst();
 }
 
+// How many colleges not on the list a person asks for in a day, so one can't flood the queue with
+// names (api.md §1). Those on the list are as many as the list.
+export const REQUESTS_PER_DAY = 20;
+
 // Asking for a college someone already asked for counts as a vote for theirs.
 export async function askForCollege(userId: number, input: z.infer<typeof InclusionRequestInput>) {
   const { url_hint, note, ...college } = input;
@@ -146,6 +150,22 @@ export async function askForCollege(userId: number, input: z.infer<typeof Inclus
       .onConflict((oc) => oc.doNothing())
       .returning("id")
       .executeTakeFirst();
+    if (created && !("college_id" in college)) {
+      const { today } = await trx
+        .selectFrom("inclusion_requests")
+        .select((eb) => eb.fn.countAll<number>().as("today"))
+        .where("user_id", "=", userId)
+        .where("college_id", "is", null)
+        .where("created_at", ">", new Date(Date.now() - 24 * 3600_000))
+        .executeTakeFirstOrThrow();
+      if (today > REQUESTS_PER_DAY) {
+        throw new AppError(
+          429,
+          "daily_limit",
+          `一天内最多求收录 ${REQUESTS_PER_DAY} 个清单里没有的学院`,
+        );
+      }
+    }
     let id = created?.id;
     if (id === undefined) {
       const asked = await trx

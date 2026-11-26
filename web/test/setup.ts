@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { inject, vi } from "vitest";
+import { beforeEach, inject, vi } from "vitest";
 import { adminQuery, databaseUrl } from "./database.ts";
 
 // Each test file gets its own database, so files can run in parallel. The suffix is short enough
@@ -27,3 +27,6 @@ vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
   }
   return mousehole.fetch(request);
 });
+
+const { forgetRequests } = await import("../server/modules/accounts/routes.ts");
+beforeEach(forgetRequests);

@@ -3,6 +3,7 @@ import { authorize, createRouter, errorResponse, IdParam, Int } from "../../plat
 import {
   askForCollege,
   listRequests,
+  REQUESTS_PER_DAY,
   mergeRequest,
   updateRequest,
   voteFor,
@@ -66,6 +67,9 @@ export const inclusionRequestRoutes = createRouter()
         ...members,
         404: errorResponse("学校或学院不存在"),
         409: errorResponse("这个学院已经收录了（already_included）"),
+        429: errorResponse(
+          `一天内已经新求收录了 ${REQUESTS_PER_DAY} 个清单里没有的学院（daily_limit）`,
+        ),
       },
     }),
     async (c) => {
