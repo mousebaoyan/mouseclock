@@ -228,7 +228,7 @@ function TagButton({ tag, muted }: { tag: CollegeDetail["tag_counts"][number]; m
         )}
       >
         {tag.name}
-        <span className="text-xs font-normal opacity-60">{count}</span>
+        <span className="text-xs font-normal">{count}</span>
       </button>
       {fetcher.state === "idle" && fetcher.data && (
         <p

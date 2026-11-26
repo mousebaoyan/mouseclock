@@ -162,6 +162,13 @@ async function subscribe(name: string, programId: number) {
   );
 }
 
+async function unsubscribe(name: string, programId: number) {
+  return v1.programs[":id"].subscription.$delete(
+    { param: { id: String(programId) } },
+    person(name).as,
+  );
+}
+
 // What came to a member, oldest first: its kind, and its title and body as one line.
 async function messagesOf(name: string) {
   const rows = await db
@@ -303,6 +310,37 @@ test("subscribing past the time to remind reminds at once, unless it closed", as
   await expectMessages("鼠鼠", [reminded]);
 });
 
+test("subscribing again doesn't remind of a deadline reminded of, but of a new one", async () => {
+  const id = await program("2027 年夏令营", JUNE_30);
+  const again = async () => {
+    await unsubscribe("鼠鼠", id);
+    expect((await subscribe("鼠鼠", id)).status).toBe(204);
+  };
+  at("2026-06-28T10:00:00");
+  await subscribe("鼠鼠", id);
+  await again();
+  await notice(id, "关于延长报名时间的通知", { end: { date: "2026-07-02", time: "17:00" } });
+  await tick("2026-06-28T10:01:00");
+  await tick("2026-06-29T09:00:00");
+  await again();
+  // Past the time to remind of it, the message about it was the reminder.
+  await notice(id, "关于调整报名时间的通知", { end: { date: "2026-07-01", time: "17:00" } });
+  await tick("2026-06-29T09:01:00");
+  await again();
+  await tick("2026-06-29T09:02:00");
+  // Back to the first deadline while not subscribed: reminded of it already.
+  await unsubscribe("鼠鼠", id);
+  await notice(id, "关于恢复原报名时间的通知", { end: JUNE_30 });
+  await tick("2026-06-29T09:03:00");
+  await subscribe("鼠鼠", id);
+  await expectMessages("鼠鼠", [
+    ["deadline_soon", "6月30日 17:00 截止", "还剩 2 天"],
+    ["deadline_changed", "改为 7月2日 17:00", "原为 6月30日 17:00"],
+    ["deadline_soon", "7月2日 17:00 截止", "还剩 3 天"],
+    ["deadline_changed", "改为 7月1日 17:00（还剩 2 天）"],
+  ]);
+});
+
 test("a deadline that moves is told once, with what it was and why, and reminded of anew", async () => {
   const id = await program("2027 年夏令营", JUNE_30);
   await subscribe("鼠鼠", id);
@@ -363,6 +401,20 @@ test("a merge moves subscriptions to the one kept, one for those on both; deleti
   await expectMessages("仓鼠", []);
 });
 
+test("reminders of a merged program's deadlines go with it to the one kept", async () => {
+  const kept = await program("夏令营", JUNE_30);
+  const duplicate = await program("夏令营（重复）", { date: "2026-07-01", time: "17:00" });
+  at("2026-06-29T10:00:00");
+  await subscribe("鼠鼠", duplicate);
+  await unsubscribe("鼠鼠", duplicate);
+  await merge(duplicate, kept);
+  await notice(kept, "关于延长报名时间的通知", { end: { date: "2026-07-01", time: "17:00" } });
+  await subscribe("鼠鼠", kept);
+  await subscribe("仓鼠", kept);
+  await expectMessages("鼠鼠", [["deadline_soon", "「夏令营（重复）」", "7月1日 17:00 截止"]]);
+  await expectMessages("仓鼠", [["deadline_soon", "「夏令营」", "7月1日 17:00 截止"]]);
+});
+
 test("those mousehole turns down are refreshed for their subscriptions and get nothing until they log in again", async () => {
   const id = await program("2027 年夏令营", JUNE_30);
   await subscribe("鼠鼠", id);
@@ -377,7 +429,13 @@ test("those mousehole turns down are refreshed for their subscriptions and get n
   await expectMessages("仓鼠", [["deadline_soon"]]);
 
   await signIn(fakeUsers[0]);
+  // What they missed isn't counted as reminded: subscribing again reminds of it.
+  await unsubscribe("鼠鼠", id);
+  await subscribe("鼠鼠", id);
   await notice(id, "关于延长报名时间的通知", { end: { date: "2026-07-05" } });
   await tick("2026-06-27T09:01:00");
-  await expectMessages("鼠鼠", [["deadline_changed", "改为 7月5日"]]);
+  await expectMessages("鼠鼠", [
+    ["deadline_soon", "6月30日 17:00 截止"],
+    ["deadline_changed", "改为 7月5日"],
+  ]);
 });

@@ -29,16 +29,7 @@ export function Segmented({
           )}
         >
           {item.label}
-          {item.count !== undefined && (
-            <span
-              className={cn(
-                "text-xs tabular-nums",
-                item.on ? "text-primary" : "text-subtle-foreground",
-              )}
-            >
-              {item.count}
-            </span>
-          )}
+          {item.count !== undefined && <span className="text-xs tabular-nums">{item.count}</span>}
         </Link>
       ))}
     </fieldset>

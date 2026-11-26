@@ -120,6 +120,12 @@ export interface CrawlRuns {
   useful_count: number;
 }
 
+export interface DeadlineReminders {
+  deadline: Timestamp;
+  program_id: number;
+  user_id: number;
+}
+
 export interface Disputes {
   id: Generated<number>;
   note: string | null;
@@ -415,6 +421,7 @@ export interface DB {
   colleges: Colleges;
   crawl_runs: CrawlRuns;
   crawler_tokens: CrawlerTokens;
+  deadline_reminders: DeadlineReminders;
   disputes: Disputes;
   edits: Edits;
   email_rules: EmailRules;

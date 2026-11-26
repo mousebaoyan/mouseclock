@@ -1,4 +1,4 @@
-import { sql, type Transaction } from "kysely";
+import { sql, type NotNull, type Transaction } from "kysely";
 import type { DB } from "../../../db/types.ts";
 import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
@@ -100,6 +100,13 @@ export async function clearClosed(userId: number) {
 // subscriptions go, or move to the one kept, where one subscribed to both keeps theirs. A moved
 // one keeps the deadline its member heard of, so a different one on the kept program is news.
 export async function programGone(trx: Transaction<DB>, id: number, keptId: number | null) {
+  // Locked first, so a reminder being sent of one is in before they are copied.
+  await trx
+    .selectFrom("subscriptions")
+    .select("user_id")
+    .where("program_id", "=", id)
+    .forUpdate()
+    .execute();
   if (keptId !== null) {
     await trx
       .insertInto("subscriptions")
@@ -119,8 +126,35 @@ export async function programGone(trx: Transaction<DB>, id: number, keptId: numb
       )
       .onConflict((oc) => oc.columns(["user_id", "program_id"]).doNothing())
       .execute();
+    await trx
+      .insertInto("deadline_reminders")
+      .columns(["user_id", "program_id", "deadline"])
+      .expression((eb) =>
+        eb
+          .selectFrom("deadline_reminders")
+          .select(["user_id", eb.val(keptId).as("program_id"), "deadline"])
+          .where("program_id", "=", id),
+      )
+      .onConflict((oc) => oc.doNothing())
+      .execute();
   }
   await trx.deleteFrom("subscriptions").where("program_id", "=", id).execute();
+  await trx.deleteFrom("deadline_reminders").where("program_id", "=", id).execute();
+}
+
+type Reminded = { user_id: number; program_id: number; deadline: Date };
+
+// Subscribers as reminded of these deadlines, so subscribing again doesn't remind of them again
+// (design §11.3); only those `sent` the message: one frozen meanwhile is reminded on subscribing
+// again once back.
+async function markReminded(trx: Transaction<DB>, reminded: Reminded[], sent: Set<number>) {
+  const got = reminded.filter((r) => sent.has(r.user_id));
+  if (got.length === 0) return;
+  await trx
+    .insertInto("deadline_reminders")
+    .values(got)
+    .onConflict((oc) => oc.doNothing())
+    .execute();
 }
 
 const DISPUTED = "；有争议，请以原文为准";
@@ -190,11 +224,15 @@ async function tellChanges(trx: Transaction<DB>, now: Date) {
     .execute();
   const year = beijingYear(now);
   const messages: Message[] = [];
+  const reminded: Reminded[] = [];
   for (const row of changed) {
     const at = row.end && remindAt(row.end);
     const moved = row.deadline?.getTime() !== row.apply_deadline?.getTime();
+    // The new deadline, when this message counts as the reminder of it.
     const due =
-      moved && at !== null && at <= now && row.apply_deadline !== null && row.apply_deadline > now;
+      moved && at !== null && at <= now && row.apply_deadline !== null && row.apply_deadline > now
+        ? row.apply_deadline
+        : null;
     await trx
       .updateTable("subscriptions")
       .set({
@@ -208,6 +246,7 @@ async function tellChanges(trx: Transaction<DB>, now: Date) {
       .where("program_id", "=", row.program_id)
       .execute();
     if (!moved) continue;
+    if (due) reminded.push({ user_id: row.user_id, program_id: row.program_id, deadline: due });
     const after = row.end
       ? `改为 ${formatTime(row.end, year)}${due ? `（${left(row.end, now)}）` : ""}`
       : "已清空";
@@ -220,7 +259,7 @@ async function tellChanges(trx: Transaction<DB>, now: Date) {
       link: `/programs/${row.program_id}`,
     });
   }
-  await sendMessages(trx, "deadline_changed", messages);
+  await markReminded(trx, reminded, await sendMessages(trx, "deadline_changed", messages));
 }
 
 // 「快截止了」 for the reminders due by `now` of deadlines still ahead, each once; `only` for a
@@ -231,11 +270,12 @@ async function remind(
   only?: { user_id: number; program_id: number },
 ) {
   let query = subscriptionsWithPrograms(trx)
-    .select(sql<TimeValue>`s.deadline_value`.as("deadline"))
+    .select(["s.deadline as at", sql<TimeValue>`s.deadline_value`.as("deadline")])
     .where("s.remind_at", "<=", now)
     .where("s.deadline", ">", now)
     // As the program has it: one changed since tellChanges looked is told of next minute.
-    .whereRef("s.deadline", "=", "p.apply_deadline");
+    .whereRef("s.deadline", "=", "p.apply_deadline")
+    .$narrowType<{ at: NotNull }>();
   if (only) {
     query = query.where("s.user_id", "=", only.user_id).where("s.program_id", "=", only.program_id);
   }
@@ -246,10 +286,22 @@ async function remind(
     .set({ remind_at: null })
     .where((eb) => eb.or(due.map((s) => eb.and({ user_id: s.user_id, program_id: s.program_id }))))
     .execute();
-  await sendMessages(
+  // Those reminded of the same deadline before, who unsubscribed and subscribed again, get none.
+  const before = await trx
+    .selectFrom("deadline_reminders")
+    .select(["user_id", "program_id"])
+    .where((eb) =>
+      eb.or(
+        due.map((s) => eb.and({ user_id: s.user_id, program_id: s.program_id, deadline: s.at })),
+      ),
+    )
+    .execute();
+  const told = new Set(before.map((r) => `${r.user_id} ${r.program_id}`));
+  const fresh = due.filter((s) => !told.has(`${s.user_id} ${s.program_id}`));
+  const sent = await sendMessages(
     trx,
     "deadline_soon",
-    due.map((s) => ({
+    fresh.map((s) => ({
       user_id: s.user_id,
       title: `${s.program}快截止了`,
       body: `${formatTime(s.deadline, beijingYear(now))} 截止，${left(s.deadline, now)}${s.rolling ? "，额满即止，尽早报名" : ""}${s.disputed ? DISPUTED : ""}`,
@@ -259,6 +311,11 @@ async function remind(
         ...(s.apply_url ? [{ label: "报名入口", url: s.apply_url }] : []),
       ],
     })),
+  );
+  await markReminded(
+    trx,
+    fresh.map((s) => ({ user_id: s.user_id, program_id: s.program_id, deadline: s.at })),
+    sent,
   );
 }
 

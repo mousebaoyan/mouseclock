@@ -348,19 +348,10 @@ function Options({
   );
 }
 
-// Options with none dim their count rather than drop out, so the list keeps its order.
+// Options with none keep their place with a 0, so the list keeps its order.
 function Count({ option }: { option: SelectOption }) {
   if (option.count === undefined) return null;
-  return (
-    <span
-      className={cn(
-        "pl-3 text-xs font-normal tabular-nums",
-        option.count === 0 ? "text-subtle-foreground/70" : "text-muted-foreground",
-      )}
-    >
-      {option.count}
-    </span>
-  );
+  return <span className="pl-3 text-xs font-normal tabular-nums">{option.count}</span>;
 }
 
 function Tool({ onClick, children }: { onClick: () => void; children: ReactNode }) {

@@ -72,6 +72,7 @@
 | `emails` | `user_id`、`message_id`、`subject`、`body`、`html`、`attempts`、`next_at`、`sent_at`、`dropped_at`、`created_at` | 待发和已发的邮件，一条消息一封，`message_id` 唯一，和消息在同一个事务里写（[总体设计 §11.2](design.md#112-邮件)）；一个人收过几封从这里数 |
 | `mail_accounts` | `sort`、`host`、`port`、`username`、`password` | 发信邮箱，按 `sort` 的顺序用，`username` 也是发件地址；端口 465 一开始就走 TLS，其他的必须先用 STARTTLS 加密再登录，加密不了就不发。`password` 用 `APP_SECRET` 加密 |
 | `subscriptions` | `user_id`、`program_id`、`deadline`、`deadline_value`、`remind_at`、`created_at` | 订阅，`(user_id, program_id)` 唯一（[总体设计 §11.3](design.md#113-订阅和截止提醒)）。`deadline` 和 `deadline_value` 是成员上次知道的报名截止：换算出的时刻和原文的写法，为空是没有截止。每分钟和项目的 `apply_deadline` 比一次，时刻不同了发「截止变了」，写法用来写「原为」。`remind_at` 是提醒这个截止的时候，提醒过了、订阅时已截止或没有截止为空。合并项目时挪到留下的那个，原样带着这几列 |
+| `deadline_reminders` | `user_id`、`program_id`、`deadline` | 每人在每个项目上提醒过的报名截止，三列一起唯一。取消订阅也留着，再订回来时提醒过的截止不再提醒（[总体设计 §11.3](design.md#113-订阅和截止提醒)）；「截止变了」那条算提醒的也记下。只记真收到了消息的，冻结的和鼠洞不再放行的不记，回来后再订照样提醒。合并项目时挪到留下的那个，删掉的项目一起删。`program_id` 不设外键：删除或合并项目的管理员要等着这个项目的订阅，每分钟的提醒拿着订阅，外键又要它等这个项目，两边会互相等住；项目只标删除，不真删 |
 
 ### 关注学院（`reminders`）
 
