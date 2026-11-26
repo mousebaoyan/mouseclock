@@ -245,3 +245,26 @@ test("admins match asks to the list and merge the same college asked twice", asy
     "测试大学 软件学院已收录",
   ]);
 });
+
+test("twenty colleges not on the list a day; asking again for others' still votes", async () => {
+  const [one, two] = await Promise.all(fakeUsers.slice(0, 2).map(writer));
+  const theirs = { school_id: schoolId, college_name: "别人的学院", ...noHint };
+  const { id: theirId } = await ask(two, theirs);
+  for (let i = 0; i < 20; i++) {
+    const named = { school_id: schoolId, college_name: `第 ${i} 学院`, ...noHint };
+    expect((await ask(one, named)).status).toBe(201);
+  }
+  const over = await api["inclusion-requests"].$post(
+    { json: { school_id: schoolId, college_name: "多的学院", ...noHint } },
+    one,
+  );
+  expect(over.status).toBe(429);
+  expect(await over.json()).toMatchObject({ error: { code: "daily_limit" } });
+  expect(await ask(one, theirs)).toEqual({ status: 200, id: theirId });
+  expect((await ask(one, { college_id: collegeId, ...noHint })).status).toBe(201);
+  const turnedAway = db
+    .selectFrom("inclusion_requests")
+    .select("id")
+    .where("college_name", "=", "多的学院");
+  expect(await turnedAway.execute()).toEqual([]);
+});

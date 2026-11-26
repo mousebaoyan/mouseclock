@@ -151,3 +151,29 @@ test("ten tokens a person, and sixty requests a minute a token", async () => {
     vi.useRealTimers();
   }
 });
+
+test("thirty writes a minute a member on the site; reading doesn't count", async () => {
+  const nothing = { param: { id: "999999" } };
+  vi.useFakeTimers({ toFake: ["Date"] });
+  try {
+    vi.setSystemTime(new Date());
+    for (let i = 0; i < 30; i++) {
+      expect((await api.me.tokens[":id"].$delete(nothing, other)).status).toBe(404);
+      expect((await api.me.tokens.$get({}, other)).status).toBe(200);
+    }
+    const over = await api.me.tokens[":id"].$delete(nothing, other);
+    expect(over.headers.get("retry-after")).toMatch(/^\d+$/);
+    await expectError(over, 429, "rate_limited");
+    expect((await api.me.tokens.$get({}, other)).status).toBe(200);
+    // Logging out still works, and does log out.
+    const leaving = await session(fakeUsers[2]);
+    expect((await api.auth.logout.$post({}, leaving)).status).toBe(204);
+    expect((await api.me.tokens.$get({}, leaving)).status).toBe(401);
+    // Each member counts apart.
+    expect((await api.me.tokens[":id"].$delete(nothing, member)).status).toBe(404);
+    vi.setSystemTime(Date.now() + 60_000);
+    expect((await api.me.tokens[":id"].$delete(nothing, other)).status).toBe(404);
+  } finally {
+    vi.useRealTimers();
+  }
+});

@@ -26,6 +26,7 @@ import {
   resolveSession,
   SESSION_TTL_MS,
   TOKEN_REQUESTS_PER_MINUTE,
+  WRITES_PER_MINUTE,
 } from "./service.ts";
 
 // Prefixed: in development mousehole's `session` sits on the same localhost (api.md §2).
@@ -85,32 +86,53 @@ export function asVisitor(request: Request, visitor: Visitor) {
   return request;
 }
 
-// Each personal token's requests this minute (api.md §1). The site is one process, so memory
-// keeps them, and a new minute starts them afresh.
+// Each personal token's requests, and each member's writes on the site, this minute (api.md §1).
+// The site is one process, so memory keeps them, and a new minute starts them afresh.
 let minute = 0;
-const requests = new Map<number, number>();
+const requests = new Map<string, number>();
 
-function countRequest(c: Context, tokenId: number) {
+function countRequest(c: Context, key: `token:${number}` | `user:${number}`) {
   const now = Date.now();
   if (Math.floor(now / 60_000) !== minute) {
     minute = Math.floor(now / 60_000);
     requests.clear();
   }
-  const count = (requests.get(tokenId) ?? 0) + 1;
-  requests.set(tokenId, count);
-  if (count <= TOKEN_REQUESTS_PER_MINUTE) return;
+  const count = (requests.get(key) ?? 0) + 1;
+  requests.set(key, count);
+  const [limit, message] = key.startsWith("token:")
+    ? [TOKEN_REQUESTS_PER_MINUTE, `每个令牌每分钟最多 ${TOKEN_REQUESTS_PER_MINUTE} 次请求`]
+    : [WRITES_PER_MINUTE, `每分钟最多提交 ${WRITES_PER_MINUTE} 次`];
+  if (count <= limit) return;
   c.header("Retry-After", String(Math.ceil(((minute + 1) * 60_000 - now) / 1000)));
-  throw new AppError(
-    429,
-    "rate_limited",
-    `每个令牌每分钟最多 ${TOKEN_REQUESTS_PER_MINUTE} 次请求，请稍后再试`,
-  );
+  throw new AppError(429, "rate_limited", `${message}，请稍后再试`);
+}
+
+// Each test starts with nothing counted, so a test file's writes don't add up across its tests.
+export function forgetRequests() {
+  requests.clear();
+}
+
+// A member's writes through the API, made by the browser or by a page's action. Logging out is
+// always let through: one stopped there would believe they had.
+function countWrite(c: Context, userId: number) {
+  const { path, method } = c.req;
+  if (
+    path.startsWith("/api/") &&
+    path !== "/api/v1/auth/logout" &&
+    method !== "GET" &&
+    method !== "HEAD"
+  ) {
+    countRequest(c, `user:${userId}`);
+  }
 }
 
 // Runs for every request, pages included.
 export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
   const known = visitors.get(c.req.raw);
   if (known) {
+    // A page's action calling the API: its form shows the error. An Agent's calls inside MCP
+    // already counted once, as the token's.
+    if (known.viewer && !known.token) countWrite(c, known.viewer.id);
     c.set("viewer", known.viewer);
     c.set("sessionId", known.sessionId);
     c.set("token", known.token);
@@ -122,7 +144,7 @@ export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
   const bearer = bearerToken(c);
   if (bearer) {
     const found = await resolveApiToken(bearer);
-    if (found) countRequest(c, found.id);
+    if (found) countRequest(c, `token:${found.id}`);
     else if (!c.req.path.startsWith("/api/v1/crawler/")) {
       throw new AppError(401, "invalid_token", "令牌不对、已作废或者太久没用失效了");
     }
@@ -133,6 +155,7 @@ export const authenticate = createMiddleware<AppEnv>(async (c, next) => {
   }
   const token = getCookie(c, SESSION_COOKIE);
   const found = token ? await resolveSession(token) : null;
+  if (found) countWrite(c, found.viewer.id);
   c.set("viewer", found?.viewer ?? null);
   c.set("sessionId", found?.id ?? null);
   c.set("token", null);
