@@ -8,6 +8,7 @@ from pydantic import JsonValue
 from crawler.crawl.contract import Usage
 from crawler.crawl.rounds import StepError
 from crawler.extraction.chat import TEMPERATURE, Chat
+from crawler.parse import without_nul
 from crawler.parse.image import Picture
 
 INSTRUCTIONS = (
@@ -67,4 +68,4 @@ class ReadPicture:
                 output_tokens=tokens.completion_tokens,
             )
         )
-        return response.output_text()
+        return without_nul(response.output_text())

@@ -8,7 +8,7 @@ from urllib.parse import unquote, urlsplit
 
 from lxml.html import HtmlElement, tostring
 
-from crawler.parse import ParseError
+from crawler.parse import ParseError, without_nul
 from crawler.parse.indexing import Hyperlink
 from crawler.parse.webpage import absolute_url, parse_webpage
 
@@ -190,7 +190,7 @@ def _name(element: HtmlElement, url: str) -> str:
         element.text_content(),
         embedded and embedded[1],
         element.get("alt"),
-        unquote(PurePosixPath(urlsplit(url).path).name),
+        without_nul(unquote(PurePosixPath(urlsplit(url).path).name)),
     ):
         name = " ".join((candidate or "").split())
         # VSB writes some names in brackets: 【附件1.docx】.

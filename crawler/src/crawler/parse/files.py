@@ -18,7 +18,7 @@ from docx.text.paragraph import Paragraph
 from legacy_doc import extract_text
 from pypdf import PageObject, PdfReader
 
-from crawler.parse import ParseError
+from crawler.parse import ParseError, without_nul
 from crawler.parse.image import Picture, picture
 
 _PDF = b"%PDF"
@@ -44,6 +44,10 @@ _OURS = Path(__file__).parent.parent
 
 def file_parts(data: bytes) -> list[str | Picture]:
     """The file's text and pictures in reading order. Raises ParseError when the file is broken."""
+    return [without_nul(part) if isinstance(part, str) else part for part in _parts(data)]
+
+
+def _parts(data: bytes) -> list[str | Picture]:
     try:
         if data.startswith(_IMAGE_HEADERS) or (data.startswith(b"RIFF") and data[8:12] == b"WEBP"):
             return [picture(data)]
@@ -74,7 +78,7 @@ def file_parts(data: bytes) -> list[str | Picture]:
 
 def _page(page: PageObject) -> list[str | Picture]:
     text = page.extract_text()
-    if text.strip():
+    if text.replace("\x00", "").strip():
         return [text.translate(_RADICALS)]
     # A scanned page is a picture with no text layer; scanners put one picture on each page.
     return [picture(image.data) for image in page.images]
