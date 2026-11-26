@@ -1437,6 +1437,7 @@
           "too_many_redirects",
           "http_status",
           "no_items",
+          "restricted",
           "error"
         ],
         "description": "不写就是列表读到了"
@@ -1455,7 +1456,7 @@
                 "$ref": "#/components/schemas/Failure"
               },
               {
-                "description": "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
+                "description": "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；restricted：源站要登录、只许校内访问或要验证码，detail 写它怎么说的；error：其他错误"
               }
             ]
           },
@@ -1542,7 +1543,7 @@
                 "$ref": "#/components/schemas/Failure"
               },
               {
-                "description": "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；error：其他错误"
+                "description": "前三种和 Fetcher 的一样；http_status：状态码不对；no_items：列表里没找到条目；restricted：源站要登录、只许校内访问或要验证码，detail 写它怎么说的；error：其他错误"
               }
             ]
           },

@@ -11,6 +11,7 @@ from crawler.crawl.contract import ListedItem, WorkSource
 from crawler.crawl.rounds import StepError
 from crawler.parse import ParseError
 from crawler.parse.listing import ListConfig, parse_listing
+from crawler.parse.refusal import refusal
 
 
 async def list_items(
@@ -40,6 +41,11 @@ async def list_items(
         visited.add(current)
         response = await pages.get(current)
         visited.add(response.url)
+        if reason := refusal(response.body, response.url, response.content_type):
+            # A later page kept back ends the list like an empty one; what came before still counts.
+            if items:
+                break
+            raise StepError("restricted", reason)
         if not 200 <= response.status < 300:
             raise StepError("http_status", f"HTTP {response.status}")
         try:

@@ -8,6 +8,7 @@ export const FAILURES: Record<Failure, string> = {
   too_many_redirects: "重定向次数过多",
   http_status: "服务器返回错误",
   no_items: "未解析到通知条目",
+  restricted: "限制访问",
   error: "抓取出错",
 };
 

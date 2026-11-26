@@ -12,6 +12,7 @@ from crawler.crawl.website import Website
 from crawler.log import current_probe
 from crawler.parse import ParseError
 from crawler.parse.listing import ListConfig, parse_listing
+from crawler.parse.refusal import refusal
 
 type GenerateConfig = Callable[[bytes, str, str | None, list[Usage]], Awaitable[ListConfig]]
 
@@ -34,6 +35,8 @@ async def probe_source(
             url = urlunsplit(urlsplit(url)._replace(scheme="http"))
         async with browser.session(probe) as pages:
             response = await pages.get(url)
+        if reason := refusal(response.body, response.url, response.content_type):
+            raise StepError("restricted", reason)
         if not 200 <= response.status < 300:
             raise StepError("http_status", f"HTTP {response.status}")
         try:
