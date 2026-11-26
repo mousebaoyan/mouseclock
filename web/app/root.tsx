@@ -19,8 +19,8 @@ import { buttonVariants } from "~/components/ui/button";
 import "./app.css";
 
 // Runs before first paint so the page never flashes the wrong theme. Same key as mousehole and
-// the main site.
-const themeScript = `try{document.documentElement.dataset.theme=localStorage.getItem("theme")||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")}catch{}`;
+// the main site. Storage can be refused, as with blocked site data; the system's choice holds then.
+const themeScript = `let t;try{t=localStorage.getItem("theme")}catch{}document.documentElement.dataset.theme=t||(matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light")`;
 
 export async function loader({ context }: Route.LoaderArgs) {
   const res = await context.get(apiContext).me.$get();

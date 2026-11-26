@@ -3,6 +3,7 @@ import { cn } from "~/cn";
 import { Drawer, Dropdown, menuItem } from "~/components/disclosure";
 import { Bell, ChevronDown, LogOut, Menu as MenuIcon, User } from "~/components/icons";
 import { LogoMark } from "~/components/logo";
+import { ThemeToggle } from "~/components/theme-toggle";
 import { buttonVariants } from "~/components/ui/button";
 import { UserAvatar } from "~/components/user-avatar";
 import { useLeftAt, useRememberLeft } from "../left-at.ts";
@@ -59,7 +60,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
   const inAdmin = pages.admin.some((page) => pathname.startsWith(page.to));
   return (
     <header className="sticky top-0 z-40 border-b bg-card/90 backdrop-blur-md">
-      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 md:grid md:grid-cols-[1fr_auto_1fr]">
+      <div className="mx-auto flex h-14 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:grid lg:grid-cols-[1fr_auto_1fr]">
         <Link
           to={leftAt("/")}
           className="touch-target flex items-center gap-2 justify-self-start text-lg leading-none font-semibold tracking-tight"
@@ -67,7 +68,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
           <LogoMark className="size-6" />
           {SITE_NAME}
         </Link>
-        <nav aria-label="主导航" className="flex h-full items-stretch max-md:hidden">
+        <nav aria-label="主导航" className="flex h-full items-stretch max-lg:hidden">
           {pages.main.map((page) => (
             <NavLink key={page.to} to={leftAt(page.to)} end={page.to === "/"} className={navLink}>
               {page.label}
@@ -104,6 +105,7 @@ export function SiteHeader({ me }: { me: Me | null }) {
           )}
         </nav>
         <div className="flex items-center gap-1 justify-self-end">
+          <ThemeToggle />
           {me && !me.frozen && <Messages unseen={me.unseen_messages} />}
           {me ? (
             <Account me={me} />
@@ -165,7 +167,7 @@ function Account({ me }: { me: Me }) {
       trigger={
         <>
           <UserAvatar user={me} className="size-7" />
-          <span className="text-foreground max-sm:hidden">{me.display_name}</span>
+          <span className="max-w-32 truncate text-foreground max-sm:hidden">{me.display_name}</span>
           <ChevronDown className="size-3.5 max-sm:hidden" />
         </>
       }
@@ -212,7 +214,7 @@ function MobileNav({
   return (
     <Drawer
       label="导航"
-      triggerClassName={buttonVariants({ variant: "ghost", size: "icon", className: "md:hidden" })}
+      triggerClassName={buttonVariants({ variant: "ghost", size: "icon", className: "lg:hidden" })}
       trigger={<MenuIcon className="size-5" />}
     >
       <nav aria-label="主导航" className="flex-1 space-y-1 overflow-y-auto overscroll-contain p-3">

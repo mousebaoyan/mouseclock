@@ -310,6 +310,23 @@
   }
 }
 
+/* Switching the theme: the new one spreads over the old (components/theme-toggle.tsx), so neither
+   snapshot fades on its own. Without view transitions, colors cross-fade instead. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation: none;
+  mix-blend-mode: normal;
+}
+[data-theme-fade] *,
+[data-theme-fade] *::before,
+[data-theme-fade] *::after {
+  transition:
+    background-color 300ms,
+    color 300ms,
+    border-color 300ms,
+    fill 300ms !important;
+}
+
 /* What opens beneath a control, such as a field's evidence or the phones' filters, eases down
    into view. A utility, so it can wait for a variant such as group-open. */
 @utility drop-in {

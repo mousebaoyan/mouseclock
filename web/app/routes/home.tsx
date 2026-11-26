@@ -5,7 +5,6 @@ import { Empty, Page } from "~/components/page";
 import { Pagination } from "~/components/pagination";
 import { ProgramCard, ProgramCards, ProgramPlace } from "~/components/program";
 import { Subscribe } from "~/components/subscribe";
-import { Downloads } from "~/components/downloads";
 import { PROGRAM_KINDS, StageTag } from "~/components/tags";
 import { TIER_FILTERS } from "~/tiers";
 import { buttonVariants } from "~/components/ui/button";
@@ -16,7 +15,7 @@ import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { cohortOf, tablePage } from "../program-table.ts";
 import { keptTable, stagesOf, subscribedTo } from "../table-cache.ts";
 import type { loader as rootLoader } from "../root.tsx";
-import { currentCohort, STATUS_LABELS, useNow } from "../time.ts";
+import { cohortChoices, currentCohort, STATUS_LABELS, useNow } from "../time.ts";
 import type { Route } from "./+types/home.ts";
 
 type TableData = InferResponseType<ReturnType<typeof createApi>["programs"]["$get"], 200>;
@@ -84,7 +83,6 @@ export default function Home({ loaderData }: Route.ComponentProps) {
           {!preview && <Pagination total={total} page={page} perPage={filters.perPage} />}
         </div>
       )}
-      {!preview && <Downloads cohort={cohort} className="mt-6" />}
     </Page>
   );
 }
@@ -121,7 +119,7 @@ function Filters({
   const { search } = useLocation();
   const { hrefWith, set } = useFilters();
   const current = currentCohort(new Date(now * 1000));
-  const cohorts = [current + 1, current, current - 1, current - 2];
+  const cohorts = cohortChoices(current);
   // What 清除筛选 clears besides the search; the cohort and the order stay.
   const narrowed =
     filters.status !== null ||

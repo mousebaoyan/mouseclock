@@ -71,6 +71,10 @@ export function currentCohort(now: Date) {
   return year + (month >= 11 ? 2 : 1);
 }
 
+export function cohortChoices(current: number) {
+  return [current + 1, current, current - 1, current - 2];
+}
+
 // Now in Unix seconds, starting from the server's so the first render matches it, then each
 // minute for statuses and countdowns. A loader that runs again brings a later server time.
 export function useNow(serverNow: number) {
