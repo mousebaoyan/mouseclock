@@ -20,9 +20,9 @@ export type Message = {
 };
 
 // Frozen accounts get none, nor those mousehole no longer lets in. Those who take this kind by
-// email get one too.
+// email get one too. Returns who got theirs.
 export async function sendMessages(trx: Transaction<DB>, kind: MessageKind, messages: Message[]) {
-  if (messages.length === 0) return;
+  if (messages.length === 0) return new Set<number>();
   const users = await trx
     .selectFrom("users")
     .select(["id", "qq"])
@@ -37,7 +37,7 @@ export async function sendMessages(trx: Transaction<DB>, kind: MessageKind, mess
   const members = new Set(users.map((user) => user.id));
   const mailable = new Set(users.filter(mayEmail).map((user) => user.id));
   const going = messages.filter((m) => members.has(m.user_id));
-  if (going.length === 0) return;
+  if (going.length === 0) return members;
   // One at a time, so each email knows its message: RETURNING doesn't promise the order of VALUES.
   const written = [];
   for (const m of going) {
@@ -49,6 +49,7 @@ export async function sendMessages(trx: Transaction<DB>, kind: MessageKind, mess
     if (mailable.has(m.user_id)) written.push({ ...m, id });
   }
   await queueEmails(trx, kind, written);
+  return members;
 }
 
 // Newest first, with whether each was seen before.

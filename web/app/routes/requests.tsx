@@ -298,7 +298,7 @@ function VoteButton({ item, muted }: { item: Request; muted: boolean }) {
         )}
       >
         {closed ? "同求过" : following ? "关注着" : "同求"}
-        <span className="text-xs font-normal opacity-60">{count}</span>
+        <span className="text-xs font-normal">{count}</span>
       </button>
       {fetcher.state === "idle" && fetcher.data && (
         <p

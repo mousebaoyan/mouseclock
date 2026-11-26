@@ -251,14 +251,7 @@ export default function Review({ loaderData }: Route.ComponentProps) {
                     className={cn("size-1.5 rounded-full", DOTS[kind.color])}
                   />
                   <span className="flex-1">{kind.label}</span>
-                  <span
-                    className={cn(
-                      "text-xs tabular-nums",
-                      on ? "text-primary" : "text-muted-foreground",
-                    )}
-                  >
-                    {kind.count}
-                  </span>
+                  <span className="text-xs tabular-nums">{kind.count}</span>
                 </Link>
               );
             })}

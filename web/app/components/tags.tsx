@@ -113,7 +113,7 @@ export function Chip({
       {on && <Check aria-label="已选" className="-ml-0.5 size-3.5" />}
       {children}
       {count !== undefined && (
-        <span className="ml-0.5 text-xs font-normal tabular-nums opacity-60">{count}</span>
+        <span className="ml-0.5 text-xs font-normal tabular-nums">{count}</span>
       )}
     </Link>
   );
