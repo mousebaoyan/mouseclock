@@ -5,7 +5,7 @@ import { app } from "../../app.ts";
 import { db } from "../../platform/db.ts";
 import { env } from "../../platform/env.ts";
 import { login } from "../accounts/service.ts";
-import type { ExtractedFields } from "../programs/schemas.ts";
+import type { ExtractedFields, Kind } from "../programs/schemas.ts";
 import { createCrawlerToken } from "./service.ts";
 import type { UnresolvedDate } from "./schemas.ts";
 
@@ -106,6 +106,7 @@ async function extract(
     program_id?: number;
     college_id: number;
     cohort?: number;
+    kind?: Kind;
     name?: string;
     role?: "call" | "update" | "result";
     fields: ExtractedFields;
@@ -201,8 +202,8 @@ test("merging a duplicate preserves its pending unparsed dates on the original p
   await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
   const [original] = await programsOf(cs);
   const text = "报名截止改为下周二17点。";
-  const second = await snapshot(notice, text);
-  await extract(second.snapshot_id, [
+  const second = await noticeOn(notice, "2026-05-19", text);
+  await extract(second, [
     {
       college_id: cs,
       fields: {},
@@ -215,7 +216,7 @@ test("merging a duplicate preserves its pending unparsed dates on the original p
       ],
     },
   ]);
-  const items = await pendingOf(second.snapshot_id);
+  const items = await pendingOf(second);
   const duplicate = items.find((item) => item.reason === "possible_duplicate");
   const unresolved = items.find((item) => item.reason === "unparsed_date");
   if (!duplicate || !unresolved) throw new Error("Missing duplicate or raw date review");
@@ -224,7 +225,7 @@ test("merging a duplicate preserves its pending unparsed dates on the original p
     editor,
   );
   expect(res.status).toBe(204);
-  const remaining = await pendingOf(second.snapshot_id);
+  const remaining = await pendingOf(second);
   expect(remaining).toHaveLength(1);
   expect(remaining[0]).toMatchObject({
     id: unresolved.id,
@@ -437,7 +438,7 @@ test("a call taking applications until it is full isn't asked for a deadline", a
 test("a second model's word that a call has no deadline, or that a program is new, is taken", async () => {
   const { cs, notice, snapshot: snap } = await setUp("g2.edu.cn");
   await extract(snap, [{ college_id: cs, fields: {}, checked: ["no_deadline"] }]);
-  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n第二批`);
+  const second = await noticeOn(notice, "2026-05-19", `${BODY}\n第二批`);
   await extract(second, [{ college_id: cs, fields: { apply: APPLY }, checked: ["new"] }]);
   expect(await programsOf(cs)).toHaveLength(2);
   expect([...(await reviewOf(snap)), ...(await reviewOf(second))]).toEqual([]);
@@ -590,6 +591,9 @@ test("a later notice changes the parts it states, adds dates by label, and keeps
 });
 
 // Another notice of the source, published on the day, with its first snapshot.
+// Another notice of the same source; a duplicate comes from one, as a notice that changed is still
+// about the programs it was (design §8.4).
+let notices = 0;
 async function noticeOn(sameSource: number, publishedOn: string, text: string) {
   const { source_id } = await db
     .selectFrom("notices")
@@ -600,7 +604,7 @@ async function noticeOn(sameSource: number, publishedOn: string, text: string) {
     .insertInto("notices")
     .values({
       source_id,
-      url: `https://x.edu.cn/${publishedOn}.htm`,
+      url: `https://x.edu.cn/${++notices}.htm`,
       title: "通知",
       published_on: publishedOn,
     })
@@ -763,12 +767,202 @@ test("programs that can't be placed wait for review, and an irrelevant notice is
 test("a new program like one already there is flagged as a possible duplicate", async () => {
   const { cs, notice, snapshot: snap } = await setUp("g.edu.cn");
   await extract(snap, [{ college_id: cs, fields: { apply: APPLY } }]);
-  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n第二批`);
+  const second = await noticeOn(notice, "2026-05-19", `${BODY}\n第二批`);
   await extract(second, [{ college_id: cs, fields: { apply: APPLY } }]);
   const [, batch2] = await programsOf(cs);
   expect(await reviewOf(second)).toEqual([
     { reason: "possible_duplicate", key: null, program_id: batch2.id },
   ]);
+});
+
+test("a notice that changed stays with the programs it was about, whatever the models say", async () => {
+  const { cs, notice, snapshot: first } = await setUp("resumed.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const [program] = await programsOf(cs);
+  // Taken for another kind this time, and new to both models.
+  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n附件已更新`);
+  await extract(second, [
+    { college_id: cs, kind: "pre_recommendation", fields: { apply: APPLY }, checked: ["new"] },
+  ]);
+  expect(await programsOf(cs)).toEqual([program]);
+  expect(await reviewOf(second)).toEqual([]);
+  // Put off, and still not known.
+  const { snapshot_id: third } = await snapshot(notice, `${BODY}\n报名截止延长至6月21日17:00。`);
+  await extract(third, [
+    {
+      college_id: cs,
+      fields: {
+        apply: {
+          value: { ...APPLY.value, end: { date: "2026-06-21", time: "17:00" } },
+          ...sure("报名截止延长至6月21日17:00"),
+        },
+      },
+      checked: ["new"],
+    },
+  ]);
+  expect(await programsOf(cs)).toEqual([
+    { ...program, apply_deadline: new Date("2026-06-21T17:00+08:00") },
+  ]);
+  // A second batch beside the first, which extraction recognised: the second is new.
+  const { snapshot_id: fourth } = await snapshot(notice, `${BODY}\n第二批`);
+  await extract(fourth, [
+    { program_id: program.id, college_id: cs, fields: { apply: APPLY } },
+    { college_id: cs, name: "第二批", fields: { apply: APPLY } },
+  ]);
+  const [, batch2] = await programsOf(cs);
+  expect(await reviewOf(fourth)).toEqual([
+    { reason: "possible_duplicate", key: null, program_id: batch2.id },
+  ]);
+  const versions = await db
+    .selectFrom("program_versions")
+    .select("snapshot_id")
+    .where("program_id", "=", program.id)
+    .orderBy("number")
+    .execute();
+  expect(versions.map((v) => v.snapshot_id)).toEqual([first, second, third, fourth]);
+});
+
+test("a changed notice's program with no number is new where it can't be told which it was", async () => {
+  // Two with no number, of the college of one the notice was about.
+  const two = await setUp("resumed2.edu.cn");
+  await extract(two.snapshot, [{ college_id: two.cs, fields: { apply: APPLY } }]);
+  const { snapshot_id: asked } = await snapshot(two.notice, `${BODY}\n第二批`);
+  await extract(asked, [
+    { college_id: two.cs, fields: { apply: APPLY } },
+    { college_id: two.cs, name: "第二批", fields: { apply: APPLY } },
+  ]);
+  expect(await programsOf(two.cs)).toHaveLength(3);
+  // One with no number, of the college of two the notice was about.
+  const one = await setUp("resumed3.edu.cn");
+  await extract(one.snapshot, [
+    { college_id: one.cs, fields: { apply: APPLY } },
+    { college_id: one.cs, kind: "pre_recommendation", name: "预推免", fields: { apply: APPLY } },
+  ]);
+  const { snapshot_id: told } = await snapshot(one.notice, `${BODY}\n更新`);
+  await extract(told, [{ college_id: one.cs, fields: { apply: APPLY } }]);
+  expect(await programsOf(one.cs)).toHaveLength(3);
+});
+
+test("a second batch put in place of the first on a changed notice is a program of its own", async () => {
+  const { cs, notice, snapshot: first } = await setUp("replaced.edu.cn");
+  await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const text = "第二批报名时间：2026年6月20日8:00至6月27日17:00。";
+  const { snapshot_id: second } = await snapshot(notice, text);
+  await extract(second, [
+    {
+      college_id: cs,
+      name: "第二批",
+      fields: {
+        apply: {
+          value: {
+            start: { date: "2026-06-20", time: "08:00" },
+            end: { date: "2026-06-27", time: "17:00" },
+          },
+          ...sure(text),
+        },
+      },
+      checked: ["new"],
+    },
+  ]);
+  const [batch1, batch2] = await programsOf(cs);
+  expect(batch1.apply_deadline).toEqual(new Date("2026-06-14T17:00+08:00"));
+  expect(batch2.name).toBe("第二批");
+  // Changed again, it is still about the second batch, which the first has stopped before.
+  const { snapshot_id: third } = await snapshot(notice, `${text}\n更新`);
+  await extract(third, [
+    {
+      college_id: cs,
+      kind: "pre_recommendation",
+      fields: {
+        apply: { value: { start: { date: "2026-06-20", time: "08:00" } }, ...sure(text) },
+      },
+      checked: ["new"],
+    },
+  ]);
+  expect(await programsOf(cs)).toHaveLength(2);
+  const resumed = await db
+    .selectFrom("program_versions")
+    .select("program_id")
+    .where("snapshot_id", "=", third)
+    .execute();
+  expect(resumed).toEqual([{ program_id: batch2.id }]);
+  // An extra call between the two is neither.
+  const extra = "增补报名时间：2026年6月16日8:00至6月18日17:00。";
+  const { snapshot_id: fourth } = await snapshot(notice, extra);
+  await extract(fourth, [
+    {
+      college_id: cs,
+      name: "增补",
+      fields: {
+        apply: {
+          value: {
+            start: { date: "2026-06-16", time: "08:00" },
+            end: { date: "2026-06-18", time: "17:00" },
+          },
+          ...sure(extra),
+        },
+      },
+      checked: ["new"],
+    },
+  ]);
+  expect((await programsOf(cs)).map((p) => [p.name, p.apply_deadline])).toEqual([
+    ["2026 年夏令营", new Date("2026-06-14T17:00+08:00")],
+    ["第二批", new Date("2026-06-27T17:00+08:00")],
+    ["增补", new Date("2026-06-18T17:00+08:00")],
+  ]);
+});
+
+test("only a call surely taking applications at another time is another batch", async () => {
+  for (const [host, before, end, after, start, role] of [
+    [
+      "list.edu.cn",
+      "报名截止6月14日17:00。",
+      { date: "2026-06-14", time: "17:00" },
+      "6月20日起确认参加。",
+      { date: "2026-06-20" },
+      "result",
+    ],
+    [
+      "third.edu.cn",
+      "报名6月中旬截止。",
+      { month: "2026-06", part: "mid" },
+      "报名时间6月12日至15日。",
+      { date: "2026-06-12" },
+      "call",
+    ],
+    [
+      "about.edu.cn",
+      "报名6月14日前后截止。",
+      { date: "2026-06-14", mark: "about" },
+      "报名时间6月14日至16日。",
+      { date: "2026-06-14" },
+      "call",
+    ],
+    [
+      "opens.edu.cn",
+      "报名截止6月14日17:00。",
+      { date: "2026-06-14", time: "17:00" },
+      "6月15日前后开始报名。",
+      { date: "2026-06-15", mark: "about" },
+      "call",
+    ],
+  ] as const) {
+    const { cs, notice } = await setUp(host);
+    const { snapshot_id: first } = await snapshot(notice, before);
+    await extract(first, [
+      { college_id: cs, fields: { apply: { value: { end }, ...sure(before) } } },
+    ]);
+    const { snapshot_id: second } = await snapshot(notice, after);
+    await extract(second, [
+      {
+        college_id: cs,
+        role,
+        fields: { apply: { value: { start }, ...sure(after) } },
+        checked: ["new"],
+      },
+    ]);
+    expect(await programsOf(cs)).toHaveLength(1);
+  }
 });
 
 // The review page (design §12.2).
@@ -791,8 +985,8 @@ test("what people decided about a duplicate's fields stays decided through merge
   const { cs, notice, snapshot: first } = await setUp("decided.edu.cn");
   await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
   const [original] = await programsOf(cs);
-  const second = await snapshot(notice, `${BODY}\n名额100人`);
-  await extract(second.snapshot_id, [
+  const second = await noticeOn(notice, "2026-05-19", `${BODY}\n名额100人`);
+  await extract(second, [
     {
       college_id: cs,
       fields: {
@@ -802,10 +996,10 @@ test("what people decided about a duplicate's fields stays decided through merge
       },
     },
   ]);
-  const third = await snapshot(notice, `${BODY}\n第三版`);
-  await extract(third.snapshot_id, [{ college_id: cs, fields: { apply: APPLY } }]);
+  const third = await noticeOn(notice, "2026-05-19", `${BODY}\n第三版`);
+  await extract(third, [{ college_id: cs, fields: { apply: APPLY } }]);
   const [, , last] = await programsOf(cs);
-  const [duplicate, quota, benefits] = await pendingOf(second.snapshot_id);
+  const [duplicate, quota, benefits] = await pendingOf(second);
   expect((await accept(quota.id)).status).toBe(204);
   const rejected = await v1["review-items"][":id"].reject.$post(
     { param: { id: String(benefits.id) } },
@@ -815,10 +1009,10 @@ test("what people decided about a duplicate's fields stays decided through merge
 
   // The second notice's program goes into the third's, and that one into the first's.
   expect((await accept(duplicate.id, { program_id: last.id })).status).toBe(204);
-  const [again] = await pendingOf(third.snapshot_id);
+  const [again] = await pendingOf(third);
   expect(again.program_id).toBe(last.id);
   expect((await accept(again.id, { program_id: original.id })).status).toBe(204);
-  expect(await pendingOf(second.snapshot_id)).toEqual([]);
+  expect(await pendingOf(second)).toEqual([]);
   const fields = await fieldsOf(original.id);
   expect(fields.quota).toBe("100人");
   expect(fields.benefits).toBeUndefined();
@@ -973,7 +1167,7 @@ test("a program that couldn't be placed is merged where the reviewer says", asyn
 test("a duplicate is merged into the original and deleted", async () => {
   const { cs, notice, snapshot: snap } = await setUp("r4.edu.cn");
   await extract(snap, [{ college_id: cs, fields: { apply: APPLY } }]);
-  const { snapshot_id: second } = await snapshot(notice, `${BODY}\n第二批`);
+  const second = await noticeOn(notice, "2026-05-19", `${BODY}\n第二批`);
   await extract(second, [
     {
       college_id: cs,
@@ -1046,6 +1240,21 @@ test("a duplicate is merged into the original and deleted", async () => {
   expect((await pendingOf(second)).map((item) => [item.reason, item.program_id])).toEqual([
     ["low_confidence", original.id],
   ]);
+  // Its notice, changed, is about the original.
+  const { notice_id } = await db
+    .selectFrom("snapshots")
+    .select("notice_id")
+    .where("id", "=", second)
+    .executeTakeFirstOrThrow();
+  const { snapshot_id: third } = await snapshot(notice_id, `${BODY}\n第二批\n更新`);
+  await extract(third, [{ college_id: cs, fields: { apply: APPLY } }]);
+  expect(await reviewOf(third)).toEqual([]);
+  const resumed = await db
+    .selectFrom("program_versions")
+    .select("program_id")
+    .where("snapshot_id", "=", third)
+    .execute();
+  expect(resumed).toEqual([{ program_id: original.id }]);
 });
 
 test("a merged program's links lead to the program it ended up in", async () => {
@@ -1053,9 +1262,9 @@ test("a merged program's links lead to the program it ended up in", async () => 
   await extract(first, [{ college_id: cs, fields: { apply: APPLY } }]);
   const flagged = [];
   for (const text of ["第二版", "第三版"]) {
-    const { snapshot_id } = await snapshot(notice, `${BODY}\n${text}`);
-    await extract(snapshot_id, [{ college_id: cs, fields: { apply: APPLY } }]);
-    flagged.push(...(await pendingOf(snapshot_id)));
+    const second = await noticeOn(notice, "2026-05-19", `${BODY}\n${text}`);
+    await extract(second, [{ college_id: cs, fields: { apply: APPLY } }]);
+    flagged.push(...(await pendingOf(second)));
   }
   const [original, second, third] = await programsOf(cs);
   expect((await accept(flagged[0].id, { program_id: third.id })).status).toBe(204);
