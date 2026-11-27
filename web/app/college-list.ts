@@ -1,5 +1,6 @@
 import type { z } from "@hono/zod-openapi";
-import { TAG_THRESHOLD, type ShownTags } from "../server/modules/programs/schemas.ts";
+import type { ShownTags } from "../server/modules/programs/schemas.ts";
+import { TAG_THRESHOLD } from "../server/modules/programs/tag-rules.ts";
 import { PER_PAGE } from "../server/platform/paging.ts";
 import { allOf, anyOf, choices, tally } from "./facets.ts";
 import { TIERS } from "./tiers.ts";

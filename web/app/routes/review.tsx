@@ -16,7 +16,7 @@ import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { fieldLabel, formatValue } from "../fields.ts";
 import { beijingYear, formatApply } from "../../server/modules/programs/time.ts";
-import { KINDS } from "../../server/modules/programs/schemas.ts";
+import { KINDS } from "../../server/modules/programs/kinds.ts";
 import type { Route } from "./+types/review.ts";
 
 type Api = ReturnType<typeof createApi>;

@@ -51,6 +51,7 @@ crawler/                抓取节点
 - 抓取节点交的请求里，没有的值不写这个键，不传 `null`：Zod 用 `.optional()`，抓取节点用 Pydantic 的 `model_dump(mode="json", exclude_none=True)`。网站返回的空值写成 `null`；引用了命名 schema 的可空字段写成 `z.union([Schema, z.null()])`，`.nullable()` 会把空值并进那个 schema 本身。
 - 网站里依赖只能单向：页面 → 接口 → 服务 → 数据库。网页、API 和 MCP 都调用服务导出的函数，不各写一套规则。
 - 页面的 loader 和 action 用 `context.get(apiContext)` 拿到的 hc 客户端调接口，用它带类型的方法（`$get`、`$post`、`$patch`），不手拼请求，也不再校验接口的返回。权限和校验以接口为准：页面不另判权限；表单的值用接口的同一个 Zod schema 转成有类型的值再提交，这和接口是同一套规则；接口返回的错误抛给 ErrorBoundary，或者显示在表单上。
+- 页面可以从服务端模块引常量，但不能把服务端的库（Zod、@hono/zod-openapi、Kysely、pg）带进浏览器：光 Zod 一个，用到它的页面首次打开就要多下载约 80KB（压缩后）。所以页面要用的常量放在不依赖这些库的文件里，比如项目类型在 `programs/kinds.ts`、学院标签的门槛和颜色在 `programs/tag-rules.ts`；只引类型的（`import type`）不受限，只在 loader 和 action 里用的 schema 也不受限，它们不进浏览器。浏览器的脚本里带了这几个库，构建就报错（`vite.config.ts`）。
 - 要人填的字段在 schema 上用 `named("中文名")` 起名（`platform/http.ts`），校验不通过时接口和表单的提示就会写明是哪一项、怎么改，比如「学校名称不能为空」「网址要写完整，以 http:// 或 https:// 开头」。抓取节点交来的字段没人看提示，不用起名。
 - 页面上同一种东西用同一个组件，不用浏览器原生的下拉框和复选框：
   - 页面的框架、面板和并排的要点用 `components/page.tsx`：列表页不另写标题，详情页以名称为标题；不写介绍页面用途的说明句。列表上方的搜索和筛选用 `components/filters.tsx`，筛选条件放在地址里；页头的导航回到这个标签页里上次离开这一页时的地址，筛选、排序、搜索和页码都还在，打开的编辑框和「已保存」这类提示不算，出错的页面从头开始（`components/site-header.tsx`），关掉标签页就忘。能选几个的筛选（类型、层次、地区、方向）用 `facets.ts` 判断和计数：每个选项旁边写出在其他筛选条件下有多少条。

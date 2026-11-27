@@ -1,4 +1,5 @@
-import { KINDS, type StoredValue, type TimeValue } from "../server/modules/programs/schemas.ts";
+import { KINDS } from "../server/modules/programs/kinds.ts";
+import type { StoredValue, TimeValue } from "../server/modules/programs/schemas.ts";
 import type { ProgramEdit } from "../server/modules/review/schemas.ts";
 import { formText } from "./admin.server.ts";
 import { fieldLabel } from "./fields.ts";

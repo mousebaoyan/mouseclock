@@ -1,6 +1,7 @@
 import type { InferResponseType } from "hono/client";
 import { data, Form, Link, redirect, useNavigation } from "react-router";
-import { TAG_COLORS, TagInput, TagPatch } from "../../server/modules/programs/schemas.ts";
+import { TagInput, TagPatch } from "../../server/modules/programs/schemas.ts";
+import { TAG_COLORS } from "../../server/modules/programs/tag-rules.ts";
 import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { Field, FormMessage } from "../components/form.tsx";

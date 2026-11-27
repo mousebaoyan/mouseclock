@@ -17,7 +17,7 @@ import { formText } from "../admin.server.ts";
 import { apiContext, readApi, type createApi } from "../api.server.ts";
 import { forgetTable } from "../table-cache.ts";
 import { useNow } from "../time.ts";
-import { TAG_THRESHOLD } from "../../server/modules/programs/schemas.ts";
+import { TAG_THRESHOLD } from "../../server/modules/programs/tag-rules.ts";
 import { beijingYear } from "../../server/modules/programs/time.ts";
 import type { loader as rootLoader } from "../root.tsx";
 import type { Route } from "./+types/college-detail.ts";

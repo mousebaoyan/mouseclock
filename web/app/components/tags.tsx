@@ -3,15 +3,9 @@ import type { ReactNode } from "react";
 import { Link } from "react-router";
 import { cn } from "~/cn";
 import { Check } from "~/components/icons";
-import {
-  KIND_LABELS,
-  TAG_THRESHOLD,
-  type Kind,
-  type Role,
-  type Stage,
-  type ShownTags,
-  type TAG_COLORS,
-} from "../../server/modules/programs/schemas.ts";
+import { KIND_LABELS } from "../../server/modules/programs/kinds.ts";
+import type { Kind, Role, Stage, ShownTags } from "../../server/modules/programs/schemas.ts";
+import { TAG_THRESHOLD, type TAG_COLORS } from "../../server/modules/programs/tag-rules.ts";
 import type { RequestStatus } from "../../server/modules/sources/schemas.ts";
 import { TIERS } from "../tiers.ts";
 import type { Status } from "../../server/modules/programs/time.ts";
