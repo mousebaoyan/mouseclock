@@ -409,9 +409,11 @@ function NewNotices({ run }: { run: Run }) {
           {notice.programs.length > 0 && (
             <span className="mt-0.5 flex flex-wrap gap-x-3 gap-y-0.5 text-xs">
               {notice.programs.map((program) => (
-                <Link key={program.id} to={`/programs/${program.id}`} className="link">
-                  {program.name}
-                </Link>
+                <span key={program.id}>
+                  <Link to={`/programs/${program.id}`} className="link">
+                    {program.name}
+                  </Link>
+                </span>
               ))}
             </span>
           )}

@@ -278,12 +278,16 @@ export function Drawer({
   }
   useEffect(() => {
     if (!open) return undefined;
-    dialog.current?.showModal();
     // The page behind keeps still. Not html:has(dialog[open]) in CSS: Chrome 100 lacks :has().
+    // The room it keeps for a scrollbar (app.css) is padding meanwhile, as no dialog can cover
+    // that room and it would show as a strip beside the panel.
     const root = document.documentElement;
-    root.style.overflow = "hidden";
+    const width = root.clientWidth;
+    Object.assign(root.style, { overflow: "hidden", scrollbarGutter: "auto" });
+    root.style.paddingRight = `${root.clientWidth - width}px`;
+    dialog.current?.showModal();
     return () => {
-      root.style.overflow = "";
+      Object.assign(root.style, { overflow: "", scrollbarGutter: "", paddingRight: "" });
     };
   }, [open]);
   return (
@@ -306,7 +310,10 @@ export function Drawer({
             setState("leaving");
           }}
           onClose={() => setState("shut")}
-          className="fixed inset-0 m-0 size-full max-h-none max-w-none bg-transparent p-0 text-foreground backdrop:bg-transparent"
+          // Clipped rather than scrolled: opening focuses the close button while the panel is
+          // still off to the right, which would scroll the dialog and leave a gap at its edge.
+          // Not overflow: clip, which Safari 15 lacks, nor hidden, which focus still scrolls.
+          className="fixed inset-0 m-0 size-full max-h-none max-w-none overflow-visible bg-transparent p-0 text-foreground [clip-path:inset(0)] backdrop:bg-transparent"
         >
           {/* The panel before the backdrop, so the focus starts on its close button. */}
           <div

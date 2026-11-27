@@ -60,8 +60,8 @@ export function ProgramCards({ children }: { children: ReactNode }) {
 
 // Who runs the program on top, beside how long is left and what kind it is, which is what a list
 // is read for: the two tags side by side, or one above the other when who runs it needs the
-// room. Then its name, and at the foot when it takes applications and how far one's own
-// application went. The whole card opens the program; the other links on it sit above that.
+// room. Then its name, which opens the program, and at the foot when it takes applications and
+// how far one's own application went.
 export function ProgramCard({
   program,
   now,
@@ -87,7 +87,7 @@ export function ProgramCard({
   notice?: string;
 }) {
   return (
-    <li className="relative flex flex-col rounded-xl border bg-card px-4 py-3.5 shadow-card transition-colors has-[h3_a:hover]:border-primary/40 has-[h3_a:focus-visible]:ring-3 has-[h3_a:focus-visible]:ring-ring/30 sm:px-5 sm:py-4">
+    <li className="flex flex-col rounded-xl border bg-card px-4 py-3.5 shadow-card sm:px-5 sm:py-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">{place}</div>
         <div className="flex flex-wrap justify-end gap-1.5">
@@ -96,11 +96,8 @@ export function ProgramCard({
           <KindTag kind={program.kind} />
         </div>
       </div>
-      <h3 className="mt-3 mb-4 line-clamp-2 text-[15px] leading-snug font-semibold text-pretty has-[a:hover]:text-primary">
-        <Link
-          to={`/programs/${program.id}`}
-          className="outline-none after:absolute after:inset-0 after:rounded-xl"
-        >
+      <h3 className="mt-3 mb-4 line-clamp-2 text-[15px] leading-snug font-semibold text-pretty">
+        <Link to={`/programs/${program.id}`} className="hover:text-primary">
           {program.name}
         </Link>
       </h3>
@@ -122,7 +119,7 @@ export function ProgramCard({
             rel="nofollow noopener"
             aria-label={`${program.name}的通知原文`}
             title="通知原文"
-            className="touch-target z-1 -my-1 -mr-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-primary"
+            className="touch-target -my-1 -mr-1.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-primary"
           >
             <ExternalLink />
           </a>
@@ -154,7 +151,7 @@ export function ProgramPlace({
       <div className="min-w-0">
         <Link
           to={`/colleges/${program.college.id}`}
-          className="relative z-1 block font-medium break-keep wrap-anywhere hover:text-primary"
+          className="font-medium break-keep wrap-anywhere hover:text-primary"
         >
           {program.school.name} {program.college.name}
         </Link>

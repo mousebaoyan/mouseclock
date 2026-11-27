@@ -253,7 +253,7 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                       target="_blank"
                       rel="noreferrer"
                       title={s.url}
-                      className="block truncate text-muted-foreground hover:text-primary"
+                      className="inline-block max-w-full truncate align-middle text-muted-foreground hover:text-primary"
                     >
                       {s.section || s.url}
                     </a>
@@ -485,12 +485,11 @@ function LastRun({ source, className }: { source: ListedSource; className?: stri
     return <span className={cn("text-subtle-foreground", className)}>尚未抓取</span>;
   }
   return (
-    <Link
+    <RunResult
+      run={source.last_run}
+      className={className}
       to={`/crawl?date=${beijingDate(source.last_run.started_at)}&source_id=${source.id}`}
-      className="hover:opacity-80"
-    >
-      <RunResult run={source.last_run} className={className} />
-    </Link>
+    />
   );
 }
 
@@ -543,9 +542,11 @@ function ProbeResult({ probe, adoptTo }: { probe: SourceProbe; adoptTo: string }
                 <span className="w-20 shrink-0 text-muted-foreground tabular-nums">
                   {item.published_on ?? "无日期"}
                 </span>
-                <a href={item.url} target="_blank" rel="nofollow noopener" className="link">
-                  {item.title}
-                </a>
+                <span className="min-w-0">
+                  <a href={item.url} target="_blank" rel="nofollow noopener" className="link">
+                    {item.title}
+                  </a>
+                </span>
               </li>
             ))}
           </ul>

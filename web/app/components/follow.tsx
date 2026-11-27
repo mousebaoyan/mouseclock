@@ -24,7 +24,7 @@ export function Follow({
     <fetcher.Form
       method={on ? "delete" : "put"}
       action={`/colleges/${college}/follow`}
-      className="relative z-1"
+      className="relative"
     >
       {/* One at a time: the requests could otherwise land in another order than the clicks. */}
       <button

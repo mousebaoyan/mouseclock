@@ -181,9 +181,11 @@ function SchoolTable({ schools, followed }: { schools: School[]; followed: numbe
             )}
             <Td>
               <span className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1">
-                <Link to={`/colleges/${college.id}`} className="hover:text-primary">
-                  {college.name}
-                </Link>
+                <span>
+                  <Link to={`/colleges/${college.id}`} className="hover:text-primary">
+                    {college.name}
+                  </Link>
+                </span>
                 <CollegeTags tags={college.tags} />
               </span>
             </Td>
@@ -202,7 +204,7 @@ function SchoolTable({ schools, followed }: { schools: School[]; followed: numbe
   );
 }
 
-// Phones: each school with its colleges beneath it, each row opening its college.
+// Phones: each school with its colleges beneath it, each name opening its college.
 function Schools({ schools, followed }: { schools: School[]; followed: number[] }) {
   return (
     <div className="space-y-6 lg:hidden">
@@ -214,12 +216,11 @@ function Schools({ schools, followed }: { schools: School[]; followed: number[] 
                 key={college.id}
                 title={
                   <>
-                    <Link
-                      to={`/colleges/${college.id}`}
-                      className="text-[15px] font-medium after:absolute after:inset-0 hover:text-primary"
-                    >
-                      {college.name}
-                    </Link>
+                    <span className="text-[15px] font-medium">
+                      <Link to={`/colleges/${college.id}`} className="hover:text-primary">
+                        {college.name}
+                      </Link>
+                    </span>
                     <CollegeTags tags={college.tags} />
                   </>
                 }

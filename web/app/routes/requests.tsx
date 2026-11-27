@@ -229,12 +229,11 @@ function RequestRow({
         item.college.id === null ? (
           <span className="text-[15px] font-medium">{name}</span>
         ) : (
-          <Link
-            to={`/colleges/${item.college.id}`}
-            className="text-[15px] font-medium hover:text-primary"
-          >
-            {name}
-          </Link>
+          <span className="text-[15px] font-medium">
+            <Link to={`/colleges/${item.college.id}`} className="hover:text-primary">
+              {name}
+            </Link>
+          </span>
         )
       }
       meta={

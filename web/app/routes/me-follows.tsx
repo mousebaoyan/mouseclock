@@ -57,12 +57,11 @@ export default function MeFollows({ loaderData }: Route.ComponentProps) {
                   key={college.id}
                   title={
                     <>
-                      <Link
-                        to={`/colleges/${college.id}`}
-                        className="text-[15px] font-medium hover:text-primary"
-                      >
-                        {college.name}
-                      </Link>
+                      <span className="text-[15px] font-medium">
+                        <Link to={`/colleges/${college.id}`} className="hover:text-primary">
+                          {college.name}
+                        </Link>
+                      </span>
                       {!crawled && <Tag color="gray">未收录</Tag>}
                     </>
                   }

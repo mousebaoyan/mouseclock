@@ -55,12 +55,11 @@ export default function MeFeedback({ loaderData, actionData }: Route.ComponentPr
             className="space-y-2 rounded-xl border bg-card px-4 py-3.5 shadow-card sm:px-5"
           >
             <div className="flex items-start justify-between gap-3">
-              <Link
-                to={`/programs/${f.program.id}`}
-                className="min-w-0 text-[15px] font-semibold text-pretty hover:text-primary"
-              >
-                {f.program.school} {f.program.college}「{f.program.name}」
-              </Link>
+              <span className="min-w-0 text-[15px] font-semibold text-pretty">
+                <Link to={`/programs/${f.program.id}`} className="hover:text-primary">
+                  {f.program.school} {f.program.college}「{f.program.name}」
+                </Link>
+              </span>
               <Tag color={FEEDBACK_STATUSES[f.status].color}>
                 {FEEDBACK_STATUSES[f.status].label}
               </Tag>

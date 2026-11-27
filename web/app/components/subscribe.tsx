@@ -26,10 +26,7 @@ export function Subscribe({
   const looks = buttonVariants({
     variant: outlined ? "outline" : "ghost",
     size: outlined ? "default" : "xs",
-    className: cn(
-      "touch-target relative z-1 tabular-nums",
-      on && "text-primary hover:text-primary",
-    ),
+    className: cn("touch-target tabular-nums", on && "text-primary hover:text-primary"),
   });
   const label = (
     <>
@@ -52,7 +49,7 @@ export function Subscribe({
     <fetcher.Form
       method={on ? "delete" : "put"}
       action={`/programs/${program.id}/subscription`}
-      className="relative z-1"
+      className="relative"
     >
       {/* One at a time: the requests could otherwise land in another order than the clicks. */}
       <button type="submit" aria-pressed={on} disabled={fetcher.state !== "idle"} className={looks}>
@@ -65,9 +62,11 @@ export function Subscribe({
         >
           {fetcher.data.message}
           {fetcher.data.full && (
-            <Link to="/me/subscriptions" className="mt-1 block text-primary hover:underline">
-              去「我的 · 订阅」取消
-            </Link>
+            <span className="mt-1 block">
+              <Link to="/me/subscriptions" className="link">
+                去「我的 · 订阅」取消
+              </Link>
+            </span>
           )}
         </p>
       )}
