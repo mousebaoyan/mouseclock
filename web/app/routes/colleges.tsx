@@ -202,7 +202,7 @@ function SchoolTable({ schools, followed }: { schools: School[]; followed: numbe
   );
 }
 
-// Phones: each school with its colleges beneath it, each row opening its college.
+// Phones: each school with its colleges beneath it, each name opening its college.
 function Schools({ schools, followed }: { schools: School[]; followed: number[] }) {
   return (
     <div className="space-y-6 lg:hidden">
@@ -216,7 +216,7 @@ function Schools({ schools, followed }: { schools: School[]; followed: number[] 
                   <>
                     <Link
                       to={`/colleges/${college.id}`}
-                      className="text-[15px] font-medium after:absolute after:inset-0 hover:text-primary"
+                      className="text-[15px] font-medium hover:text-primary"
                     >
                       {college.name}
                     </Link>

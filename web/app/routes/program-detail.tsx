@@ -450,14 +450,16 @@ export default function ProgramDetail({ loaderData, actionData }: Route.Componen
                     <RoleTag role={version.role} />
                     {version.notice.removed && <Tag color="gray">原文已删除</Tag>}
                   </p>
-                  <a
-                    href={version.notice.url}
-                    target="_blank"
-                    rel="nofollow noopener"
-                    className="link mt-1 block text-[13px] text-pretty"
-                  >
-                    {version.notice.title}
-                  </a>
+                  <p className="mt-1 text-[13px] text-pretty">
+                    <a
+                      href={version.notice.url}
+                      target="_blank"
+                      rel="nofollow noopener"
+                      className="link"
+                    >
+                      {version.notice.title}
+                    </a>
+                  </p>
                   {/* The first version brings every field, so only later ones say which. */}
                   {version.number > 1 && version.changes.length > 0 && (
                     <p className="mt-1 text-[13px] text-muted-foreground">

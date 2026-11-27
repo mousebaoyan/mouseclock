@@ -62,20 +62,22 @@ export default function MessageList({ loaderData }: Route.ComponentProps) {
         <Panel flush>
           <ol className="divide-y">
             {messages.items.map((message) => (
-              <li key={message.id}>
-                <Link
-                  to={message.link}
-                  className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm hover:bg-accent sm:grid-cols-[minmax(0,1fr)_auto] sm:px-5"
-                >
-                  <p className="flex min-w-0 items-center gap-2 font-medium">
-                    {!message.seen && <Tag color="red">新</Tag>}
-                    <span className="min-w-0">{message.title}</span>
-                  </p>
-                  <p className="text-xs text-subtle-foreground sm:row-span-2 sm:text-right">
-                    <DateTime value={message.created_at} />
-                  </p>
-                  <p className="text-[13px] text-muted-foreground">{message.body}</p>
-                </Link>
+              <li
+                key={message.id}
+                className="grid gap-x-4 gap-y-1 px-4 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:px-5"
+              >
+                <p className="flex min-w-0 items-center gap-2 font-medium">
+                  {!message.seen && <Tag color="red">新</Tag>}
+                  <span className="min-w-0">
+                    <Link to={message.link} className="hover:text-primary">
+                      {message.title}
+                    </Link>
+                  </span>
+                </p>
+                <p className="text-xs text-subtle-foreground sm:row-span-2 sm:text-right">
+                  <DateTime value={message.created_at} />
+                </p>
+                <p className="text-[13px] text-muted-foreground">{message.body}</p>
               </li>
             ))}
           </ol>

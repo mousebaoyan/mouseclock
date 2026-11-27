@@ -38,15 +38,14 @@ export default function RecentEdits({ loaderData }: Route.ComponentProps) {
           <ol className="divide-y">
             {edits.items.map((edit) => (
               <li key={edit.id} className="px-4 py-4 text-sm sm:px-5">
-                <Link
-                  to={`/programs/${edit.program.id}#edits`}
-                  className="mb-2 block text-pretty hover:text-primary"
-                >
-                  <span className="text-muted-foreground">
-                    {edit.program.school} {edit.program.college}
-                  </span>
-                  <span className="ml-2 font-medium">{edit.program.name}</span>
-                </Link>
+                <p className="mb-2 text-pretty">
+                  <Link to={`/programs/${edit.program.id}#edits`} className="hover:text-primary">
+                    <span className="text-muted-foreground">
+                      {edit.program.school} {edit.program.college}
+                    </span>
+                    <span className="ml-2 font-medium">{edit.program.name}</span>
+                  </Link>
+                </p>
                 <EditSummary edit={edit} thisYear={thisYear} />
               </li>
             ))}

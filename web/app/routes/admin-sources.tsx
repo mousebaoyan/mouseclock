@@ -247,13 +247,13 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                       <SourceName source={s} />
                     </span>
                   </Td>
-                  <Td className="max-w-80">
+                  <Td className="max-w-80 truncate">
                     <a
                       href={s.url}
                       target="_blank"
                       rel="noreferrer"
                       title={s.url}
-                      className="block truncate text-muted-foreground hover:text-primary"
+                      className="text-muted-foreground hover:text-primary"
                     >
                       {s.section || s.url}
                     </a>
