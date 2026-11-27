@@ -95,7 +95,10 @@ export function SiteHeader({ me }: { me: Me | null }) {
                   <Link
                     key={page.to}
                     to={leftAt(page.to)}
-                    className={cn(menuItem, pathname.startsWith(page.to) && "text-primary")}
+                    className={cn(
+                      menuItem,
+                      pathname.startsWith(page.to) && "font-medium text-primary",
+                    )}
                   >
                     {page.label}
                   </Link>
@@ -149,7 +152,7 @@ function Messages({ unseen }: { unseen: number }) {
     >
       <Bell className="size-5" />
       {unseen > 0 && (
-        <span className="absolute top-1 right-0.5 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 font-medium text-white tabular-nums">
+        <span className="absolute top-1 right-0.5 min-w-4 rounded-full bg-destructive px-1 text-center text-[10px] leading-4 font-medium text-destructive-foreground tabular-nums">
           {unseen > 99 ? "99+" : unseen}
         </span>
       )}

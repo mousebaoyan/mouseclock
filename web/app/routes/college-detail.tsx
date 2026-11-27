@@ -192,7 +192,10 @@ function CollegeTagPanel({
                   to={tag.id === votes?.tag ? "?" : `?votes=${tag.id}`}
                   replace
                   preventScrollReset
-                  className={cn("hover:text-primary", tag.id === votes?.tag && "text-primary")}
+                  className={cn(
+                    "underline underline-offset-4 hover:text-primary",
+                    tag.id === votes?.tag && "font-medium text-primary",
+                  )}
                 >
                   {tag.name}
                 </Link>

@@ -26,6 +26,7 @@
   --color-input: var(--input);
   --color-ring: var(--ring);
   --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-success: var(--success);
   --color-warning: var(--warning);
   --color-tag-red: var(--tag-red);
@@ -64,6 +65,7 @@
   --input: #cdd3dc;
   --ring: #2b5197;
   --destructive: #c8372d;
+  --destructive-foreground: #ffffff;
   --success: #1e7b4e;
   --warning: #a86206;
   /* Tags tell tiers, kinds and statuses apart at a glance: text in the hue on a light wash,
@@ -86,9 +88,9 @@
   --foreground: #e6eaf0;
   --card: #161c25;
   --popover: #1b2230;
-  --primary: #4a70c0;
-  --primary-hover: #5a7fcd;
-  --primary-foreground: #ffffff;
+  --primary: #7fa2e6;
+  --primary-hover: #93b4ee;
+  --primary-foreground: #0f141b;
   --primary-soft: #1c2740;
   --muted: #1d2430;
   --muted-foreground: #a0a9b8;
@@ -98,6 +100,7 @@
   --input: #364256;
   --ring: #7fa2e6;
   --destructive: #f07a6e;
+  --destructive-foreground: #0f141b;
   --success: #6fcf97;
   --warning: #e9b860;
   --tag-red: #f28b82;
@@ -205,7 +208,7 @@
     @apply text-muted-foreground hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground;
   }
   .btn-destructive {
-    @apply bg-destructive text-white hover:bg-[color-mix(in_oklab,var(--destructive),black_10%)];
+    @apply bg-destructive text-destructive-foreground hover:bg-[color-mix(in_oklab,var(--destructive),black_10%)];
   }
   .btn-link {
     @apply h-auto! border-0 px-0! text-primary underline-offset-4 hover:underline;
@@ -231,8 +234,10 @@
   textarea.field {
     @apply h-auto py-2 leading-relaxed;
   }
+  /* Always underlined: the blue is about as light as the grey text beside it, so colour alone
+     can't mark a link. */
   .link {
-    @apply text-primary underline-offset-4 hover:underline;
+    @apply text-primary underline underline-offset-4 hover:decoration-2;
   }
 }
 
