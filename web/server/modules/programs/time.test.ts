@@ -13,7 +13,7 @@ import {
 
 const iso = (date: Date) => date.toISOString();
 
-test("times read as the notice wrote them, with the year only when it isn't this one", () => {
+test("times read as recorded, with the year only when it isn't this one", () => {
   expect(formatTime({ date: "2026-06-30", time: "23:59" }, 2026)).toBe("6月30日 23:59");
   expect(formatTime({ date: "2026-09-19", time: "24:00" }, 2026)).toBe("9月19日 24:00");
   expect(formatTime({ date: "2026-06-22", mark: "before" }, 2026)).toBe("6月22日前");
