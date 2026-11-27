@@ -17,7 +17,7 @@ import { sendMessages, type Message } from "./messages.ts";
 // the API.
 const SUBSCRIPTION_LIMIT = 10;
 
-// The program's apply end as the notice wrote it, null without one.
+// The program's apply end as recorded, null without one.
 const deadlineValue = sql<TimeValue | null>`(${applyOf("p.id")} -> 'end')`;
 
 export async function subscribe(userId: number, programId: number) {

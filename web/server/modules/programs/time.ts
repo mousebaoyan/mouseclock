@@ -27,7 +27,7 @@ export function startOf(value: TimeValue) {
 
 // When a deadline has passed, erring early (design §8.2): a bare date runs to the end of the
 // day, a date marked 「前」 or 「前后」 to the end of the day before, a third of a month or a
-// month only to its start. Pages show what the notice said, never this instant.
+// month only to its start. Pages show the time value, never this instant.
 export function deadlineOf(value: TimeValue) {
   if ("month" in value || "time" in value) return startOf(value);
   const [year, month, day] = numbers(value.date, "-");
@@ -46,7 +46,7 @@ export function deadlineDay(value: TimeValue) {
   return new Date(Date.UTC(year, month - 1, day - 1)).toISOString().slice(0, 10);
 }
 
-// Times as the notice wrote them (design §8.2), on pages and in messages: neither shows the
+// Time values as recorded (design §8.2), on pages and in messages: neither shows the
 // instants worked out for sorting and reminders. The year is left out when it is `thisYear`, as
 // people write dates.
 

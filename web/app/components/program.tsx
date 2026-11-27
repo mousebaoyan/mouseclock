@@ -20,7 +20,7 @@ export function ApplyStart({ apply, thisYear }: { apply: ApplyValue | null; this
   return start ? formatTime(start, thisYear) : <Missing />;
 }
 
-// The deadline as the notice wrote it; some take applications until the places are filled.
+// The deadline as recorded; some take applications until the places are filled.
 export function ApplyDeadline({ apply, thisYear }: { apply: ApplyValue | null; thisYear: number }) {
   const end = apply?.end;
   const rolling = apply?.rolling;
