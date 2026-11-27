@@ -247,13 +247,13 @@ export default function Sources({ loaderData, actionData }: Route.ComponentProps
                       <SourceName source={s} />
                     </span>
                   </Td>
-                  <Td className="max-w-80 truncate">
+                  <Td className="max-w-80">
                     <a
                       href={s.url}
                       target="_blank"
                       rel="noreferrer"
                       title={s.url}
-                      className="text-muted-foreground hover:text-primary"
+                      className="inline-block max-w-full truncate align-middle text-muted-foreground hover:text-primary"
                     >
                       {s.section || s.url}
                     </a>
@@ -543,9 +543,11 @@ function ProbeResult({ probe, adoptTo }: { probe: SourceProbe; adoptTo: string }
                 <span className="w-20 shrink-0 text-muted-foreground tabular-nums">
                   {item.published_on ?? "无日期"}
                 </span>
-                <a href={item.url} target="_blank" rel="nofollow noopener" className="link">
-                  {item.title}
-                </a>
+                <span className="min-w-0">
+                  <a href={item.url} target="_blank" rel="nofollow noopener" className="link">
+                    {item.title}
+                  </a>
+                </span>
               </li>
             ))}
           </ul>

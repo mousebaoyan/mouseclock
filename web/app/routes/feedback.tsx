@@ -30,9 +30,11 @@ export default function FeedbackPage({ loaderData }: Route.ComponentProps) {
       crumbs={[{ to: `/programs/${f.program.id}`, label: f.program.name }]}
       meta={
         <>
-          <Link to={`/programs/${f.program.id}`} className="hover:text-primary">
-            {f.program.school} {f.program.college}「{f.program.name}」
-          </Link>
+          <span>
+            <Link to={`/programs/${f.program.id}`} className="hover:text-primary">
+              {f.program.school} {f.program.college}「{f.program.name}」
+            </Link>
+          </span>
           <Tag color={FEEDBACK_STATUSES[f.status].color}>{FEEDBACK_STATUSES[f.status].label}</Tag>
         </>
       }
