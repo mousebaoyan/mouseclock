@@ -487,7 +487,7 @@ function Handle({
       {item.college.id === null && (
         <p className="text-xs text-muted-foreground">
           清单里没有的学院，先在
-          <Link to="/admin/colleges" className="text-primary hover:underline">
+          <Link to="/admin/colleges" className="link">
             院校管理
           </Link>
           里加上再对上；对上的学院接入了来源，就自动算已收录
