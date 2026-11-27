@@ -5,7 +5,14 @@ import { db } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
 import { hashToken, newToken } from "../../platform/tokens.ts";
-import type { AttachmentFailureKind, Evidence, Kind, Role } from "../programs/schemas.ts";
+import type {
+  ApplyValue,
+  AttachmentFailureKind,
+  Evidence,
+  Kind,
+  Role,
+  TimeValue,
+} from "../programs/schemas.ts";
 import type {
   AttachmentFailure,
   AttachmentInfo,
@@ -564,7 +571,7 @@ export async function recordExtraction(
     const snapshot = await trx
       .selectFrom("snapshots as s")
       .innerJoin("notices as n", "n.id", "s.notice_id")
-      .select(["s.extracted_at", "n.source_id", "n.published_on"])
+      .select(["s.extracted_at", "s.notice_id", "n.source_id", "n.published_on"])
       .where("s.id", "=", snapshotId)
       .forUpdate("s")
       .executeTakeFirst();
@@ -578,7 +585,7 @@ export async function recordExtraction(
     const held: ReviewItem[] = [];
     // The second model didn't see an attachment that wasn't read either (design §8.3).
     const unread = docs.attachments.some((a) => a.failure !== null);
-    for (const given of programs) {
+    for (const given of await resumePrograms(trx, snapshot.notice_id, context.programs, programs)) {
       const program = unread
         ? { ...given, checked: given.checked?.filter((c) => c !== "no_deadline") }
         : given;
@@ -637,6 +644,67 @@ export async function recordExtraction(
       usage,
     );
   });
+}
+
+const collegeAndCohort = (p: { college_id: number; cohort: number }) =>
+  `${p.college_id} ${p.cohort}`;
+
+// A notice that changed is about the programs its versions are (design §8.4): a program extraction
+// gave no number for goes to the one of its college and cohort among them that it can't be another
+// batch of, where only one is left and only one asks for it. The models may tell its kind otherwise
+// this time, or fail to know it.
+async function resumePrograms(
+  trx: Transaction<DB>,
+  noticeId: number,
+  candidates: { id: number; college_id: number; cohort: number; apply: ApplyValue | null }[],
+  programs: ExtractedProgram[],
+) {
+  const versions = await trx
+    .selectFrom("program_versions as v")
+    .innerJoin("snapshots as s", "s.id", "v.snapshot_id")
+    .select("v.program_id")
+    .where("s.notice_id", "=", noticeId)
+    .execute();
+  const about = new Set(versions.map((v) => v.program_id));
+  const taken = new Set(programs.map((p) => p.program_id));
+  const left = Map.groupBy(
+    candidates.filter((p) => about.has(p.id) && !taken.has(p.id)),
+    collegeAndCohort,
+  );
+  const asking = Map.groupBy(
+    programs.filter((p) => p.program_id === undefined),
+    collegeAndCohort,
+  );
+  return programs.map((program) => {
+    const to = left.get(collegeAndCohort(program))?.filter((p) => !anotherBatch(program, p.apply));
+    return program.program_id === undefined &&
+      to?.length === 1 &&
+      asking.get(collegeAndCohort(program))?.length === 1
+      ? { ...program, program_id: to[0].id }
+      : program;
+  });
+}
+
+// Calls that surely take applications at different times are batches of their own (design §8.2).
+function anotherBatch(program: ExtractedProgram, other: ApplyValue | null) {
+  const apply = program.fields.apply?.value;
+  return (
+    program.role === "call" &&
+    (closedBy(other?.end, apply?.start) || closedBy(apply?.end, other?.start))
+  );
+}
+
+// Whether applications surely stop by the time others open: an end stated to a third of a month or
+// a month, or as 「前后」, may run later; a start with 「前」 or 「前后」 may come earlier.
+function closedBy(end: TimeValue | undefined, start: TimeValue | undefined) {
+  return (
+    end !== undefined &&
+    start !== undefined &&
+    "date" in end &&
+    !("mark" in end && end.mark === "about") &&
+    !("mark" in start && start.mark !== undefined) &&
+    deadlineOf(end) <= startOf(start)
+  );
 }
 
 export async function docsOf(trx: Transaction<DB>, snapshotId: number): Promise<Docs> {
