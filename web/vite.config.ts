@@ -29,6 +29,20 @@ const serveFakeMousehole: Plugin = {
   },
 };
 
+// Pages may import constants from server modules, but not the libraries those are built on: Zod
+// alone is 80KB compressed on a first visit to a page that pulls it in (design §14).
+const SERVER_LIBRARIES = /\/node_modules\/(?:zod|@hono\/zod-openapi|kysely|pg)\//;
+const keepServerLibrariesOffPages: Plugin = {
+  name: "keep-server-libraries-off-pages",
+  applyToEnvironment: (environment) => environment.name === "client",
+  generateBundle(_, bundle) {
+    for (const chunk of Object.values(bundle)) {
+      const id = chunk.type === "chunk" && chunk.moduleIds.find((m) => SERVER_LIBRARIES.test(m));
+      if (id) this.error(`${chunk.fileName} bundles ${id}`);
+    }
+  },
+};
+
 export default defineConfig(({ mode }) => {
   // Server code reads process.env, but Vite only loads .env into import.meta.env.
   Object.assign(process.env, loadEnv(mode, import.meta.dirname, ""));
@@ -36,6 +50,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       serveFakeMousehole,
+      keepServerLibrariesOffPages,
       reactRouterHonoServer({
         serverEntryPoint: "server/main.ts",
         // Pages import constants shared with the server, such as the site's name; in development

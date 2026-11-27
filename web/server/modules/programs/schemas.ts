@@ -1,16 +1,12 @@
 import { z } from "@hono/zod-openapi";
 import { BoolParam, Int, named, param, UnixSeconds } from "../../platform/http.ts";
+import { KIND_LABELS, KINDS } from "./kinds.ts";
+import { TAG_COLORS, TAG_THRESHOLD } from "./tag-rules.ts";
 
 // The shapes of programs and their fields (design §8.2): what extraction submits, what the
 // database stores in program_fields and program_versions, and what pages show. Keys left out
 // mean "not stated"; the crawler drops empty values instead of sending null.
 
-export const KINDS = [
-  "winter_camp",
-  "summer_camp",
-  "pre_recommendation",
-  "september_round",
-] as const;
 export const Kind = z.enum(KINDS);
 
 export const ClosesAt = UnixSeconds.openapi({
@@ -18,13 +14,6 @@ export const ClosesAt = UnixSeconds.openapi({
     "报名结束的时刻，状态按它算（总体设计 §9.1）：写了截止的是截止，没写的是活动结束，都没写的是这一届推免结束，即前一年的 10 月底",
 });
 export type Kind = z.infer<typeof Kind>;
-
-export const KIND_LABELS: Record<Kind, string> = {
-  winter_camp: "冬令营",
-  summer_camp: "夏令营",
-  pre_recommendation: "预推免",
-  september_round: "九推",
-};
 
 export const ROLES = ["call", "update", "result"] as const;
 export const Role = z.enum(ROLES);
@@ -192,10 +181,6 @@ export const ProgramFilterQuery = ProgramTableQuery.extend({
   }),
 });
 export type ProgramFilters = z.infer<typeof ProgramFilterQuery>;
-
-// 学院标签 (design §9.3): one member's view isn't the members' impression, so a tag counts as the
-// college's, and filters, once this many put it on.
-export const TAG_THRESHOLD = 3;
 
 // A row of the table (design §10): only what the table shows, filters and sorts by. `apply` is
 // what the page shows; the two instants are for status, countdowns and sorting.
@@ -446,20 +431,7 @@ export const Applications = z
   })
   .openapi("Applications");
 
-// What members make of a college (design §9.3), from the admins' presets, each in a hue of the
-// pages' tags (app/components/tags.tsx).
-export const TAG_COLORS = [
-  "red",
-  "orange",
-  "amber",
-  "green",
-  "teal",
-  "sky",
-  "blue",
-  "violet",
-  "pink",
-  "gray",
-] as const;
+// What members make of a college (design §9.3), from the admins' presets.
 export const TagColor = z.enum(TAG_COLORS, named("颜色")).openapi("TagColor");
 export const TagInput = z
   .strictObject({

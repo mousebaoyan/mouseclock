@@ -6,13 +6,8 @@ import { recordAudit } from "../../platform/audit.ts";
 import { db, explainConflict } from "../../platform/db.ts";
 import { AppError } from "../../platform/errors.ts";
 import { unix } from "../../platform/http.ts";
-import {
-  TAG_THRESHOLD,
-  type ShownTags,
-  type TagColor,
-  type TagInput,
-  type TagPatch,
-} from "./schemas.ts";
+import type { ShownTags, TagColor, TagInput, TagPatch } from "./schemas.ts";
+import { TAG_THRESHOLD } from "./tag-rules.ts";
 
 // 学院标签 (design §9.3): members put the admins' presets on colleges, one vote each; a tag counts
 // as the college's once enough of them did.

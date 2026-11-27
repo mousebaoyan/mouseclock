@@ -19,7 +19,7 @@ import type {
   Role,
   TimeValue,
 } from "./schemas.ts";
-import { KIND_LABELS } from "./schemas.ts";
+import { KIND_LABELS } from "./kinds.ts";
 import { closesAt, deadlineOf, formatApply, startOf, statusOf } from "./time.ts";
 
 // The apply field put back together from its parts, null when the notice gave none or people
