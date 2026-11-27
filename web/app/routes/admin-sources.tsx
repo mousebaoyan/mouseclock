@@ -485,12 +485,11 @@ function LastRun({ source, className }: { source: ListedSource; className?: stri
     return <span className={cn("text-subtle-foreground", className)}>尚未抓取</span>;
   }
   return (
-    <Link
+    <RunResult
+      run={source.last_run}
+      className={className}
       to={`/crawl?date=${beijingDate(source.last_run.started_at)}&source_id=${source.id}`}
-      className="hover:opacity-80"
-    >
-      <RunResult run={source.last_run} className={className} />
-    </Link>
+    />
   );
 }
 

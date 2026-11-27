@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { cn } from "~/cn";
 import type { AttachmentFailureKind } from "../../server/modules/programs/schemas.ts";
 import type { Failure } from "../../server/modules/sources/schemas.ts";
@@ -34,8 +35,8 @@ type Run = {
 };
 
 // How a round went (design §7.5): the list page read or not, and the notices and attachments it
-// couldn't fetch.
-export function RunResult({ run, className }: { run: Run; className?: string }) {
+// couldn't fetch; with `to`, the words open it.
+export function RunResult({ run, className, to }: { run: Run; className?: string; to?: string }) {
   const missed = [
     run.notice_failure_count > 0 && `${run.notice_failure_count} 条通知抓取失败`,
     run.attachment_failure_count > 0 && `${run.attachment_failure_count} 个附件未能读取`,
@@ -52,7 +53,15 @@ export function RunResult({ run, className }: { run: Run; className?: string }) 
         aria-hidden="true"
         className="mt-[calc(0.75em-0.1875rem)] size-1.5 shrink-0 rounded-full bg-current"
       />
-      {text}
+      <span>
+        {to ? (
+          <Link to={to} className="hover:opacity-80">
+            {text}
+          </Link>
+        ) : (
+          text
+        )}
+      </span>
     </span>
   );
 }
